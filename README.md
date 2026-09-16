@@ -77,7 +77,7 @@ The project evolved through nine source checkpoints from v0.1.0 through v0.3.6. 
 
 Important historical fixes include moving playback into a foreground `MediaLibraryService`, adding the Country Buffer, adding SMB read-ahead, fixing metadata-title precedence, eliminating a large-queue sort ANR, keeping Media3 out of minimal-control mode, adding instant filename/folder search, and enabling explicit media audio-focus handling for vehicle playback.
 
-For the line between already-proven behavior and v0.3.6 changes that still need targeted testing, see [docs/VALIDATION_STATE.md](docs/VALIDATION_STATE.md).
+For the product-level reasons behind the app, see [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md). For the line between already-proven behavior and v0.3.6 changes that still need targeted testing, see [docs/VALIDATION_STATE.md](docs/VALIDATION_STATE.md).
 
 ## Planned / possible future work
 
