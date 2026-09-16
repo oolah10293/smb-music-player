@@ -1,0 +1,25 @@
+# Android / Gradle
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+
+# The project downloads the official wrapper JAR on demand.
+gradle/wrapper/gradle-wrapper.jar
+
+# Signing material / secrets
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# Build outputs
+*.apk
+*.aab
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp

@@ -1,0 +1,21 @@
+SMB Music Player v0.3.6 — build/install
+
+1. Clone or download this repository to a LOCAL folder.
+
+2. Open the repository root in Android Studio.
+
+3. If Android Studio reports that gradle/wrapper/gradle-wrapper.jar is missing,
+   run SETUP_GRADLE_WRAPPER.bat once. It downloads the official Gradle 9.6
+   wrapper JAR and verifies its SHA-256 before using it.
+
+4. Let Gradle sync.
+
+5. Connect an Android device with USB debugging enabled.
+
+6. Click the green Run button for the app configuration.
+
+Current applicationId: com.smbmusic.player
+Current versionCode: 9
+Current versionName: 0.3.6
+
+See README.md, CHANGELOG.md, and docs/ for design rationale and regression tests.
