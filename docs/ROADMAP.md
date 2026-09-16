@@ -4,6 +4,8 @@ These are ideas, not commitments. Proven playback behavior takes priority over f
 
 ## Near-term candidates
 
+- **Next revision:** restore the Browser search field's previous visual height. v0.3.6's plain white background removed the default EditText drawable/padding and made the field look vertically shorter. Keep the white background, but give the field an explicit minimum height (target: 48dp) without changing the rest of the Browser layout.
+
 - `.m3u` / `.m3u8` playlist-file support.
 - Continue validating v0.3.6 vehicle/Android Auto audio focus behavior.
 - Optional library filename-cleanup script that reads metadata, performs a dry run, sanitizes filenames, prevents collisions, and logs reversible renames. This should remain separate from the player so the player itself stays read-only toward the music library.
