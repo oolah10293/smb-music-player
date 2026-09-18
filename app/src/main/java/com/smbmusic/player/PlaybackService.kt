@@ -4,7 +4,6 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -62,18 +61,9 @@ class PlaybackService : MediaLibraryService() {
             .setTargetBufferBytes(TARGET_BUFFER_BYTES)
             .build()
 
-        val audioAttributes = AudioAttributes.Builder()
-            .setUsage(C.USAGE_MEDIA)
-            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-            .build()
-
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
-            // Explicitly behave as a music player and let ExoPlayer manage audio focus.
-            // This gives Android/Android Auto a proper media-focus request instead of
-            // relying on another app to establish the vehicle's media audio path first.
-            .setAudioAttributes(audioAttributes, true)
             // The original test device is an older phone and v0.1 paused when the screen slept.
             // NETWORK wake mode holds both CPU and Wi-Fi locks while actively playing/buffering.
             .setWakeMode(C.WAKE_MODE_NETWORK)
