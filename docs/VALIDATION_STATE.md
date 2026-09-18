@@ -26,19 +26,18 @@ v0.3.6 intentionally made only narrow changes on top of the v0.3.5 baseline:
 - made the search field white;
 - explicitly configured media/music audio attributes with ExoPlayer audio-focus handling.
 
-## Still needs targeted validation
+## Confirmed in v0.3.6
 
-The v0.3.6 audio-focus change was added because vehicle playback could require starting audio from another media app before SMB Music became audible through the vehicle speakers.
+The v0.3.6 audio-focus change fixed the vehicle-routing problem in real use:
 
-The next targeted vehicle test is:
+- SMB Music routes audio to the vehicle directly without requiring another media app to establish the path first.
+- Steering-wheel track skip works through the Media3 session.
 
-1. connect normally;
-2. do **not** start another media app;
-3. start playback directly in SMB Music;
-4. verify audio is routed to the vehicle immediately;
-5. verify vehicle play/pause controls behave normally.
+Treat this audio-focus behavior as proven and preserve it unless a future regression test directly implicates it.
 
-If that succeeds, the audio-focus change can be treated as a confirmed fix. If it does not, investigate Android Auto/media-session routing without changing the proven SMB or buffering stack.
+## Current external-network note
+
+Intermittent Android networking failures have been observed while Tailscale is connected, including normal internet/notifications/Phone Link recovering immediately when Tailscale is disconnected. The same SMB Music build is not required to be open for the failure to occur, so this is currently being treated as an external Tailscale/Android networking issue rather than an SMB Music playback regression. Do not change the proven Country Buffer, SMB read-ahead, or audio-focus behavior in response without a direct reproduction tying the failure to SMB Music.
 
 ## General rule
 
