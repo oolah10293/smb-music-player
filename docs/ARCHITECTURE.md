@@ -68,3 +68,17 @@
 - AndroidX Media3 ExoPlayer / UI / Session
 - jcifs-ng
 - slf4j-nop
+
+
+## Future central-playback boundary
+
+A future central-house mode should be added behind a playback backend abstraction rather than by rewriting the Browser or replacing the existing Media3 service.
+
+Conceptually:
+
+`MainActivity / Now Playing` → `PlaybackBackend` → either:
+
+- existing local `MediaController` / `PlaybackService`; or
+- future central-server control/state protocol.
+
+In central mode, the server—not the Android app—must own the active queue, current position, decoding/streaming, and synchronized output-node timing. See [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md).
