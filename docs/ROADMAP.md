@@ -19,6 +19,13 @@ These are ideas, not commitments. Proven playback behavior takes priority over f
 
 ## Later candidates
 
+### Central / synchronized house playback
+
+Add an optional central-control mode while preserving the current local player. The Android Browser/search/sort workflow should feed either the existing local Media3 backend or a future central playback server. In central mode the server owns queue/playback state and synchronized delivery to ESP32 audio nodes; the phone is only a controller and may disconnect after starting playback.
+
+Design details and staged integration plan: [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md)
+
+
 ### Smart Shuffle
 
 Potential design:
