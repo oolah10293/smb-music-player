@@ -50,6 +50,8 @@ Once the file is reachable again, playback is prepared at the saved position and
 
 This app is planned to become one controller/client for the synchronized house-audio system while preserving its current standalone behavior.
 
+The permanent backend is now planned to run on the existing Raspberry Pi that already owns the music files. The Pi will read the library locally, use MPD for the one shared playback session, and use Snapserver for synchronized distribution. This Android app should not become the authority for house playback.
+
 The mode should be selected automatically:
 
 - **HOUSE** — the app discovers and verifies the house-audio service directly on the local home LAN. The existing folder-first UI controls the **one shared house playback session** instead of creating a separate phone playback session.
@@ -61,7 +63,7 @@ The folder-first model remains unchanged in either mode: **folders are playlists
 
 Related projects:
 
-- [house-audio-server](https://github.com/oolah10293/house-audio-server) — central queue/session authority and synchronized stream
+- [house-audio-server](https://github.com/oolah10293/house-audio-server) — Raspberry Pi MPD/Snapserver backend plus control/discovery layer
 - [house-audio-esp32](https://github.com/oolah10293/house-audio-esp32) — ESP32-S3 synchronized renderer nodes
 - [smb-player-pc](https://github.com/oolah10293/smb-player-pc) — Windows player/controller
 
