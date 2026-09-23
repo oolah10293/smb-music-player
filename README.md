@@ -46,6 +46,25 @@ A network failure does **not** advance to the next song. The player records the 
 
 Once the file is reachable again, playback is prepared at the saved position and allowed to rebuild a useful buffer before automatic resume.
 
+## Future whole-house audio integration
+
+This app is planned to become one controller/client for the synchronized house-audio system while preserving its current standalone behavior.
+
+The mode should be selected automatically:
+
+- **HOUSE** — the app discovers and verifies the house-audio service directly on the local home LAN. The existing folder-first UI controls the **one shared house playback session** instead of creating a separate phone playback session.
+- **STANDALONE** — the house service is not present on the local LAN, so the app behaves exactly as it does today: SMB/Tailscale -> ExoPlayer -> phone.
+
+Do not make GPS, SSID name, or mere server reachability the authority. Preferred detection is local mDNS/DNS-SD discovery plus a short LAN handshake. **Tailscale/VPN reachability alone must not trigger HOUSE mode**, because the phone may be hundreds of miles away while still able to reach home.
+
+The folder-first model remains unchanged in either mode: **folders are playlists**. House playback must also remain alive if the phone closes, reboots, or leaves the network.
+
+Related projects:
+
+- [house-audio-server](https://github.com/oolah10293/house-audio-server) — central queue/session authority and synchronized stream
+- [house-audio-esp32](https://github.com/oolah10293/house-audio-esp32) — ESP32-S3 synchronized renderer nodes
+- [smb-player-pc](https://github.com/oolah10293/smb-player-pc) — Windows player/controller
+
 ## Build
 
 Requirements used by v0.3.6:
