@@ -48,22 +48,24 @@ Once the file is reachable again, playback is prepared at the saved position and
 
 ## Future whole-house audio integration
 
-This app is planned to become one controller/client for the synchronized house-audio system while preserving its current standalone behavior.
+**Approved requirements; not implemented in the current Android player.** Read [docs/CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md) for the Android functionality, code integration points, server-contract needs, and acceptance checklist. [Issue #1](https://github.com/oolah10293/smb-music-player/issues/1) tracks the work. The authoritative cross-project decisions are in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md).
 
-The permanent backend is now planned to run on the existing Raspberry Pi that already owns the music files. The Pi will read the library locally, use MPD for the one shared playback session, and use Snapserver for synchronized distribution. This Android app should not become the authority for house playback.
+Keep the same folder-first Browser and Now Playing interface. The Raspberry Pi owns the house session through MPD and distributes its sound through Snapserver. The Android app controls that session; it is not a required relay or the house queue owner.
 
-The mode should be selected automatically:
+Playback authority and phone sound are separate:
 
-- **HOUSE** — the app discovers and verifies the house-audio service directly on the local home LAN. The existing folder-first UI controls the **one shared house playback session** instead of creating a separate phone playback session.
-- **STANDALONE** — the house service is not present on the local LAN, so the app behaves exactly as it does today: SMB/Tailscale -> ExoPlayer -> phone.
+- **HOUSE:** automatically discover and verify the house service directly on the home LAN. Display its current playlist/track and send `PLAY LIST`, selected-track, transport, queue-sort, shuffle, and repeat commands to the Pi. An unmuted phone receives the synchronized house stream; **Mute output / Unmute output** affects only this phone.
+- **STANDALONE:** away from home, preserve existing SMB/Tailscale -> ExoPlayer playback, buffering, and recovery. An unmuted phone that was hearing house music automatically continues the same song at its last heard position; muted/paused/stopped phones stay silent.
 
-Do not make GPS, SSID name, or mere server reachability the authority. Preferred detection is local mDNS/DNS-SD discovery plus a short LAN handshake. **Tailscale/VPN reachability alone must not trigger HOUSE mode**, because the phone may be hundreds of miles away while still able to reach home.
+Wi-Fi and Ethernet both count as home-LAN connections. Planned detection uses mDNS/DNS-SD plus a verified LAN handshake and interface/route checking; Tailscale/VPN-only reachability must not count as home. A temporary failure at home means **HOUSE reconnecting**, not permission to start a competing independent playlist. GPS and an SSID string alone are not the authority.
 
-The folder-first model remains unchanged in either mode: **folders are playlists**. House playback must also remain alive if the phone closes, reboots, or leaves the network.
+A phone connecting to a freshly idle house waits for explicit Play; **only passive nodes auto-start** the saved default `MP3s` shuffle. Joining existing playback adopts its queue without replacing or restarting it. Closing/quitting the app detaches this phone rather than sending MPD Stop/Clear. The Pi retains controller-selected queues while other nodes remain, finishes the current track when all nodes leave, and cancels that pending stop if a node returns before track end. If only a muted phone remains, it pauses and retains the session until an audible node returns or the phone unmutes.
+
+The default MP3s shuffle progress is stored on the Pi separately from controller-selected queues, so reconnecting the app never resets the rotation. Returning home adopts the existing house session rather than overwriting it with the phone's away queue. Exact transition timing, initial mute preference, whole-queue away continuation, and other unresolved edges are listed in the detailed plan rather than treated as decided.
 
 Related projects:
 
-- [house-audio-server](https://github.com/oolah10293/house-audio-server) — Raspberry Pi MPD/Snapserver backend plus control/discovery layer
+- [house-audio-server](https://github.com/oolah10293/house-audio-server) — Raspberry Pi MPD/Snapserver backend plus shared control/discovery layer and browser controller
 - [house-audio-esp32](https://github.com/oolah10293/house-audio-esp32) — ESP32-S3 synchronized renderer nodes
 - [smb-player-pc](https://github.com/oolah10293/smb-player-pc) — Windows player/controller
 
@@ -102,6 +104,7 @@ For the product-level reasons behind the app, see [docs/PROJECT_CONTEXT.md](docs
 
 ## Planned / possible future work
 
+- House-audio-server control and synchronized phone output; approved behavior and implementation checklist in [docs/CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md).
 - `.m3u` / `.m3u8` playlist-file support.
 - Smart Shuffle / listening-history database.
 - Metadata-assisted filename cleanup as a separate library-maintenance tool.
