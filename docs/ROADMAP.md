@@ -1,6 +1,6 @@
 # Roadmap / ideas
 
-These are ideas, not commitments. Proven playback behavior takes priority over feature count.
+Unless explicitly linked to approved requirements, these are ideas, not commitments. Proven playback behavior takes priority over feature count.
 
 ## Next revision
 
@@ -19,12 +19,15 @@ These are ideas, not commitments. Proven playback behavior takes priority over f
 
 ## Later candidates
 
-### Central / synchronized house playback
+### House-audio-server integration — approved behavior, implementation pending
 
-Add an optional central-control mode while preserving the current local player. The Android Browser/search/sort workflow should feed either the existing local Media3 backend or a future central playback server. In central mode the server owns queue/playback state and synchronized delivery to ESP32 audio nodes; the phone is only a controller and may disconnect after starting playback.
+The Android Browser/search/sort and Now Playing UI must control the Pi's MPD session in automatic **HOUSE** mode while preserving the existing SMB/ExoPlayer path in **STANDALONE** mode. Direct verified home-LAN detection selects HOUSE; VPN-only reachability does not. A temporary home outage is reconnection, not automatic independent playback.
 
-Design details and staged integration plan: [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md)
+Required additions include live shared-queue/state display and control, a separate synchronized phone receiver, HOUSE-only **Mute output / Unmute output**, independent controller/renderer presence, and same-song SMB/Tailscale continuation when an unmuted playing phone leaves home. Muted/paused/stopped phones remain silent. A phone attaching to fresh idle does not auto-start a track; only passive nodes do that. HOUSE Quit detaches the phone without sending global Stop/Clear. The Pi owns final-node finish/stop, muted-controller pause/retention, and persistent default MP3s shuffle progress.
 
+The browser controller and Windows player share the same Pi control contract. The exact API, Android receiver integration, and remaining edge decisions need definition/testing; these capabilities are not implemented by this documentation update.
+
+Android requirements, current code hooks, and acceptance checklist: [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md). Cross-project authority: [server session behavior](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md). Tracking: [Issue #1](https://github.com/oolah10293/smb-music-player/issues/1).
 
 ### Smart Shuffle
 
