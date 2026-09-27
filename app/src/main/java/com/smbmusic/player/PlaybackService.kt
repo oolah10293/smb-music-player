@@ -276,6 +276,11 @@ class PlaybackService : MediaLibraryService() {
     private fun beginOutageRecovery(error: PlaybackException) {
         val mediaItem = player.currentMediaItem ?: return
 
+        // A late loader error after an explicit Pause/Stop must not create a brand-new
+        // automatic-resume request. Errors that occur inside an existing recovery session
+        // still return to the retry path below.
+        if (!recovering && !player.playWhenReady) return
+
         // If a second error happens while rebuilding the recovery buffer, retain the
         // original intent to resume rather than treating our forced pause as a user pause.
         val shouldResume = if (recovering) resumeShouldPlay else player.playWhenReady
