@@ -37,7 +37,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private var queueSortMode = SortMode.NAME_ASC
     private var recoveryStatus = RecoveryStatus.idle()
 
-    private val listener = object : MediaController.Listener {
+    private val playerListener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             updateMetadata(controller?.mediaMetadata ?: mediaItem?.mediaMetadata)
             updateStatus()
@@ -58,7 +58,9 @@ class NowPlayingActivity : AppCompatActivity() {
         override fun onPlayerError(error: PlaybackException) {
             updateStatus()
         }
+    }
 
+    private val controllerListener = object : MediaController.Listener {
         override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
             recoveryStatus = RecoveryStatus.from(extras)
             updateStatus()
@@ -137,13 +139,15 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun connectController() {
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
-        controllerFuture = MediaController.Builder(this, token).buildAsync()
+        controllerFuture = MediaController.Builder(this, token)
+            .setListener(controllerListener)
+            .buildAsync()
         controllerFuture.addListener(
             {
                 try {
                     val mediaController = controllerFuture.get()
                     controller = mediaController
-                    mediaController.addListener(listener)
+                    mediaController.addListener(playerListener)
                     mediaController.repeatMode = Player.REPEAT_MODE_ALL
 
                     // Artwork and controls intentionally share the same MediaController.
@@ -310,7 +314,7 @@ class NowPlayingActivity : AppCompatActivity() {
     override fun onDestroy() {
         playerView.player = null
         controlsPlayerView.player = null
-        controller?.removeListener(listener)
+        controller?.removeListener(playerListener)
         if (::controllerFuture.isInitialized) {
             MediaController.releaseFuture(controllerFuture)
         }
