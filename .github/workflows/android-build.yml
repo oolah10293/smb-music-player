@@ -19,11 +19,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Android 37 preview SDK packages
+      - name: Install Android SDK packages
         run: |
           SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" --channel=3 "platform-tools" "platforms;android-37" "build-tools;37.0.0"
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Assemble debug APK
         run: |
