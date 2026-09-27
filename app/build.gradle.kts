@@ -4,12 +4,12 @@ plugins {
 
 android {
     namespace = "com.smbmusic.player"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.smbmusic.player"
         minSdk = 26
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 11
         versionName = "0.3.8"
     }
