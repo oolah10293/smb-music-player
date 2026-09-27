@@ -1,6 +1,31 @@
 # Changelog
 
-This history is reconstructed from the actual saved source checkpoints. Release notes have been condensed, but behavior and rationale are preserved. Public copies remove device/location-specific comments; functional code is otherwise retained.
+This history is reconstructed from the actual saved source checkpoints. Release notes are condensed, but behavior and rationale are preserved. Public copies remove device/location-specific comments; functional code is otherwise retained.
+
+## 0.3.8
+
+- Based the revision on the separately tested v0.3.7 source rather than rebuilding directly from the older v0.3.6 repository tree.
+- Added one shared `SortModeStore` for Browser and Now Playing. Changing either sort control is reflected on the other page; ordinary page navigation does not itself reorder the active queue.
+- Made Repeat All a fixed policy for every nonempty standalone queue, including search-filtered and one-track queues. External attempts to select Repeat Off or Repeat One are corrected back to Repeat All; explicit Pause, Stop, and Quit remain authoritative.
+- Changed new-queue construction so a tapped start track becomes queue item zero and the remaining sorted order wraps from it. For example, selecting `D` in `A B C D E F` produces `D E F A B C`.
+- Changed deliberate active-queue sorting so the current track likewise becomes item zero while preserving its playback position, play/pause state, and Shuffle setting.
+- Confirmed that a newly requested folder or filtered playlist replaces the old queue outright; an old current track excluded from the new list is not retained.
+- Retuned the white Browser search field from v0.3.7's 48dp minimum to a 40dp minimum.
+- Added an X inside the right side of Search. It is a separate non-focusable control: tapping it clears the query without opening the keyboard, while tapping the typing area still opens the keyboard normally.
+- Retained the v0.3.7 no-autofocus, portrait-only, explicit Play/Resume fade-in, Garmin/Bluetooth command authorization, and Tailscale connection-request behavior.
+- Retained the v0.3.6 Android Auto/audio-focus fix, Country Buffer, 64 KiB SMB read-ahead, metadata fallback, stock Media3 controls, and large-queue replacement strategy.
+- Hardened the existing outage-recovery state machine rather than replacing it. Now Playing reports waiting, probing, and buffer-rebuild phases; network changes bring a real SMB probe forward; individual probe timeouts schedule another attempt; a no-progress watchdog returns a genuinely stuck refill to the retry loop; and a second outage during refill does not require another Play press.
+- Added a GitHub Actions debug-build check.
+
+## 0.3.7
+
+- Added `android:minHeight="48dp"` to the white Browser search field. Phone testing later found this too tall, leading to the 40dp v0.3.8 target.
+- Prevented Search from auto-focusing or opening the keyboard when Browse appears.
+- Locked Browser and Now Playing to portrait orientation.
+- Added an approximately 1.5-second ExoPlayer-only fade for explicit Play/Resume without changing Android's system media volume or fading ordinary automatic track transitions.
+- Authorized Garmin Connect as a Media3 controller so watch/phone Bluetooth Play/Pause/Previous/Next commands could reach the player.
+- Added Tailscale `CONNECT_VPN` requests at startup and after repeated SMB browse failures while retaining SMB access as the real reachability test.
+- These changes were confirmed working in real use before v0.3.8 work began.
 
 ## 0.3.6
 
@@ -69,7 +94,7 @@ This history is reconstructed from the actual saved source checkpoints. Release 
 - First bench build.
 - Direct SMB browsing and MP3 playback.
 - Name/date sorting.
-- Folder queue playback, previous/next, seek, shuffle, embedded artwork when exposed by Media3.
+- Folder queue playback, previous/next, seek, Shuffle, embedded artwork when exposed by Media3.
 - Android Keystore AES/GCM storage for the SMB password.
 - Initial outage recovery: save queue index/position, pause, retry 1/2/5/10/15 seconds, reprepare the same file, seek back, and resume instead of skipping.
 - Background `MediaLibraryService` support intentionally deferred until transport behavior was proven.

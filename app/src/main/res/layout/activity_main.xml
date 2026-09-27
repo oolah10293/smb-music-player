@@ -4,6 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
+    android:focusableInTouchMode="true"
     android:background="@color/black">
 
     <LinearLayout
@@ -159,20 +160,42 @@
                 android:textSize="11sp" />
         </LinearLayout>
 
-        <EditText
-            android:id="@+id/searchEdit"
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="40dp"
             android:layout_marginHorizontal="8dp"
             android:layout_marginTop="2dp"
             android:layout_marginBottom="4dp"
-            android:hint="Search filenames"
-            android:inputType="text"
-            android:singleLine="true"
-            android:background="@color/white"
-            android:paddingHorizontal="10dp"
-            android:textColor="@color/black"
-            android:textColorHint="@color/panel2" />
+            android:background="@color/white">
+
+            <EditText
+                android:id="@+id/searchEdit"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="40dp"
+                android:hint="Search filenames"
+                android:inputType="text"
+                android:singleLine="true"
+                android:background="@android:color/transparent"
+                android:paddingStart="10dp"
+                android:paddingEnd="44dp"
+                android:textColor="@color/black"
+                android:textColorHint="@color/panel2" />
+
+            <ImageButton
+                android:id="@+id/searchClearButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="end|center_vertical"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Clear search"
+                android:focusable="false"
+                android:focusableInTouchMode="false"
+                android:padding="8dp"
+                android:src="@drawable/ic_clear_search"
+                android:visibility="gone" />
+        </FrameLayout>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/fileList"

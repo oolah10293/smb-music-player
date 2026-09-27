@@ -34,9 +34,10 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private lateinit var controllerFuture: ListenableFuture<MediaController>
     private var controller: MediaController? = null
-    private var queueSortMode = QueueSortMode.NAME_ASC
+    private var queueSortMode = SortMode.NAME_ASC
+    private var recoveryStatus = RecoveryStatus.idle()
 
-    private val listener = object : Player.Listener {
+    private val playerListener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             updateMetadata(controller?.mediaMetadata ?: mediaItem?.mediaMetadata)
             updateStatus()
@@ -55,8 +56,14 @@ class NowPlayingActivity : AppCompatActivity() {
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            val position = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L
-            playbackStatus.text = "SMB lost at ${formatTime(position)} — reconnecting…"
+            updateStatus()
+        }
+    }
+
+    private val controllerListener = object : MediaController.Listener {
+        override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
+            recoveryStatus = RecoveryStatus.from(extras)
+            updateStatus()
         }
     }
 
@@ -84,11 +91,13 @@ class NowPlayingActivity : AppCompatActivity() {
             quitCleanly()
         }
 
+        queueSortMode = SortModeStore.load(this)
+        updateSortButton()
         queueSortButton.setOnClickListener {
             val requestedMode = queueSortMode.next()
             if (sortCurrentQueue(requestedMode)) {
                 queueSortMode = requestedMode
-                saveQueueSortMode(requestedMode)
+                SortModeStore.save(this, requestedMode)
                 updateSortButton()
             }
         }
@@ -108,6 +117,15 @@ class NowPlayingActivity : AppCompatActivity() {
         connectController()
     }
 
+    override fun onResume() {
+        super.onResume()
+        val sharedMode = SortModeStore.load(this)
+        if (sharedMode != queueSortMode) {
+            queueSortMode = sharedMode
+            if (::queueSortButton.isInitialized) updateSortButton()
+        }
+    }
+
     private fun applySystemBarInsets() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         val root = findViewById<View>(R.id.nowPlayingRoot)
@@ -121,13 +139,16 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun connectController() {
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
-        controllerFuture = MediaController.Builder(this, token).buildAsync()
+        controllerFuture = MediaController.Builder(this, token)
+            .setListener(controllerListener)
+            .buildAsync()
         controllerFuture.addListener(
             {
                 try {
                     val mediaController = controllerFuture.get()
                     controller = mediaController
-                    mediaController.addListener(listener)
+                    mediaController.addListener(playerListener)
+                    mediaController.repeatMode = Player.REPEAT_MODE_ALL
 
                     // Artwork and controls intentionally share the same MediaController.
                     // The first PlayerView is artwork-only; the second uses PlayerView's
@@ -136,8 +157,9 @@ class NowPlayingActivity : AppCompatActivity() {
                     controlsPlayerView.player = mediaController
                     controlsPlayerView.showController()
 
+                    recoveryStatus = RecoveryStatus.from(mediaController.sessionExtras)
                     updateMetadata(mediaController.mediaMetadata)
-                    queueSortMode = loadQueueSortMode()
+                    queueSortMode = SortModeStore.load(this)
                     updateSortButton()
                     updateStatus()
                 } catch (e: Exception) {
@@ -148,60 +170,53 @@ class NowPlayingActivity : AppCompatActivity() {
         )
     }
 
-    private fun sortCurrentQueue(mode: QueueSortMode): Boolean {
+    private fun sortCurrentQueue(mode: SortMode): Boolean {
         val mediaController = controller ?: return false
         val itemCount = mediaController.mediaItemCount
+        mediaController.repeatMode = Player.REPEAT_MODE_ALL
         if (itemCount < 2) return true
 
-        // v0.3.2 moved media items one at a time through MediaController. On large folders
-        // that meant hundreds of session commands and could ANR the UI. Build the desired
-        // order in memory, then replace the queue once using the same setMediaItems API that
-        // MainActivity already uses to start folder playback.
+        // Build the desired order in memory, then replace the queue once. The currently
+        // playing song is rotated to queue item zero and the remainder wraps from there.
         val currentItem = mediaController.currentMediaItem ?: return false
         val currentMediaId = currentItem.mediaId
         val currentPositionMs = mediaController.currentPosition.coerceAtLeast(0L)
         val shouldPlay = mediaController.playWhenReady
+        val shuffleEnabled = mediaController.shuffleModeEnabled
 
         val entries = (0 until itemCount).map { index ->
             QueueEntry.from(mediaController.getMediaItemAt(index))
         }
 
-        val desired = when (mode) {
-            QueueSortMode.NAME_ASC -> entries.sortedBy { it.sortName }
-            QueueSortMode.NAME_DESC -> entries.sortedByDescending { it.sortName }
-            QueueSortMode.DATE_DESC -> entries.sortedWith(
+        val sorted = when (mode) {
+            SortMode.NAME_ASC -> entries.sortedBy { it.sortName }
+            SortMode.NAME_DESC -> entries.sortedByDescending { it.sortName }
+            SortMode.DATE_DESC -> entries.sortedWith(
                 compareByDescending<QueueEntry> { it.modified }.thenBy { it.sortName }
             )
-            QueueSortMode.DATE_ASC -> entries.sortedWith(
+            SortMode.DATE_ASC -> entries.sortedWith(
                 compareBy<QueueEntry> { it.modified }.thenBy { it.sortName }
             )
         }
 
-        val newIndex = desired.indexOfFirst { it.mediaItem.mediaId == currentMediaId }
-        if (newIndex < 0) return false
+        val currentSortedIndex = sorted.indexOfFirst { it.mediaItem.mediaId == currentMediaId }
+        if (currentSortedIndex < 0) return false
 
-        val sortedItems = desired.map { it.mediaItem }
-        mediaController.setMediaItems(sortedItems, newIndex, currentPositionMs)
+        val rotatedItems = rotateFrom(sorted, currentSortedIndex).map { it.mediaItem }
+        mediaController.setMediaItems(rotatedItems, 0, currentPositionMs)
+        mediaController.repeatMode = Player.REPEAT_MODE_ALL
+        mediaController.shuffleModeEnabled = shuffleEnabled
         mediaController.prepare()
         if (shouldPlay) mediaController.play() else mediaController.pause()
         return true
     }
 
-    private fun loadQueueSortMode(): QueueSortMode {
-        val stored = getSharedPreferences(MainActivity.PREFS_UI, MODE_PRIVATE)
-            .getString(MainActivity.PREF_QUEUE_SORT, null)
-        return QueueSortMode.fromStorage(stored)
-    }
-
-    private fun saveQueueSortMode(mode: QueueSortMode) {
-        getSharedPreferences(MainActivity.PREFS_UI, MODE_PRIVATE)
-            .edit()
-            .putString(MainActivity.PREF_QUEUE_SORT, mode.storageName)
-            .apply()
+    private fun <T> rotateFrom(items: List<T>, startIndex: Int): List<T> {
+        if (items.isEmpty() || startIndex <= 0) return items
+        return items.drop(startIndex) + items.take(startIndex)
     }
 
     private fun updateSortButton() {
-        // The button displays only the active order, matching the Browser screen.
         queueSortButton.text = queueSortMode.label
     }
 
@@ -258,16 +273,31 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun updateStatus() {
         val mediaController = controller ?: return
-        playbackStatus.text = when {
-            mediaController.playerError != null -> "Reconnecting to SMB…"
-            mediaController.playbackState == Player.STATE_BUFFERING && !mediaController.playWhenReady ->
-                "Building recovery buffer…"
-            mediaController.playbackState == Player.STATE_BUFFERING -> "Buffering from SMB…"
-            mediaController.playbackState == Player.STATE_READY && mediaController.isPlaying -> "Playing"
-            mediaController.playbackState == Player.STATE_READY -> "Paused"
-            mediaController.playbackState == Player.STATE_ENDED -> "Folder finished"
-            mediaController.mediaItemCount == 0 -> "Nothing queued"
-            else -> "Opening SMB stream…"
+        playbackStatus.text = when (recoveryStatus.phase) {
+            PlaybackService.RECOVERY_PHASE_WAITING -> {
+                val seconds = ((recoveryStatus.retryInMs + 999L) / 1000L).coerceAtLeast(0L)
+                if (seconds > 0L) "Waiting for SMB — retry in ${seconds}s" else "Waiting for SMB…"
+            }
+            PlaybackService.RECOVERY_PHASE_PROBING -> "Checking SMB…"
+            PlaybackService.RECOVERY_PHASE_REBUILDING -> {
+                val haveSeconds = recoveryStatus.bufferedAheadMs.coerceAtLeast(0L) / 1000L
+                val needSeconds = recoveryStatus.requiredBufferMs.coerceAtLeast(0L) / 1000L
+                if (haveSeconds <= 0L) {
+                    "SMB restored — rebuilding buffer…"
+                } else {
+                    "Rebuilding buffer — $haveSeconds / ${needSeconds}s"
+                }
+            }
+            PlaybackService.RECOVERY_PHASE_PAUSED -> "Paused"
+            else -> when {
+                mediaController.playerError != null -> "Reconnecting to SMB…"
+                mediaController.playbackState == Player.STATE_BUFFERING -> "Buffering from SMB…"
+                mediaController.playbackState == Player.STATE_READY && mediaController.isPlaying -> "Playing"
+                mediaController.playbackState == Player.STATE_READY -> "Paused"
+                mediaController.playbackState == Player.STATE_ENDED -> "Playlist finished"
+                mediaController.mediaItemCount == 0 -> "Nothing queued"
+                else -> "Opening SMB stream…"
+            }
         }
     }
 
@@ -281,20 +311,47 @@ class NowPlayingActivity : AppCompatActivity() {
         return last.take(180)
     }
 
-    private fun formatTime(ms: Long): String {
-        val total = ms / 1000
-        return "%d:%02d".format(total / 60, total % 60)
-    }
-
     override fun onDestroy() {
         playerView.player = null
         controlsPlayerView.player = null
-        controller?.removeListener(listener)
+        controller?.removeListener(playerListener)
         if (::controllerFuture.isInitialized) {
             MediaController.releaseFuture(controllerFuture)
         }
         controller = null
         super.onDestroy()
+    }
+
+    private data class RecoveryStatus(
+        val phase: String,
+        val retryInMs: Long,
+        val bufferedAheadMs: Long,
+        val requiredBufferMs: Long
+    ) {
+        companion object {
+            fun idle(): RecoveryStatus = RecoveryStatus(
+                phase = PlaybackService.RECOVERY_PHASE_IDLE,
+                retryInMs = 0L,
+                bufferedAheadMs = 0L,
+                requiredBufferMs = 0L
+            )
+
+            fun from(extras: Bundle): RecoveryStatus = RecoveryStatus(
+                phase = extras.getString(
+                    PlaybackService.SESSION_EXTRA_RECOVERY_PHASE,
+                    PlaybackService.RECOVERY_PHASE_IDLE
+                ),
+                retryInMs = extras.getLong(PlaybackService.SESSION_EXTRA_RETRY_IN_MS, 0L),
+                bufferedAheadMs = extras.getLong(
+                    PlaybackService.SESSION_EXTRA_BUFFERED_AHEAD_MS,
+                    0L
+                ),
+                requiredBufferMs = extras.getLong(
+                    PlaybackService.SESSION_EXTRA_REQUIRED_BUFFER_MS,
+                    0L
+                )
+            )
+        }
     }
 
     private data class QueueEntry(
@@ -315,20 +372,6 @@ class NowPlayingActivity : AppCompatActivity() {
                     modified = extras?.getLong(MainActivity.EXTRA_MODIFIED, 0L) ?: 0L
                 )
             }
-        }
-    }
-
-    private enum class QueueSortMode(val label: String, val storageName: String) {
-        NAME_ASC("A–Z", "NAME_ASC"),
-        NAME_DESC("Z–A", "NAME_DESC"),
-        DATE_DESC("New–Old", "DATE_DESC"),
-        DATE_ASC("Old–New", "DATE_ASC");
-
-        fun next(): QueueSortMode = entries[(ordinal + 1) % entries.size]
-
-        companion object {
-            fun fromStorage(value: String?): QueueSortMode =
-                entries.firstOrNull { it.storageName == value } ?: NAME_ASC
         }
     }
 }

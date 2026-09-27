@@ -1,22 +1,37 @@
 # SMB Music Player
 
-A native Android music player that streams audio directly from SMB shares using Media3/ExoPlayer and jcifs-ng. The project is intentionally optimized for unreliable networks: it buffers aggressively when bandwidth is available, preserves the current track and position through SMB outages, and retries instead of treating a network failure as a bad song.
+A native Android music player that streams audio directly from SMB shares using Media3/ExoPlayer and jcifs-ng. It is intentionally optimized for unreliable networks: it buffers aggressively when bandwidth is available, preserves the current track and position through SMB outages, and retries instead of treating a network failure as a bad song.
 
-Current version: **0.3.6**.
+Current version: **0.3.8**.
 
 ## What it does
 
-- Browse SMB folders directly from Android.
-- Play MP3, FLAC, M4A/MP4 audio, AAC, OGG, Opus, and WAV.
-- Sort by name or modified date in either direction.
-- Search the current folder as you type; both audio filenames and subfolder names are filtered.
-- Multi-term search uses AND semantics: `blink 182` matches any name containing both terms, regardless of punctuation or separators between them.
-- `PLAY LIST` queues the complete current folder when search is blank, or only the filtered tracks while search is active.
-- Separate Browser and Now Playing screens.
-- Stock Media3 transport controls, buffered seek bar, shuffle, lock-screen controls, Bluetooth controls, and foreground playback.
-- Embedded title/artist/album metadata with filename fallback.
-- Encrypted local SMB credential storage using Android Keystore AES/GCM.
-- Resilient SMB/Tailscale playback designed for variable Wi-Fi/cellular links.
+- Browses SMB folders directly from Android.
+- Plays MP3, FLAC, M4A/MP4 audio, AAC, OGG, Opus, and WAV.
+- Treats folders as playlists; no tag database is required.
+- Sorts by name or modified date in either direction.
+- Uses one shared sort mode on Browser and Now Playing.
+- Searches the current folder as the user types; audio filenames and subfolder names are filtered.
+- Uses whitespace-separated AND search terms: `blink 182` matches `Blink-182`, `Blink_182`, `Blink$182`, and `Blink182`.
+- `PLAY LIST` queues the complete current folder when Search is blank or only the filtered tracks while Search is active.
+- Rotates a newly selected or currently playing song to queue item zero while preserving the sorted wraparound order.
+- Keeps Repeat All enabled for every nonempty standalone queue.
+- Provides separate Browser and Now Playing screens.
+- Uses stock Media3 transport controls, buffered seek indication, Shuffle, lock-screen controls, Bluetooth/Garmin controls, and foreground playback.
+- Displays embedded title/artist/album metadata with filename fallback.
+- Stores the SMB password locally with Android Keystore AES/GCM encryption.
+- Requests the Tailscale VPN connection at startup while still using real SMB access as the reachability test.
+
+## Search field behavior
+
+The Browser search field is intentionally a **40dp minimum-height** white field: the v0.3.6 version was too short and the v0.3.7 48dp field was too tall.
+
+The X at the right side is a separate, non-focusable control:
+
+- tapping the typing area focuses Search and opens the keyboard;
+- tapping X clears the query without requesting focus or opening the keyboard;
+- if the keyboard is already open, X clears the query without forcing it open or closed;
+- clearing immediately restores the complete folder listing in the active sort order and does not alter the active playback queue.
 
 ## The Country Buffer™
 
@@ -40,11 +55,34 @@ This is separate from the Country Buffer: one reduces SMB transaction overhead; 
 
 ## Outage recovery
 
-A network failure does **not** advance to the next song. The player records the current media item and playback position, pauses, and retries the exact file on this schedule:
+The original recovery architecture was retained because real-use testing confirmed that it can recover successfully after a prolonged outage. The apparent delay comes from two separate phases:
 
-`1 s → 2 s → 5 s → 10 s → every 15 s`
+1. verify that the exact SMB file is reachable again;
+2. reopen it at the saved position and silently rebuild about 20 seconds of playable buffer before resuming.
 
-Once the file is reachable again, playback is prepared at the saved position and allowed to rebuild a useful buffer before automatic resume.
+v0.3.8 hardens and exposes that process rather than replacing it:
+
+- the short retry progression remains `1 s → 2 s → 5 s → 10 s → every 15 s`;
+- the overall recovery session does not end because one probe fails or times out;
+- a network change brings the next **real SMB probe** forward but is not treated as proof that SMB works;
+- a per-attempt watchdog prevents one stuck SMB probe from blocking every later attempt;
+- a no-progress watchdog returns a genuinely stuck buffer rebuild to the retry loop while allowing slow but progressing transfers to continue;
+- another outage during refill returns to waiting/retry automatically;
+- Now Playing reports `Waiting for SMB`, `Checking SMB`, and `Rebuilding buffer` states;
+- explicit Pause, Stop, Quit, queue replacement, audio-focus loss, and output disconnection remain authoritative.
+
+The same media item, queue, position, sort, Shuffle setting, Repeat All policy, and user play intent are preserved through recovery where applicable. See [docs/OUTAGE_RECOVERY_PLAN.md](docs/OUTAGE_RECOVERY_PLAN.md) and [docs/TESTING.md](docs/TESTING.md).
+
+## Confirmed v0.3.7 baseline retained in v0.3.8
+
+The following v0.3.7 behavior was confirmed in real use and is carried forward:
+
+- Browse does not autofocus Search or raise the keyboard.
+- Both screens are locked to portrait orientation.
+- Explicit Play/Resume uses a short ExoPlayer-only fade-in.
+- Garmin/Bluetooth media commands work through the Media3 session.
+- Tailscale startup/recovery requests work in practice while SMB remains the actual connectivity test.
+- The v0.3.6 Android Auto/audio-focus fix remains intact.
 
 ## Future whole-house audio integration
 
@@ -54,8 +92,8 @@ Keep the same folder-first Browser and Now Playing interface. The Raspberry Pi o
 
 Playback authority and phone sound are separate:
 
-- **HOUSE:** automatically discover and verify the house service directly on the home LAN. Display its current playlist/track and send `PLAY LIST`, selected-track, transport, queue-sort, shuffle, and repeat commands to the Pi. An unmuted phone receives the synchronized house stream; **Mute output / Unmute output** affects only this phone.
-- **STANDALONE:** away from home, preserve existing SMB/Tailscale -> ExoPlayer playback, buffering, and recovery. An unmuted phone that was hearing house music automatically continues the same song at its last heard position; muted/paused/stopped phones stay silent.
+- **HOUSE:** automatically discover and verify the house service directly on the home LAN. Display its current playlist/track and send `PLAY LIST`, selected-track, transport, queue-sort, Shuffle, and Repeat commands to the Pi. An unmuted phone receives the synchronized house stream; **Mute output / Unmute output** affects only this phone.
+- **STANDALONE:** away from home, preserve existing SMB/Tailscale → ExoPlayer playback, buffering, and recovery. An unmuted phone that was hearing house music automatically continues the same song at its last heard position; muted/paused/stopped phones stay silent.
 
 Wi-Fi and Ethernet both count as home-LAN connections. Planned detection uses mDNS/DNS-SD plus a verified LAN handshake and interface/route checking; Tailscale/VPN-only reachability must not count as home. A temporary failure at home means **HOUSE reconnecting**, not permission to start a competing independent playlist. GPS and an SSID string alone are not the authority.
 
@@ -71,11 +109,11 @@ Related projects:
 
 ## Build
 
-Requirements used by v0.3.6:
+Requirements used by v0.3.8:
 
 - Android Gradle Plugin 9.4.0
 - Gradle 9.6.0
-- compileSdk / targetSdk 37
+- compileSdk / targetSdk 36
 - minSdk 26
 - Java 17
 - Media3 1.11.0
@@ -96,14 +134,15 @@ See [BUILD_AND_INSTALL.txt](BUILD_AND_INSTALL.txt) for the short version and [do
 
 ## Project history
 
-The project evolved through nine source checkpoints from v0.1.0 through v0.3.6. Detailed rationale is preserved in [CHANGELOG.md](CHANGELOG.md).
+The project evolved through saved source checkpoints from v0.1.0 onward. Detailed rationale is preserved in [CHANGELOG.md](CHANGELOG.md).
 
-Important historical fixes include moving playback into a foreground `MediaLibraryService`, adding the Country Buffer, adding SMB read-ahead, fixing metadata-title precedence, eliminating a large-queue sort ANR, keeping Media3 out of minimal-control mode, adding instant filename/folder search, and enabling explicit media audio-focus handling for vehicle playback.
+Important historical fixes include moving playback into a foreground `MediaLibraryService`, adding the Country Buffer, adding SMB read-ahead, fixing metadata-title precedence, eliminating a large-queue sort ANR, keeping Media3 out of minimal-control mode, adding instant filename/folder search, enabling explicit media audio-focus handling for vehicle playback, and preserving the validated v0.3.7 phone/vehicle controls.
 
-For the product-level reasons behind the app, see [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md). For the line between already-proven behavior and v0.3.6 changes that still need targeted testing, see [docs/VALIDATION_STATE.md](docs/VALIDATION_STATE.md).
+For the product-level reasons behind the app, see [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md). For the line between proven behavior and changes still requiring phone testing, see [docs/VALIDATION_STATE.md](docs/VALIDATION_STATE.md).
 
 ## Planned / possible future work
 
+- Field validation of v0.3.8 recovery hardening and queue/UI changes.
 - House-audio-server control and synchronized phone output; approved behavior and implementation checklist in [docs/CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md).
 - `.m3u` / `.m3u8` playlist-file support.
 - Smart Shuffle / listening-history database.

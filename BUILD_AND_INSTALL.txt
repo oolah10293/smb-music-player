@@ -1,4 +1,4 @@
-SMB Music Player v0.3.6 — build/install
+SMB Music Player v0.3.8 — build/install
 
 1. Clone or download this repository to a LOCAL folder.
 
@@ -15,7 +15,10 @@ SMB Music Player v0.3.6 — build/install
 6. Click the green Run button for the app configuration.
 
 Current applicationId: com.smbmusic.player
-Current versionCode: 9
-Current versionName: 0.3.6
+Current versionCode: 11
+Current versionName: 0.3.8
 
-See README.md, CHANGELOG.md, and docs/ for design rationale and regression tests.
+v0.3.8 preserves the confirmed v0.3.7 portrait, no-autofocus, fade-in,
+Garmin/Bluetooth, Tailscale-request, and Android Auto behavior. See README.md,
+CHANGELOG.md, and docs/TESTING.md for the new shared-sort, Repeat All,
+rotated-queue, search-clear, and outage-recovery checks.

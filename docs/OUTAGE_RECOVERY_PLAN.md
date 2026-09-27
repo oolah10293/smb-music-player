@@ -1,73 +1,87 @@
-# Prolonged-outage recovery — approved next-revision plan
+# Prolonged-outage recovery — v0.3.8 hardening and field validation
 
-Status: approved for implementation and field testing. This document does not mean the recovery changes have been implemented or validated.
+## Corrected understanding
 
-## Reported failure and goal
+The original concern was that recovery appeared to give up after roughly 30–40 seconds. After the recovery sequence was explained—first regain real SMB access, then silently rebuild about 20 seconds of playable buffer—the app was left alone longer and successfully resumed at least twice.
 
-After a network outage lasts long enough to exhaust the Country Buffer, playback becomes silent and reports that it is building a recovery buffer. Recovery appears to give up after a short time. Pressing Play manually starts another attempt, which can also appear to give up after roughly 30–40 seconds. The behavior has been reported with the screen both on and off.
+That evidence changes the engineering conclusion: the existing recovery architecture is fundamentally useful. v0.3.8 does **not** replace it with a new downloader or reduce the Country Buffer. It makes the stages visible and removes several ways an individual attempt could appear to strand the overall session.
 
-The desired behavior is to keep trying to resume the same music without requiring another Play press. The observed 30–40 seconds is not a verified hard-coded session timeout. The exact cause remains unproven; screen-off lifecycle handling alone cannot explain all reported cases.
+## Retained recovery sequence
 
-## Triggers: network availability plus time, not signal bars
+1. A playback failure records the current media item, queue index, playback position, and play intent.
+2. The player is held silent rather than advancing to another song.
+3. The exact SMB file is probed on the existing `1 s → 2 s → 5 s → 10 s → every 15 s` schedule.
+4. When the probe succeeds, ExoPlayer reopens the same item at the saved position.
+5. Playback remains paused while approximately 20 seconds of audio is buffered, or the remainder of the song when shorter.
+6. Automatic playback resumes only after that useful buffer is ready.
 
-- Use network-change/availability events to bring a retry forward when connectivity returns or changes.
-- Keep timed retries as a fallback; a network callback is not proof that the SMB server is reachable.
-- Judge success by actual SMB file access and subsequent audio-buffer progress, not a Connected label, GPS, or a particular number of signal bars.
-- The user's reference to two bars meant trying again when usable service returns. It was not a literal signal-strength threshold requirement.
+## v0.3.8 hardening
 
-## Persistence and starting timing policy
+### A failed attempt is not a failed recovery session
 
-- Preserve the existing short initial retry progression (1, 2, 5, 10, then approximately 15 seconds between failed attempts).
-- Continue active retries for at least the first ten minutes after playback stalls.
-- After ten minutes on battery, back off to approximately one attempt per minute rather than abandoning the pending playback request.
-- On charging power, continue active retries without a fixed ten-minute abandonment cutoff.
-- A relevant network return/change can shorten the scheduled wait. Debounce event bursts and permit only one active connection/recovery attempt at a time.
-- An individual attempt timing out must schedule another attempt; it must not cancel the overall recovery session.
-- These timing values are starting targets for testing, not measured performance guarantees.
+Each SMB probe is one attempt inside a persistent recovery session. A false result, exception, or 30-second attempt watchdog schedules another attempt; it does not cancel the retained song or require another Play press.
 
-## Preserve intent and playback state
+The probe executor permits a later attempt to run even if a previous jcifs call is slow to terminate. Late results are rejected with generation and attempt identifiers so obsolete work cannot restore the wrong song.
 
-Keep the user's desire to play distinct from ExoPlayer's temporary paused, buffering, or error state. Preserve the current item, position, full queue, sort, shuffle, and Repeat All policy while recovering.
+### Network changes bring a real probe forward
 
-An explicit user Pause, Stop, or Quit cancels automatic resume. A changed track or replacement queue invalidates obsolete recovery work so late callbacks cannot restore the old song. Respect audio-focus and output-disconnection behavior: recovery must not unexpectedly start the phone speaker after an output is disconnected.
+Android's default-network callback is used only as a trigger. A network availability or capability change debounces briefly, then advances the next **actual SMB file probe**. The callback itself is not treated as proof that Tailscale, the SMB server, credentials, or the specific file work.
 
-## Detect a stuck attempt without discarding useful progress
+### Buffer progress is observed
 
-Add a no-progress watchdog. If a file open/refill is genuinely stuck, close or cancel that attempt and retry at the retained position. Cancellation must reach the actual I/O, not merely enqueue more work behind a blocked worker.
+During rebuild, the service tracks increasing buffered position and publishes the buffered-ahead duration to the media session. A 45-second no-progress interval is treated as a genuinely stuck refill: the current source is closed and recovery returns to the SMB-probe loop at the retained position.
 
-Measure progress through received bytes and/or increasing playable buffer. Do not impose a short overall refill deadline while data is still arriving: a slow but productive transfer must be allowed to finish. Retain usable buffered media where supported rather than repeatedly throwing away progress.
+A slow transfer that keeps increasing the playable buffer is allowed to continue. There is no short overall refill deadline while useful progress is being made.
 
-A second outage during refill returns to the waiting/retry state automatically. No additional Play press is required.
+### A second outage remains recoverable
 
-## Resume only after a useful buffer
+An error during buffer rebuilding returns to the recovery path. The user does not need to press Play again merely because service returned briefly and disappeared during refill.
 
-Retain the approximately 20-second recovery resume threshold, or the remaining track duration when shorter. Do not resume after each tiny burst of arriving audio and recreate the rapid play/stall behavior.
+### Explicit user and output intent remain authoritative
 
-Do not reduce the Country Buffer or change the proven 64 KiB SMB read-ahead, tcpNoDelay, or normal SMB timeout values as a substitute for repairing recovery.
+- Pause stops automatic resume and retains a paused recovery state.
+- Stop, Quit, a track change, or queue replacement invalidates obsolete recovery callbacks.
+- Audio-focus loss, audio-becoming-noisy, or output-disconnection handling must not unexpectedly resume through the phone speaker.
+- A late loader error after an explicit Pause/Stop cannot create a brand-new automatic-resume request.
 
-## Screen-off operation and lifecycle
+## Truthful status
 
-Recovery must remain operational without keeping an Activity visible. Implement and test service-lifecycle handling for prolonged recovery under Android's platform rules, including periods longer than ten minutes. Do not rely solely on normal actively-playing wake behavior or the fact that a charger is connected.
+Now Playing receives recovery state through Media3 session extras rather than guessing entirely from READY/BUFFERING flags.
 
-Any extra recovery wake locks must be bounded, scoped, and released when no longer needed. Battery-backoff waiting must not become a tight CPU loop. Validate the selected scheduling/lifecycle approach on the actual phones rather than claiming that a Handler timer alone guarantees screen-off recovery.
+Expected messages include:
 
-## Truthful status and diagnostics
+- `Waiting for SMB — retry in 15s`
+- `Checking SMB…`
+- `SMB restored — rebuilding buffer…`
+- `Rebuilding buffer — 8 / 20s`
+- `Paused`
 
-Use recovery state as the source of the displayed status. Distinguish waiting, retrying, rebuilding, user-paused, and stopped states instead of deriving everything from ExoPlayer's READY/BUFFERING flags.
+## Preserved transport behavior
 
-Example UI messages:
+Do not use recovery work as a reason to change:
 
-- Waiting for SMB — retry in 15s
-- Rebuilding buffer — 8 / 20 seconds
-
-Record attempt starts/results, failure categories, last progress, buffer duration, power state, and service lifecycle events for diagnosis. Do not log credentials or publish private server addresses/paths.
+- 120–600-second Country Buffer;
+- 32 MiB target buffer;
+- 64 KiB SMB read-ahead;
+- `tcpNoDelay`;
+- normal SMB connection/socket/response timeouts;
+- approximately 20-second recovery resume threshold;
+- v0.3.6 media audio-focus behavior;
+- v0.3.7 fade, Garmin/Bluetooth, portrait, no-autofocus, or Tailscale behavior.
 
 ## Acceptance tests
 
-1. Play normally, then keep the server unreachable until the existing buffer is exhausted. Test outages of several minutes and at least ten minutes with the screen off. Restore connectivity and verify same-track/same-position automatic recovery without touching the phone.
-2. Repeat with the screen on; screen state must not determine whether retries survive.
-3. Repeat both on battery and on charging power, including an outage longer than ten minutes. Verify continued active retries on power and slower continued retries on battery.
-4. Restore service briefly, interrupt it during refill, and restore it again. Verify retry persistence and no rapid play/stall output.
-5. Use a slow but productive connection. Verify the watchdog does not discard progressing downloads.
-6. Send Pause, Stop, Quit, track changes, and queue replacements during recovery. Verify canceled/stale work cannot resume the old request.
-7. Verify output-disconnection/audio-focus behavior, normal Android Auto controls, Repeat All, shared sort, and normal playback remain intact.
+1. Play normally, then keep SMB unreachable until the Country Buffer is exhausted. Observe waiting/probing status, restore service, and verify same-track/same-position automatic recovery without touching the phone.
+2. Repeat with the screen off for several minutes. Recovery must remain owned by the service rather than the Activity.
+3. Leave the server unavailable through several individual probe attempts. Verify each timeout/failure schedules another attempt.
+4. Restore network service during a long scheduled wait. Verify the network callback advances a real SMB probe and does not itself falsely report success.
+5. Restore SMB briefly, interrupt it during the 20-second refill, then restore it again. Verify the app returns to waiting/retry and eventually resumes.
+6. Test a slow but steadily progressing connection. Verify the no-progress watchdog does not discard it.
+7. Simulate a truly stuck refill. Verify it returns to retry rather than remaining forever in `Rebuilding buffer`.
+8. During recovery, send Pause, Stop, Quit, Next/Previous, and a replacement playlist. Verify stale callbacks cannot restore the old request.
+9. Disconnect the active output or trigger audio-focus loss during recovery. Verify the phone speaker does not begin playing unexpectedly.
+10. Verify the queue, shared sort, Shuffle state, Repeat All, metadata, Android Auto, Garmin/Bluetooth controls, and normal playback remain intact afterward.
+
+## Validation status
+
+The source implements these protections, but the new v0.3.8 behavior must still be field-tested on the actual phones and network path. Successful recovery in older builds supports the architecture; it does not by itself validate every new watchdog and cancellation edge.
