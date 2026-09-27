@@ -113,7 +113,7 @@ Requirements used by v0.3.8:
 
 - Android Gradle Plugin 9.4.0
 - Gradle 9.6.0
-- compileSdk / targetSdk 37
+- compileSdk / targetSdk 36
 - minSdk 26
 - Java 17
 - Media3 1.11.0
