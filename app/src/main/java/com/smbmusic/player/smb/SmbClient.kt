@@ -110,7 +110,7 @@ class SmbClient(private val store: CredentialStore) {
         val base = BaseContext(PropertyConfiguration(props))
 
         val rawUser = credentials.username.trim()
-        val slash = rawUser.indexOf('\')
+        val slash = rawUser.indexOf(0x5C.toChar())
         val domain = if (slash > 0) rawUser.substring(0, slash) else ""
         val user = if (slash > 0) rawUser.substring(slash + 1) else rawUser
 
