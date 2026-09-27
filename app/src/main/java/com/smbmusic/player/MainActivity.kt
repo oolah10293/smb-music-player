@@ -9,8 +9,11 @@ import android.os.Parcelable
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
+import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -20,6 +23,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -51,6 +55,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var browserStatus: TextView
     private lateinit var sortButton: Button
     private lateinit var searchEdit: EditText
+    private lateinit var searchClearButton: ImageButton
     private lateinit var recycler: RecyclerView
     private lateinit var layoutManager: LinearLayoutManager
     private lateinit var adapter: FileAdapter
@@ -62,6 +67,7 @@ class MainActivity : AppCompatActivity() {
     private var browseRetryIndex = 0
     private var browseRequestGeneration = 0
     private var browseRetryEnabled = true
+    private var tailscaleRecoveryRequested = false
 
     private var rootUrl: String = ""
     private var currentUrl: String = ""
@@ -73,6 +79,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
         applySystemBarInsets()
 
         store = CredentialStore(this)
@@ -80,15 +87,15 @@ class MainActivity : AppCompatActivity() {
         executor = Executors.newSingleThreadExecutor()
 
         bindViews()
+        sortMode = SortModeStore.load(this)
+        sortButton.text = sortMode.label
+        findViewById<View>(R.id.mainRoot).requestFocus()
+        requestTailscaleConnect()
         setupController()
         setupBrowser()
         setupConnection()
 
         if (savedInstanceState != null) {
-            sortMode = runCatching {
-                SortMode.valueOf(savedInstanceState.getString(STATE_SORT).orEmpty())
-            }.getOrDefault(SortMode.NAME_ASC)
-            sortButton.text = sortMode.label
             pendingListState = savedInstanceState.getParcelable(STATE_LIST)
             pendingListUrl = savedInstanceState.getString(STATE_URL)
         }
@@ -118,6 +125,7 @@ class MainActivity : AppCompatActivity() {
         browserStatus = findViewById(R.id.browserStatus)
         sortButton = findViewById(R.id.sortButton)
         searchEdit = findViewById(R.id.searchEdit)
+        searchClearButton = findViewById(R.id.searchClearButton)
         recycler = findViewById(R.id.fileList)
     }
 
@@ -127,7 +135,9 @@ class MainActivity : AppCompatActivity() {
         controllerFuture.addListener(
             {
                 try {
-                    controller = controllerFuture.get()
+                    controller = controllerFuture.get().also {
+                        it.repeatMode = Player.REPEAT_MODE_ALL
+                    }
                 } catch (e: Exception) {
                     browserStatus.text = "Playback service failed: ${friendlyError(e)}"
                 }
@@ -167,17 +177,29 @@ class MainActivity : AppCompatActivity() {
 
         sortButton.setOnClickListener {
             sortMode = sortMode.next()
+            SortModeStore.save(this, sortMode)
             sortButton.text = sortMode.label
             showSortedEntries()
         }
 
+        searchClearButton.setOnClickListener {
+            // The clear control is a separate, non-focusable target. Clearing never requests
+            // keyboard focus: if the keyboard is hidden it stays hidden; if the user is already
+            // typing, the EditText keeps its existing focus and keyboard state.
+            if (searchEdit.text.isNotEmpty()) searchEdit.text.clear()
+        }
+
         searchEdit.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                updateSearchClearButton()
                 showSortedEntries()
             }
+
             override fun afterTextChanged(s: Editable?) = Unit
         })
+        updateSearchClearButton()
     }
 
     private fun setupConnection() {
@@ -254,6 +276,7 @@ class MainActivity : AppCompatActivity() {
         if (resetRetry) {
             browseRetryEnabled = true
             browseRetryIndex = 0
+            tailscaleRecoveryRequested = false
             cancelBrowseRetry()
         }
 
@@ -269,6 +292,7 @@ class MainActivity : AppCompatActivity() {
                     if (currentUrl != url || requestGeneration != browseRequestGeneration) return@runOnUiThread
                     cancelBrowseRetry()
                     browseRetryIndex = 0
+                    tailscaleRecoveryRequested = false
                     entries = result
                     store.saveLastFolder(url)
                     showSortedEntries()
@@ -293,6 +317,15 @@ class MainActivity : AppCompatActivity() {
     private fun scheduleBrowseRetry(url: String, error: Throwable) {
         if (!browseRetryEnabled) return
         cancelBrowseRetry()
+
+        // Startup already asks Tailscale to connect. If SMB is still unreachable after
+        // several retries, make one additional connect request sequence. This deliberately
+        // does not force-disconnect Tailscale: a missing server/share should not tear down an
+        // otherwise healthy VPN, and the existing SMB retry loop remains authoritative.
+        if (!tailscaleRecoveryRequested && browseRetryIndex >= TAILSCALE_RECOVERY_AFTER_RETRIES) {
+            tailscaleRecoveryRequested = true
+            requestTailscaleConnect()
+        }
         val delay = BROWSE_RETRY_SCHEDULE_MS[minOf(browseRetryIndex, BROWSE_RETRY_SCHEDULE_MS.lastIndex)]
         browseRetryIndex++
         val seconds = delay / 1000
@@ -306,6 +339,56 @@ class MainActivity : AppCompatActivity() {
 
     private fun cancelBrowseRetry() {
         browserHandler.removeCallbacksAndMessages(BROWSE_RETRY_TOKEN)
+    }
+
+    private fun requestTailscaleConnect() {
+        browserHandler.removeCallbacksAndMessages(TAILSCALE_CONNECT_TOKEN)
+        sendTailscaleConnectBroadcast()
+        // Current Tailscale Android exposes CONNECT_VPN for external automation. On some
+        // Android 16 devices a second request shortly after the first is more reliable while
+        // the VPN backend is starting. Sending CONNECT_VPN while already connected is benign.
+        browserHandler.postAtTime(
+            { sendTailscaleConnectBroadcast() },
+            TAILSCALE_CONNECT_TOKEN,
+            android.os.SystemClock.uptimeMillis() + TAILSCALE_SECOND_CONNECT_DELAY_MS
+        )
+    }
+
+    private fun sendTailscaleConnectBroadcast() {
+        runCatching {
+            sendBroadcast(
+                Intent(TAILSCALE_CONNECT_ACTION)
+                    .setPackage(TAILSCALE_PACKAGE)
+            )
+        }
+    }
+
+    private fun hideSearchKeyboard() {
+        searchEdit.clearFocus()
+        findViewById<View>(R.id.mainRoot).requestFocus()
+        val inputMethodManager = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        inputMethodManager.hideSoftInputFromWindow(searchEdit.windowToken, 0)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        syncSortModeFromStore()
+        // Browse should never throw the keyboard up merely because the Activity was opened or
+        // brought back from Now Playing. Tapping the search typing area still focuses it normally.
+        if (::searchEdit.isInitialized) searchEdit.post { hideSearchKeyboard() }
+    }
+
+    private fun syncSortModeFromStore() {
+        if (!::sortButton.isInitialized) return
+        val sharedMode = SortModeStore.load(this)
+        if (sharedMode == sortMode) return
+        sortMode = sharedMode
+        sortButton.text = sortMode.label
+        if (::adapter.isInitialized) showSortedEntries()
+    }
+
+    private fun updateSearchClearButton() {
+        searchClearButton.visibility = if (searchEdit.text.isNullOrEmpty()) View.GONE else View.VISIBLE
     }
 
     private fun showSortedEntries() {
@@ -353,8 +436,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val tracks = sortedTracks()
-        if (tracks.isEmpty()) {
+        val sortedTracks = sortedTracks()
+        if (sortedTracks.isEmpty()) {
             browserStatus.text = if (searchEdit.text.toString().trim().isBlank()) {
                 "No supported audio files in this folder."
             } else {
@@ -362,6 +445,14 @@ class MainActivity : AppCompatActivity() {
             }
             return
         }
+
+        // A selected start track becomes queue item zero. The remaining sorted sequence wraps
+        // around from that track: D,E,F,A,B,C rather than starting at an interior queue index.
+        val selectedIndex = startUrl
+            ?.let { url -> sortedTracks.indexOfFirst { it.url == url } }
+            ?.takeIf { it >= 0 }
+            ?: 0
+        val tracks = rotateFrom(sortedTracks, selectedIndex)
 
         val mediaItems = tracks.map { entry ->
             val extras = Bundle().apply {
@@ -379,16 +470,12 @@ class MainActivity : AppCompatActivity() {
                 .build()
         }
 
-        val startIndex = if (startUrl == null) 0 else {
-            tracks.indexOfFirst { it.url == startUrl }.coerceAtLeast(0)
-        }
+        SortModeStore.save(this, sortMode)
 
-        getSharedPreferences(PREFS_UI, MODE_PRIVATE)
-            .edit()
-            .putString(PREF_QUEUE_SORT, sortMode.name)
-            .apply()
-
-        mediaController.setMediaItems(mediaItems, startIndex, 0L)
+        // setMediaItems replaces the prior folder/filter outright. If the prior song is not in
+        // this newly requested playlist, it is intentionally not retained.
+        mediaController.repeatMode = Player.REPEAT_MODE_ALL
+        mediaController.setMediaItems(mediaItems, 0, 0L)
         mediaController.prepare()
         mediaController.play()
         openNowPlaying()
@@ -403,6 +490,11 @@ class MainActivity : AppCompatActivity() {
             SortMode.DATE_ASC -> tracks.sortedBy { it.modified }
             SortMode.DATE_DESC -> tracks.sortedByDescending { it.modified }
         }
+    }
+
+    private fun <T> rotateFrom(items: List<T>, startIndex: Int): List<T> {
+        if (items.isEmpty() || startIndex <= 0) return items
+        return items.drop(startIndex) + items.take(startIndex)
     }
 
     private fun openNowPlaying() {
@@ -421,7 +513,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString(STATE_URL, currentUrl)
-        outState.putString(STATE_SORT, sortMode.name)
         outState.putParcelable(STATE_LIST, layoutManager.onSaveInstanceState())
         super.onSaveInstanceState(outState)
     }
@@ -429,6 +520,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         browseRetryEnabled = false
         cancelBrowseRetry()
+        browserHandler.removeCallbacksAndMessages(TAILSCALE_CONNECT_TOKEN)
         if (::controllerFuture.isInitialized) {
             MediaController.releaseFuture(controllerFuture)
         }
@@ -437,26 +529,22 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private enum class SortMode(val label: String) {
-        NAME_ASC("A–Z"),
-        NAME_DESC("Z–A"),
-        DATE_DESC("New–Old"),
-        DATE_ASC("Old–New");
-
-        fun next(): SortMode = entries[(ordinal + 1) % entries.size]
-    }
-
     companion object {
         private const val STATE_URL = "browser_url"
-        private const val STATE_SORT = "sort_mode"
         private const val STATE_LIST = "list_state"
 
         const val EXTRA_FILENAME = "com.smbmusic.player.filename"
         const val EXTRA_MODIFIED = "com.smbmusic.player.modified"
-        const val PREFS_UI = "smb_music_ui"
-        const val PREF_QUEUE_SORT = "queue_sort_mode"
+        const val PREFS_UI = SortModeStore.PREFS_UI
+        const val PREF_QUEUE_SORT = SortModeStore.PREF_SORT_MODE
 
         private val BROWSE_RETRY_TOKEN = Any()
+        private val TAILSCALE_CONNECT_TOKEN = Any()
         private val BROWSE_RETRY_SCHEDULE_MS = longArrayOf(1_000, 2_000, 5_000, 10_000, 15_000)
+
+        private const val TAILSCALE_PACKAGE = "com.tailscale.ipn"
+        private const val TAILSCALE_CONNECT_ACTION = "com.tailscale.ipn.CONNECT_VPN"
+        private const val TAILSCALE_SECOND_CONNECT_DELAY_MS = 2_000L
+        private const val TAILSCALE_RECOVERY_AFTER_RETRIES = 3
     }
 }
