@@ -30,8 +30,27 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:assembleDebug --stacktrace
 
+      - name: Package source archive
+        run: |
+          zip -r SMBMusicPlayer_v0_3_8_source.zip . \
+            -x '.git/*' \
+               '.gradle/*' \
+               '.idea/*' \
+               'build/*' \
+               'app/build/*' \
+               'gradle/wrapper/gradle-wrapper.jar' \
+               'local.properties' \
+               '*.iml' \
+               'SMBMusicPlayer_v0_3_8_source.zip'
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: SMBMusicPlayer-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: SMBMusicPlayer-v0.3.8-source
+          path: SMBMusicPlayer_v0_3_8_source.zip
