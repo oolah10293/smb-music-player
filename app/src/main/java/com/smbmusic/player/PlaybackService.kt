@@ -1,6 +1,11 @@
 package com.smbmusic.player
 
+import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -21,6 +26,7 @@ import com.smbmusic.player.smb.SmbDataSource
 import com.smbmusic.player.storage.CredentialStore
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 @UnstableApi
 class PlaybackService : MediaLibraryService() {
@@ -28,22 +34,46 @@ class PlaybackService : MediaLibraryService() {
     private lateinit var session: MediaLibrarySession
     private lateinit var smb: SmbClient
     private lateinit var executor: ExecutorService
+    private lateinit var connectivityManager: ConnectivityManager
 
     private val handler = Handler(Looper.getMainLooper())
+
     private var recovering = false
     private var rebuildingBuffer = false
+    private var recoveryPaused = false
+    private var recoveryGeneration = 0
     private var retryIndex = 0
+    private var retryDueAtMs = 0L
     private var resumePositionMs = 0L
     private var resumeMediaIndex = 0
     private var resumeShouldPlay = true
     private var recoveryUrl = ""
+
+    private var probeInFlight = false
+    private var probeAgainRequested = false
+    private var activeProbeId = 0
+    private var activeProbeFuture: Future<*>? = null
+
+    private var rebuildStartedAtMs = 0L
+    private var lastBufferProgressAtMs = 0L
+    private var lastBufferedPositionMs = 0L
+
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var lastPublishedRecoverySignature = ""
+
+    private var fadeGeneration = 0
+    private var fadeArmed = false
+    private var skipNextUserFade = false
+
     private val retryScheduleMs = longArrayOf(1_000, 2_000, 5_000, 10_000, 15_000)
 
     override fun onCreate() {
         super.onCreate()
 
         smb = SmbClient(CredentialStore(this))
-        executor = Executors.newSingleThreadExecutor()
+        // A timed-out jcifs attempt must not permanently block every later recovery probe.
+        // Cached workers let a later attempt proceed even if an old blocked call is slow to die.
+        executor = Executors.newCachedThreadPool()
 
         val mediaSourceFactory = DefaultMediaSourceFactory(SmbDataSource.Factory(smb))
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(0))
@@ -70,30 +100,178 @@ class PlaybackService : MediaLibraryService() {
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
-            // Explicitly behave as a music player and let ExoPlayer manage audio focus.
-            // This gives Android/Android Auto a proper media-focus request instead of
-            // relying on another app to establish the vehicle's media audio path first.
+            // v0.3.6: explicit music attributes + audio-focus handling. This is proven to
+            // establish the vehicle audio path directly and must remain enabled.
             .setAudioAttributes(audioAttributes, true)
             // The original test device is an older phone and v0.1 paused when the screen slept.
             // NETWORK wake mode holds both CPU and Wi-Fi locks while actively playing/buffering.
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
+        player.repeatMode = Player.REPEAT_MODE_ALL
         player.setHandleAudioBecomingNoisy(true)
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 beginOutageRecovery(error)
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // A deliberate Next/Previous/new selection invalidates recovery work for the
+                // former song. Queue replacements are also handled in SessionCallback.
+                if (recovering && mediaItem != null && mediaItem.mediaId != recoveryUrl) {
+                    cancelRecovery()
+                }
+            }
+
+            override fun onRepeatModeChanged(repeatMode: Int) {
+                // Repeat All is a fixed standalone-player policy. External controllers may
+                // request another mode, but the player immediately restores the approved mode.
+                if (repeatMode != Player.REPEAT_MODE_ALL) {
+                    player.repeatMode = Player.REPEAT_MODE_ALL
+                }
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady) {
+                    fadeArmed = false
+                    cancelFade(resetToFull = true)
+
+                    if (
+                        recovering &&
+                        (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS ||
+                            reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY ||
+                            reason == Player.PLAY_WHEN_READY_CHANGE_REASON_SUPPRESSED_TOO_LONG)
+                    ) {
+                        pauseRecovery()
+                    }
+                    return
+                }
+
+                // Fade only when a real user/controller requests playback. Automatic track
+                // transitions do not change playWhenReady, and outage recovery is explicitly
+                // exempted below so the proven recovery path is not altered.
+                if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
+                    if (skipNextUserFade) {
+                        skipNextUserFade = false
+                        fadeArmed = false
+                        player.volume = 1f
+                    } else {
+                        fadeArmed = true
+                        cancelFade(resetToFull = false)
+                        // Set the stream low immediately so a buffered resume cannot produce a
+                        // full-volume first sample before the playback-state callback arrives.
+                        player.volume = FADE_START_VOLUME
+                        if (player.isPlaying) startFadeIn()
+                    }
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying && fadeArmed) startFadeIn()
             }
         })
 
         session = MediaLibrarySession.Builder(
             this,
             player,
-            object : MediaLibrarySession.Callback {}
+            SessionCallback()
         ).build()
+
+        publishRecoveryStatus(RECOVERY_PHASE_IDLE)
+        registerNetworkCallback()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
+
+    private inner class SessionCallback : MediaLibrarySession.Callback {
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ): MediaSession.ConnectionResult {
+            // Garmin Connect can see metadata/position through the default read-only access,
+            // but its phone-music controls are a third-party controller. Grant that specific
+            // package the standard player/session commands so Play/Pause, Previous/Next and
+            // device-volume commands can reach the player. Trusted controllers such as Android
+            // Auto keep Media3's normal default behavior.
+            if (controller.packageName == GARMIN_CONNECT_PACKAGE) {
+                return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
+                    .setAvailableSessionCommands(
+                        MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+                    )
+                    .setAvailablePlayerCommands(
+                        MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
+                    )
+                    .build()
+            }
+            // Reproduce Media3's normal trusted/untrusted defaults for every other controller.
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller).build()
+        }
+
+        override fun onPlayerInteractionFinished(
+            session: MediaSession,
+            controllerInfo: MediaSession.ControllerInfo,
+            playerCommands: Player.Commands
+        ) {
+            // A replacement queue or explicit Stop makes all recovery callbacks for the old
+            // request stale. The newly requested queue is allowed to establish its own state.
+            if (
+                recovering &&
+                (playerCommands.contains(Player.COMMAND_CHANGE_MEDIA_ITEMS) ||
+                    playerCommands.contains(Player.COMMAND_STOP))
+            ) {
+                cancelRecovery()
+            } else if (recovering && playerCommands.contains(Player.COMMAND_PLAY_PAUSE)) {
+                if (player.playWhenReady) {
+                    // During recovery, Play means "keep trying now". Hold the player silent until
+                    // SMB is verified and the useful recovery buffer has been rebuilt.
+                    resumeShouldPlay = true
+                    recoveryPaused = false
+                    player.pause()
+                    requestImmediateRecoveryProbe()
+                } else {
+                    // Pause is authoritative even though the player was already internally
+                    // paused while waiting for SMB.
+                    pauseRecovery()
+                }
+            }
+
+            if (player.repeatMode != Player.REPEAT_MODE_ALL) {
+                player.repeatMode = Player.REPEAT_MODE_ALL
+            }
+        }
+    }
+
+    private fun startFadeIn() {
+        fadeArmed = false
+        val generation = ++fadeGeneration
+        handler.removeCallbacksAndMessages(FADE_TOKEN)
+        player.volume = FADE_START_VOLUME
+        val startedAt = SystemClock.uptimeMillis()
+
+        fun step() {
+            if (generation != fadeGeneration || !player.playWhenReady) return
+            val elapsed = SystemClock.uptimeMillis() - startedAt
+            val fraction = (elapsed.toFloat() / FADE_DURATION_MS).coerceIn(0f, 1f)
+            player.volume = FADE_START_VOLUME + (1f - FADE_START_VOLUME) * fraction
+            if (fraction < 1f) {
+                handler.postAtTime(
+                    { step() },
+                    FADE_TOKEN,
+                    SystemClock.uptimeMillis() + FADE_STEP_MS
+                )
+            } else {
+                player.volume = 1f
+            }
+        }
+
+        step()
+    }
+
+    private fun cancelFade(resetToFull: Boolean) {
+        fadeGeneration++
+        handler.removeCallbacksAndMessages(FADE_TOKEN)
+        if (resetToFull && ::player.isInitialized) player.volume = 1f
+    }
 
     private fun beginOutageRecovery(error: PlaybackException) {
         val mediaItem = player.currentMediaItem ?: return
@@ -102,8 +280,13 @@ class PlaybackService : MediaLibraryService() {
         // original intent to resume rather than treating our forced pause as a user pause.
         val shouldResume = if (recovering) resumeShouldPlay else player.playWhenReady
 
+        recoveryGeneration++
+        cancelActiveProbe()
+        clearRecoveryCallbacks()
+
         recovering = true
         rebuildingBuffer = false
+        recoveryPaused = false
         retryIndex = 0
         resumePositionMs = player.currentPosition.coerceAtLeast(0L)
         resumeMediaIndex = player.currentMediaItemIndex.coerceAtLeast(0)
@@ -112,40 +295,130 @@ class PlaybackService : MediaLibraryService() {
             .ifBlank { mediaItem.mediaId }
 
         player.pause()
-        handler.removeCallbacksAndMessages(RETRY_TOKEN)
-        handler.removeCallbacksAndMessages(BUFFER_TOKEN)
         scheduleRetry()
     }
 
     private fun scheduleRetry() {
-        if (!recovering || recoveryUrl.isBlank()) return
+        if (!recovering || recoveryPaused || recoveryUrl.isBlank()) return
+
+        handler.removeCallbacksAndMessages(RETRY_TOKEN)
+        handler.removeCallbacksAndMessages(STATUS_TOKEN)
+        handler.removeCallbacksAndMessages(NETWORK_RETRY_TOKEN)
+
         val delay = retryScheduleMs[minOf(retryIndex, retryScheduleMs.lastIndex)]
         retryIndex++
+        retryDueAtMs = SystemClock.uptimeMillis() + delay
+        publishRecoveryStatus(
+            phase = RECOVERY_PHASE_WAITING,
+            retryInMs = delay
+        )
+        scheduleRetryStatusTick()
         handler.postAtTime(
             { retrySmb() },
             RETRY_TOKEN,
-            SystemClock.uptimeMillis() + delay
+            retryDueAtMs
+        )
+    }
+
+    private fun scheduleRetryStatusTick() {
+        handler.postAtTime(
+            {
+                if (!recovering || recoveryPaused || rebuildingBuffer || probeInFlight) {
+                    return@postAtTime
+                }
+                val remaining = (retryDueAtMs - SystemClock.uptimeMillis()).coerceAtLeast(0L)
+                publishRecoveryStatus(
+                    phase = RECOVERY_PHASE_WAITING,
+                    retryInMs = remaining
+                )
+                if (remaining > 0L) scheduleRetryStatusTick()
+            },
+            STATUS_TOKEN,
+            SystemClock.uptimeMillis() + STATUS_TICK_MS
         )
     }
 
     private fun retrySmb() {
+        if (!recovering || recoveryPaused || rebuildingBuffer || recoveryUrl.isBlank()) return
+        if (probeInFlight) {
+            probeAgainRequested = true
+            return
+        }
+
+        handler.removeCallbacksAndMessages(RETRY_TOKEN)
+        handler.removeCallbacksAndMessages(STATUS_TOKEN)
+        handler.removeCallbacksAndMessages(NETWORK_RETRY_TOKEN)
+
         val url = recoveryUrl
-        executor.execute {
+        val generation = recoveryGeneration
+        val probeId = ++activeProbeId
+        probeInFlight = true
+        probeAgainRequested = false
+        publishRecoveryStatus(RECOVERY_PHASE_PROBING)
+
+        activeProbeFuture = executor.submit {
             val ok = smb.probeFile(url)
             handler.post {
-                if (!recovering || recoveryUrl != url) return@post
+                if (
+                    !recovering ||
+                    recoveryPaused ||
+                    generation != recoveryGeneration ||
+                    probeId != activeProbeId ||
+                    recoveryUrl != url
+                ) {
+                    return@post
+                }
+
+                handler.removeCallbacksAndMessages(PROBE_TIMEOUT_TOKEN)
+                probeInFlight = false
+                activeProbeFuture = null
+
                 if (ok) {
                     beginRecoveryBufferRebuild()
+                } else if (probeAgainRequested) {
+                    probeAgainRequested = false
+                    handler.post { retrySmb() }
                 } else {
                     scheduleRetry()
                 }
             }
         }
+
+        handler.postAtTime(
+            { handleProbeTimeout(generation, probeId) },
+            PROBE_TIMEOUT_TOKEN,
+            SystemClock.uptimeMillis() + PROBE_ATTEMPT_TIMEOUT_MS
+        )
+    }
+
+    private fun handleProbeTimeout(generation: Int, probeId: Int) {
+        if (
+            !recovering ||
+            recoveryPaused ||
+            generation != recoveryGeneration ||
+            probeId != activeProbeId ||
+            !probeInFlight
+        ) {
+            return
+        }
+
+        // A single timed-out attempt is not the recovery session. Invalidate its late result,
+        // interrupt it where jcifs permits, and schedule another attempt.
+        activeProbeId++
+        probeInFlight = false
+        activeProbeFuture?.cancel(true)
+        activeProbeFuture = null
+        val retryImmediately = probeAgainRequested
+        probeAgainRequested = false
+        if (retryImmediately) handler.post { retrySmb() } else scheduleRetry()
     }
 
     private fun beginRecoveryBufferRebuild() {
         rebuildingBuffer = true
+        recoveryPaused = false
         handler.removeCallbacksAndMessages(RETRY_TOKEN)
+        handler.removeCallbacksAndMessages(STATUS_TOKEN)
+        handler.removeCallbacksAndMessages(NETWORK_RETRY_TOKEN)
         handler.removeCallbacksAndMessages(BUFFER_TOKEN)
 
         // Do not immediately blast a few hundred milliseconds of audio and stall again.
@@ -153,6 +426,15 @@ class PlaybackService : MediaLibraryService() {
         player.playWhenReady = false
         player.seekTo(resumeMediaIndex, resumePositionMs)
         player.prepare()
+
+        rebuildStartedAtMs = SystemClock.uptimeMillis()
+        lastBufferProgressAtMs = rebuildStartedAtMs
+        lastBufferedPositionMs = resumePositionMs
+        publishRecoveryStatus(
+            phase = RECOVERY_PHASE_REBUILDING,
+            bufferedAheadMs = 0L,
+            requiredBufferMs = RECOVERY_RESUME_BUFFER_MS.toLong()
+        )
         scheduleRecoveryBufferCheck(0L)
     }
 
@@ -165,11 +447,17 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun checkRecoveryBuffer() {
-        if (!recovering || !rebuildingBuffer) return
+        if (!recovering || recoveryPaused || !rebuildingBuffer) return
+
+        val now = SystemClock.uptimeMillis()
         if (player.playerError != null) {
-            // prepare() normally clears the previous error immediately, but do not let a
-            // stale error value strand the recovery state machine with no future check.
-            scheduleRecoveryBufferCheck()
+            // prepare() may expose the previous error for a brief moment. Give it a short grace
+            // period, then return to the SMB-probe phase rather than spinning forever.
+            if (now - rebuildStartedAtMs < STALE_ERROR_GRACE_MS) {
+                scheduleRecoveryBufferCheck()
+            } else {
+                restartRecoveryAfterRebuildFailure()
+            }
             return
         }
 
@@ -189,27 +477,190 @@ class PlaybackService : MediaLibraryService() {
         }
         val bufferedToEnd = duration != C.TIME_UNSET && bufferedPosition >= duration - END_BUFFER_SLOP_MS
 
+        if (bufferedPosition >= lastBufferedPositionMs + MIN_BUFFER_PROGRESS_MS) {
+            lastBufferedPositionMs = bufferedPosition
+            lastBufferProgressAtMs = now
+        }
+
+        publishRecoveryStatus(
+            phase = RECOVERY_PHASE_REBUILDING,
+            bufferedAheadMs = bufferedAhead,
+            requiredBufferMs = required
+        )
+
         if (bufferedAhead >= required || bufferedToEnd || player.playbackState == Player.STATE_ENDED) {
-            recovering = false
-            rebuildingBuffer = false
-            retryIndex = 0
-            recoveryUrl = ""
-            if (resumeShouldPlay) player.play()
+            completeRecovery()
+        } else if (now - lastBufferProgressAtMs >= REBUILD_NO_PROGRESS_TIMEOUT_MS) {
+            // Closing the current source via stop() ensures a genuinely stuck refill does not
+            // strand the recovery state. The queue remains intact and the saved position is used
+            // on the next prepare.
+            restartRecoveryAfterRebuildFailure()
         } else {
             scheduleRecoveryBufferCheck()
         }
     }
 
+    private fun completeRecovery() {
+        clearRecoveryCallbacks()
+        cancelActiveProbe()
+
+        recovering = false
+        rebuildingBuffer = false
+        recoveryPaused = false
+        retryIndex = 0
+        retryDueAtMs = 0L
+        recoveryUrl = ""
+        publishRecoveryStatus(RECOVERY_PHASE_IDLE)
+
+        player.repeatMode = Player.REPEAT_MODE_ALL
+        if (resumeShouldPlay) {
+            // Recovery resume is automatic, not an explicit user Play action.
+            skipNextUserFade = true
+            player.play()
+        }
+    }
+
+    private fun restartRecoveryAfterRebuildFailure() {
+        if (!recovering || recoveryPaused) return
+        recoveryGeneration++
+        rebuildingBuffer = false
+        handler.removeCallbacksAndMessages(BUFFER_TOKEN)
+        runCatching { player.stop() }
+        scheduleRetry()
+    }
+
+    private fun pauseRecovery() {
+        if (!recovering) return
+
+        resumePositionMs = player.currentPosition.coerceAtLeast(resumePositionMs)
+        resumeMediaIndex = player.currentMediaItemIndex.coerceAtLeast(resumeMediaIndex)
+        resumeShouldPlay = false
+        recoveryPaused = true
+        rebuildingBuffer = false
+        recoveryGeneration++
+        clearRecoveryCallbacks()
+        cancelActiveProbe()
+        runCatching { player.stop() }
+        publishRecoveryStatus(RECOVERY_PHASE_PAUSED)
+    }
+
+    private fun cancelRecovery() {
+        if (!recovering && !rebuildingBuffer && !recoveryPaused) return
+
+        recoveryGeneration++
+        clearRecoveryCallbacks()
+        cancelActiveProbe()
+        recovering = false
+        rebuildingBuffer = false
+        recoveryPaused = false
+        retryIndex = 0
+        retryDueAtMs = 0L
+        recoveryUrl = ""
+        publishRecoveryStatus(RECOVERY_PHASE_IDLE)
+    }
+
+    private fun clearRecoveryCallbacks() {
+        handler.removeCallbacksAndMessages(RETRY_TOKEN)
+        handler.removeCallbacksAndMessages(BUFFER_TOKEN)
+        handler.removeCallbacksAndMessages(STATUS_TOKEN)
+        handler.removeCallbacksAndMessages(PROBE_TIMEOUT_TOKEN)
+        handler.removeCallbacksAndMessages(NETWORK_RETRY_TOKEN)
+    }
+
+    private fun cancelActiveProbe() {
+        activeProbeId++
+        probeInFlight = false
+        probeAgainRequested = false
+        activeProbeFuture?.cancel(true)
+        activeProbeFuture = null
+    }
+
+    private fun registerNetworkCallback() {
+        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                handler.post { requestImmediateRecoveryProbe() }
+            }
+
+            override fun onCapabilitiesChanged(
+                network: Network,
+                networkCapabilities: NetworkCapabilities
+            ) {
+                handler.post { requestImmediateRecoveryProbe() }
+            }
+        }
+
+        runCatching {
+            connectivityManager.registerDefaultNetworkCallback(callback)
+            networkCallback = callback
+        }
+    }
+
+    private fun requestImmediateRecoveryProbe() {
+        if (!recovering || recoveryPaused || rebuildingBuffer || recoveryUrl.isBlank()) return
+
+        if (probeInFlight) {
+            probeAgainRequested = true
+            return
+        }
+
+        // Connectivity callbacks can arrive in bursts. Debounce them, then bring the next real
+        // SMB probe forward. Network availability itself is never treated as SMB success.
+        handler.removeCallbacksAndMessages(NETWORK_RETRY_TOKEN)
+        handler.removeCallbacksAndMessages(RETRY_TOKEN)
+        handler.removeCallbacksAndMessages(STATUS_TOKEN)
+        retryDueAtMs = 0L
+        publishRecoveryStatus(
+            phase = RECOVERY_PHASE_WAITING,
+            retryInMs = NETWORK_EVENT_DEBOUNCE_MS
+        )
+        handler.postAtTime(
+            { retrySmb() },
+            NETWORK_RETRY_TOKEN,
+            SystemClock.uptimeMillis() + NETWORK_EVENT_DEBOUNCE_MS
+        )
+    }
+
+    private fun publishRecoveryStatus(
+        phase: String,
+        retryInMs: Long = 0L,
+        bufferedAheadMs: Long = 0L,
+        requiredBufferMs: Long = 0L
+    ) {
+        if (!::session.isInitialized) return
+
+        // Round rapidly changing values to whole seconds so a 250 ms buffer check does not flood
+        // every controller with redundant Binder updates.
+        val roundedRetry = if (retryInMs <= 0L) 0L else ((retryInMs + 999L) / 1000L) * 1000L
+        val roundedBuffered = if (bufferedAheadMs <= 0L) 0L else (bufferedAheadMs / 1000L) * 1000L
+        val roundedRequired = if (requiredBufferMs <= 0L) 0L else ((requiredBufferMs + 999L) / 1000L) * 1000L
+        val signature = "$phase|$roundedRetry|$roundedBuffered|$roundedRequired"
+        if (signature == lastPublishedRecoverySignature) return
+        lastPublishedRecoverySignature = signature
+
+        session.setSessionExtras(
+            Bundle().apply {
+                putString(SESSION_EXTRA_RECOVERY_PHASE, phase)
+                putLong(SESSION_EXTRA_RETRY_IN_MS, roundedRetry)
+                putLong(SESSION_EXTRA_BUFFERED_AHEAD_MS, roundedBuffered)
+                putLong(SESSION_EXTRA_REQUIRED_BUFFER_MS, roundedRequired)
+            }
+        )
+    }
+
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // Keep an active playback session alive if the UI is swiped away.
-        // MediaLibraryService owns the foreground-service lifetime while playback is ongoing.
-        if (!isPlaybackOngoing()) stopSelf()
+        // Keep an active playback or pending recovery session alive if the UI is swiped away.
+        if (!isPlaybackOngoing() && !recovering) stopSelf()
     }
 
     override fun onDestroy() {
-        recovering = false
-        rebuildingBuffer = false
+        cancelRecovery()
+        cancelFade(resetToFull = false)
         handler.removeCallbacksAndMessages(null)
+        networkCallback?.let { callback ->
+            runCatching { connectivityManager.unregisterNetworkCallback(callback) }
+        }
+        networkCallback = null
         executor.shutdownNow()
         session.release()
         player.release()
@@ -219,6 +670,23 @@ class PlaybackService : MediaLibraryService() {
     companion object {
         private val RETRY_TOKEN = Any()
         private val BUFFER_TOKEN = Any()
+        private val STATUS_TOKEN = Any()
+        private val PROBE_TIMEOUT_TOKEN = Any()
+        private val NETWORK_RETRY_TOKEN = Any()
+        private val FADE_TOKEN = Any()
+
+        private const val GARMIN_CONNECT_PACKAGE = "com.garmin.android.apps.connectmobile"
+
+        const val SESSION_EXTRA_RECOVERY_PHASE = "com.smbmusic.player.recovery.PHASE"
+        const val SESSION_EXTRA_RETRY_IN_MS = "com.smbmusic.player.recovery.RETRY_IN_MS"
+        const val SESSION_EXTRA_BUFFERED_AHEAD_MS = "com.smbmusic.player.recovery.BUFFERED_AHEAD_MS"
+        const val SESSION_EXTRA_REQUIRED_BUFFER_MS = "com.smbmusic.player.recovery.REQUIRED_BUFFER_MS"
+
+        const val RECOVERY_PHASE_IDLE = "idle"
+        const val RECOVERY_PHASE_WAITING = "waiting"
+        const val RECOVERY_PHASE_PROBING = "probing"
+        const val RECOVERY_PHASE_REBUILDING = "rebuilding"
+        const val RECOVERY_PHASE_PAUSED = "paused"
 
         // Large streaming buffer for unreliable cellular/Tailscale paths.
         private const val MIN_BUFFER_MS = 120_000
@@ -228,5 +696,19 @@ class PlaybackService : MediaLibraryService() {
         private const val RECOVERY_RESUME_BUFFER_MS = 20_000
         private const val BUFFER_CHECK_INTERVAL_MS = 250L
         private const val END_BUFFER_SLOP_MS = 500L
+
+        // Recovery hardening. These protect the overall session without declaring a slow but
+        // progressing transfer dead.
+        private const val STATUS_TICK_MS = 1_000L
+        private const val NETWORK_EVENT_DEBOUNCE_MS = 750L
+        private const val PROBE_ATTEMPT_TIMEOUT_MS = 30_000L
+        private const val STALE_ERROR_GRACE_MS = 2_000L
+        private const val REBUILD_NO_PROGRESS_TIMEOUT_MS = 45_000L
+        private const val MIN_BUFFER_PROGRESS_MS = 250L
+
+        // Softens explicit Play/Resume when the phone's media volume is already high.
+        private const val FADE_DURATION_MS = 1_500L
+        private const val FADE_STEP_MS = 50L
+        private const val FADE_START_VOLUME = 0.04f
     }
 }
