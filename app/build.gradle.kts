@@ -10,8 +10,8 @@ android {
         applicationId = "com.smbmusic.player"
         minSdk = 26
         targetSdk = 37
-        versionCode = 9
-        versionName = "0.3.6"
+        versionCode = 11
+        versionName = "0.3.8"
     }
 
     buildTypes {
