@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets
 
 object SmbUrl {
     fun normalize(input: String): String {
-        val raw = input.trim().replace('\', '/').removePrefix("smb://")
+        val raw = input.trim().replace(0x5C.toChar(), '/').removePrefix("smb://")
         val parts = raw.split('/').filter { it.isNotBlank() }
         require(parts.size >= 2) { "Use host/share or host/share/folder" }
 
