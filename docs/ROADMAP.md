@@ -45,7 +45,7 @@ Do not reopen the confirmed search-X behavior, search height, shared sort, curre
 
 ### House-audio-server integration — approved behavior, implementation pending
 
-The Android Browser/search/sort and Now Playing UI must control the Pi's MPD session in automatic **HOUSE** mode while preserving the existing SMB/ExoPlayer path in **STANDALONE** mode. Direct verified home-LAN detection selects HOUSE; VPN-only reachability does not. A temporary home outage is reconnection, not automatic independent playback.
+The Android Browser/search/sort and Now Playing UI must control the Pi's MPD session in automatic **HOUSE** mode while preserving the existing SMB/ExoPlayer path in **STANDALONE** mode. HOUSE presence is detected by binding a short probe to a non-VPN Wi-Fi/Ethernet network, connecting to the locally configured house LAN address on MPD port 6600, and requiring the normal `OK MPD ...` greeting. VPN-only reachability does not count. A temporary home outage is reconnection, not automatic independent playback. No mDNS/custom discovery handshake is planned unless testing shows it is actually needed.
 
 Required additions include live shared-queue/state display and control, a separate synchronized phone receiver, HOUSE-only **Mute output / Unmute output**, independent controller/renderer presence, and same-song SMB/Tailscale continuation when an unmuted playing phone leaves home. Muted/paused/stopped phones remain silent. A phone attaching to fresh idle does not auto-start a track; only passive nodes do that. HOUSE Quit detaches the phone without sending global Stop/Clear. The Pi owns final-node finish/stop, muted-controller pause/retention, and persistent default MP3s shuffle progress.
 
