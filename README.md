@@ -109,7 +109,22 @@ Wi-Fi and Ethernet both count as home-LAN connections. HOUSE detection is intent
 
 A phone connecting to a freshly idle house waits for explicit Play; **only passive nodes auto-start** the saved default `MP3s` shuffle. Joining existing playback adopts its queue without replacing or restarting it. Closing/quitting the app detaches this phone rather than sending MPD Stop/Clear. The Pi retains controller-selected queues while other nodes remain, finishes the current track when all nodes leave, and cancels that pending stop if a node returns before track end. If only a muted phone remains, it pauses and retains the session until an audible node returns or the phone unmutes.
 
-The default MP3s shuffle progress is stored on the Pi separately from controller-selected queues, so reconnecting the app never resets the rotation. Returning home adopts the existing house session rather than overwriting it with the phone's away queue. Exact transition timing, initial mute preference, whole-queue away continuation, and other unresolved edges are listed in the detailed plan rather than treated as decided.
+The default MP3s shuffle progress is intended to be stored on the Pi separately from controller-selected queues, so reconnecting the app never resets the rotation. **Durable saved shuffle order/progress is not implemented yet.** Returning home adopts the existing house session rather than overwriting it with the phone's away queue. Exact transition timing, initial mute preference, whole-queue away continuation, and other unresolved edges are listed in the detailed plan rather than treated as decided.
+
+### Current house-side proof
+
+The central architecture is now proven beyond the original single-renderer stage:
+
+- `house-audio-server` browse/queue/state/transport control is runtime-proven;
+- passive renderer presence survives the real hard-power-switch use case;
+- a passive radio can power on from fresh idle and start house music without a phone;
+- a hard-powered renderer can return and rejoin the still-active song; about six seconds from plug-in to audible output was observed once;
+- passive-radio arrival now resumes an existing paused MPD session, and this was field-proven with two radios present;
+- two independent XIAO ESP32-S3 + PCM5102A nodes have produced **audibly synchronized** output through different downstream audio systems.
+
+Therefore Android HOUSE work is no longer blocked on proving that multi-room Snapcast playback can work. The remaining phone-specific work is the controller/backend integration, controller/output presence rules, durable default-shuffle state, and packaging a synchronized Android renderer.
+
+A small renderer reliability issue remains under investigation: occasional few-second silence on one ESP32 node or the other. Both nodes have their external antennas installed. Server v0.6.0 adds unattended diagnostics so future dropouts can be correlated without assuming a Wi-Fi cause.
 
 Related projects:
 
