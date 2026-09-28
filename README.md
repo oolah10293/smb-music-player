@@ -73,16 +73,26 @@ v0.3.8 hardens and exposes that process rather than replacing it:
 
 The same media item, queue, position, sort, Shuffle setting, Repeat All policy, and user play intent are preserved through recovery where applicable. See [docs/OUTAGE_RECOVERY_PLAN.md](docs/OUTAGE_RECOVERY_PLAN.md) and [docs/TESTING.md](docs/TESTING.md).
 
-## Confirmed v0.3.7 baseline retained in v0.3.8
+## Confirmed standalone baseline
 
-The following v0.3.7 behavior was confirmed in real use and is carried forward:
+v0.3.8 has now been exercised on the real phone and is the current standalone baseline.
+
+Confirmed:
 
 - Browse does not autofocus Search or raise the keyboard.
-- Both screens are locked to portrait orientation.
-- Explicit Play/Resume uses a short ExoPlayer-only fade-in.
-- Garmin/Bluetooth media commands work through the Media3 session.
-- Tailscale startup/recovery requests work in practice while SMB remains the actual connectivity test.
-- The v0.3.6 Android Auto/audio-focus fix remains intact.
+- The 40dp search field is the desired height.
+- The clear-search X behaves correctly and does not raise a hidden keyboard.
+- Browser and Now Playing share the same sort state.
+- Deliberate sorting keeps the current/selected song as queue item zero.
+- Repeat All wraps correctly from the final queued song back to the first.
+- Both screens remain locked to portrait.
+- Explicit Play/Resume keeps the short ExoPlayer-only fade-in.
+- Garmin/Bluetooth media commands remain working.
+- Tailscale startup/recovery requests remain working in practice while SMB stays the real reachability test.
+- The v0.3.6 Android Auto/audio-focus behavior remains working.
+- No regressions were observed in metadata handling, Country Buffer, or SMB transport tuning.
+
+The v0.3.8 prolonged-outage recovery hardening still needs its dedicated field test.
 
 ## Future whole-house audio integration
 
@@ -142,7 +152,8 @@ For the product-level reasons behind the app, see [docs/PROJECT_CONTEXT.md](docs
 
 ## Planned / possible future work
 
-- Field validation of v0.3.8 recovery hardening and queue/UI changes.
+- Dedicated field validation of v0.3.8 prolonged-outage recovery hardening.
+- Small Browser UI pass: align both button rows with the search-bar outer edges, show only the current folder name in the path display, swap SMB/Parent Folder, and swap PLAY LIST/Sort.
 - House-audio-server control and synchronized phone output; approved behavior and implementation checklist in [docs/CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md).
 - `.m3u` / `.m3u8` playlist-file support.
 - Smart Shuffle / listening-history database.
