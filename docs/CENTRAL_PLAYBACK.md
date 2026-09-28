@@ -129,7 +129,9 @@ On returning home, adopt the existing house session without overwriting it with 
 
 The basic `house-audio-server` HTTP/MPD bridge now exists and has been runtime-validated on the permanent Pi. Proven server-side operations include health/state, full queue inspection, folder-first library browsing, ordered queue replacement with a requested start index, Play/Pause/Stop, Seek, Previous/Next, Random/Shuffle, and Repeat. Transport-only commands were also confirmed not to rebuild the MPD queue unnecessarily.
 
-The remaining server work is the **house-session layer around that proven control core**: Snapserver renderer presence, controller presence/output state, autonomous passive-node behavior, persistent default shuffle, session-end policy, and concurrency/stale-command protection appropriate for multiple controllers.
+The server has now advanced beyond the basic control core: Snapserver renderer presence is also runtime-proven on the permanent Pi, including abrupt hard-power-off. The service distinguishes Snapserver's stale raw `connected` state from effective renderer `present` state using `lastSeen` freshness, and power-on/off transitions are reliable enough to drive policy.
+
+The remaining server work is the **house-session layer around those proven primitives**: autonomous passive-node behavior, controller presence/output state, persistent default shuffle, session-end policy, and concurrency/stale-command protection appropriate for multiple controllers.
 
 The Android app should **not use MPD's native control port as its HOUSE control API**. The one deliberate exception is the short LAN-presence probe described above, which reads MPD's `OK MPD ...` greeting to prove that the expected service is reachable over a bound non-VPN LAN path. Android, Windows, and the browser controller should otherwise target the same house-audio-server contract so the Pi can enforce one-session lifecycle, presence/output rules, persistent default shuffle, and HOUSE/STANDALONE behavior consistently.
 
@@ -184,4 +186,4 @@ Retain the unresolved choices in the canonical server document: default output m
 
 These gaps do not undo the approved behavior. They must not be filled with silent assumptions. The existing server/ESP32 network proof does not prove Android rendering, audible synchronization, or seamless handoff. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
 
-**Current Android status:** the server-side basic MPD API is now real and runtime-proven, but no Android HOUSE runtime code has been added yet. Snapserver presence/session-policy work remains a server prerequisite before the Android integration is considered complete.
+**Current Android status:** the server-side basic MPD API and passive-renderer presence detection are now both real and runtime-proven. No Android HOUSE runtime code has been added yet. Autonomous server session policy and controller-presence/output-state handling remain the next server prerequisites before the Android integration is considered complete.
