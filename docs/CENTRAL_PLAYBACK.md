@@ -125,13 +125,15 @@ The handoff must use the existing SMB buffering/retry path and suppress stale as
 
 On returning home, adopt the existing house session without overwriting it with the away queue. If the house is playing, an unmuted phone joins it; a muted phone remains silent. A controller returning to a freshly idle house still must not auto-start MPD. What to do with still-playing private phone audio at that idle-house boundary remains an explicit open question.
 
-## 7. Required house-service contract (proposal, not implemented endpoints)
+## 7. Required house-service contract
 
-The MPD side is no longer an architectural unknown: the required queue, browse, play/pause/stop, seek, previous/next, shuffle/repeat, current-song/position, queue inspection/replacement, and change-notification operations are understood. The missing piece is the **thin `house-audio-server` bridge** that exposes those operations with the house-session rules, discovery, presence, concurrency protection, and client-friendly state.
+The basic `house-audio-server` HTTP/MPD bridge now exists and has been runtime-validated on the permanent Pi. Proven server-side operations include health/state, full queue inspection, folder-first library browsing, ordered queue replacement with a requested start index, Play/Pause/Stop, Seek, Previous/Next, Random/Shuffle, and Repeat. Transport-only commands were also confirmed not to rebuild the MPD queue unnecessarily.
+
+The remaining server work is the **house-session layer around that proven control core**: Snapserver renderer presence, controller presence/output state, autonomous passive-node behavior, persistent default shuffle, session-end policy, and concurrency/stale-command protection appropriate for multiple controllers.
 
 The Android app should **not use MPD's native control port as its HOUSE control API**. The one deliberate exception is the short LAN-presence probe described above, which reads MPD's `OK MPD ...` greeting to prove that the expected service is reachable over a bound non-VPN LAN path. Android, Windows, and the browser controller should otherwise target the same house-audio-server contract so the Pi can enforce one-session lifecycle, presence/output rules, persistent default shuffle, and HOUSE/STANDALONE behavior consistently.
 
-Agree the bridge contract before coding a client against invented URLs. HTTP commands plus a persistent state feed remain a possible implementation, not a selected protocol. The Snapcast audio connection is distinct from the custom control service.
+The Android client should now target the real v0.2.0 HTTP API documented in [house-audio-server/docs/API.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/API.md) for the basic browse/queue/transport operations rather than invent parallel endpoints. A push-state feed is still optional; initial integration can poll authoritative state. The Snapcast audio connection remains distinct from the custom control service.
 
 The Android client needs:
 
@@ -182,4 +184,4 @@ Retain the unresolved choices in the canonical server document: default output m
 
 These gaps do not undo the approved behavior. They must not be filled with silent assumptions. The existing server/ESP32 network proof does not prove Android rendering, audible synchronization, or seamless handoff. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
 
-**This update records requirements only. No Android runtime code, release version, Pi configuration, or ESP32 firmware is changed.**
+**Current Android status:** the server-side basic MPD API is now real and runtime-proven, but no Android HOUSE runtime code has been added yet. Snapserver presence/session-policy work remains a server prerequisite before the Android integration is considered complete.
