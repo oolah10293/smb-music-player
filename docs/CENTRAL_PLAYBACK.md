@@ -37,11 +37,22 @@ The proposed backend boundary lets the same UI target either session. HOUSE cont
 
 ## 2. Automatic home-LAN detection and reconnection
 
-Select HOUSE automatically when the app discovers and verifies the configured house service directly through the home LAN. Wi-Fi and Ethernet are valid local transports. Use the planned mDNS/DNS-SD service plus a verification handshake; a configured LAN address can be a fallback. Check the actual network/interface/route used, not merely the address's appearance or reachability.
+Use the simplest direct test of the actual condition we care about: **can this phone reach the house MPD instance through a real non-VPN Wi-Fi/Ethernet network?**
 
-Tailscale/VPN-only access from cellular, a hotel, or another LAN must **not** select HOUSE. GPS and SSID text alone are not the authority. Service identity/trust verification and the Android permission handling must be defined before implementation; a familiar discovery name is not authentication, and permission denial must not be mistaken for proof that the phone is away.
+HOUSE detection is:
 
-A temporary home-server, Wi-Fi, or audio failure must not silently start an independent local playlist. Remain in HOUSE recovery while the phone is still at home. On confirmed departure, transition to STANDALONE under the handoff rules below. The departure grace period and ambiguous-network policy are still open, not a hard-coded timeout in this requirements record.
+1. Find an available Wi-Fi or Ethernet Android `Network` that is not a VPN transport.
+2. Through that specific network, open a short TCP connection to the app's locally configured/reserved house LAN address on MPD port `6600`.
+3. Require MPD's normal greeting, which begins `OK MPD `. A subsequent `ping` / `OK` may be used as an additional trivial liveness check.
+4. A valid MPD response over that bound non-VPN LAN path selects HOUSE.
+
+This is an **identity/reachability probe only**. It is not the HOUSE control path. Normal HOUSE browsing, queue changes, transport commands, presence, and session policy still go through the shared `house-audio-server` control layer.
+
+Do not add mDNS/DNS-SD, SSID matching, GPS, a separate discovery service, or a custom handshake unless a later real-world problem proves they are needed. Tailscale/VPN-only reachability must never select HOUSE because the probe is deliberately bound to a non-VPN LAN network rather than the system's arbitrary route to the Pi.
+
+The house LAN address is deployment configuration, not a source-code constant. Keep the current address in local app configuration rather than committing it into Android source or public examples.
+
+A temporary home-server, Wi-Fi, MPD-probe, or audio failure must not silently start an independent local playlist. Remain in HOUSE recovery while the phone is still plausibly on the home LAN. On confirmed departure, transition to STANDALONE under the handoff rules below. The departure grace period and ambiguous-network policy are still open, not a hard-coded timeout in this requirements record.
 
 Show the active control target and distinguish control-server failure from audio-receiver failure where possible. Suggested status wording includes `HOUSE - reconnecting`, `House server unavailable`, and `Audio reconnecting`. Start retrying when failure is detected, not only after an audio buffer empties. Recovery joins the current house position, not an old backlog.
 
@@ -118,13 +129,13 @@ On returning home, adopt the existing house session without overwriting it with 
 
 The MPD side is no longer an architectural unknown: the required queue, browse, play/pause/stop, seek, previous/next, shuffle/repeat, current-song/position, queue inspection/replacement, and change-notification operations are understood. The missing piece is the **thin `house-audio-server` bridge** that exposes those operations with the house-session rules, discovery, presence, concurrency protection, and client-friendly state.
 
-The Android app should **not connect directly to MPD's native control port**. Android, Windows, and the browser controller should all target the same house-audio-server contract so the Pi can enforce one-session lifecycle, presence/output rules, persistent default shuffle, and HOUSE/STANDALONE behavior consistently.
+The Android app should **not use MPD's native control port as its HOUSE control API**. The one deliberate exception is the short LAN-presence probe described above, which reads MPD's `OK MPD ...` greeting to prove that the expected service is reachable over a bound non-VPN LAN path. Android, Windows, and the browser controller should otherwise target the same house-audio-server contract so the Pi can enforce one-session lifecycle, presence/output rules, persistent default shuffle, and HOUSE/STANDALONE behavior consistently.
 
 Agree the bridge contract before coding a client against invented URLs. HTTP commands plus a persistent state feed remain a possible implementation, not a selected protocol. The Snapcast audio connection is distinct from the custom control service.
 
 The Android client needs:
 
-- **Identity/capabilities:** trusted server identity, protocol version, supported commands, and stream connection information.
+- **Identity/capabilities:** control-service identity, protocol version, supported commands, and stream connection information. HOUSE presence itself is established separately by the direct MPD LAN probe.
 - **Library browsing:** relative folder/track identities, names, type, modified time for sort, and available metadata/artwork. A small browse-source abstraction can keep the existing UI while using the house service at home and SMB away.
 - **Session snapshot and updates:** session/queue identity, queue entries and current entry, transport, shuffle/repeat, position/duration and timing context, pending-stop/automatic-pause reason, plus a revision or equivalent stale-state check.
 - **Commands:** replace/play the selected ordered list with a start item, deliberate transport commands, queue reordering, shuffle/repeat, and per-device output-state changes. Read/attach operations must not mutate playback.
@@ -152,7 +163,7 @@ A `PlaybackBackend` abstraction remains the proposed integration boundary. Keep 
 
 All items below are **unimplemented/unverified Android integration work**:
 
-- [ ] Direct home-LAN discovery/verification selects HOUSE; VPN-only remote access does not. Permission denial and brief outages do not silently start standalone music.
+- [ ] A TCP probe bound to a non-VPN Wi-Fi/Ethernet Android `Network` reaches the configured house LAN address on MPD port 6600 and receives `OK MPD ...`; that selects HOUSE. Tailscale/VPN-only reachability does not. Brief outages do not silently start standalone music.
 - [ ] Fresh-idle controller attachment makes no playback/queue mutation. Passive-node default start remains server-owned.
 - [ ] Joining active playback displays the real house playlist, track, position, shuffle/repeat, and changes from other controllers.
 - [ ] Folder/filtered `PLAY LIST`, selected-track start, transport, and explicit queue sort match existing semantics through the server API.
@@ -167,7 +178,7 @@ All items below are **unimplemented/unverified Android integration work**:
 
 ## 10. Open details and scope
 
-Retain the unresolved choices in the canonical server document: default output mute, departure/heartbeat grace periods and background presence, whole-queue away continuation, return-to-idle-house handling, and the last muted controller leaving a paused session. Authentication/pairing, protocol schema, library-path mapping setup, exact heard-position timing, and Android receiver packaging also need engineering decisions and validation.
+Retain the unresolved choices in the canonical server document: default output mute, departure/heartbeat grace periods and background presence, whole-queue away continuation, return-to-idle-house handling, and the last muted controller leaving a paused session. Control-service protocol schema, library-path mapping setup, exact heard-position timing, and Android receiver packaging also need engineering decisions and validation. The home/away probe itself no longer needs a custom discovery or handshake protocol.
 
 These gaps do not undo the approved behavior. They must not be filled with silent assumptions. The existing server/ESP32 network proof does not prove Android rendering, audible synchronization, or seamless handoff. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
 
