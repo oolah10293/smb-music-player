@@ -33,20 +33,33 @@ These are the baseline for v0.3.8 and should not be reopened without a direct re
 
 A prolonged outage can look inactive while the app first waits for SMB and then silently builds the approximately 20-second recovery buffer. After that sequence was understood and allowed to finish, the player resumed successfully at least twice. The core probe/rebuild/resume design is therefore treated as functional evidence, not as a proven abandonment bug.
 
-## New v0.3.8 behavior requiring targeted validation
+## Confirmed v0.3.8 phone behavior
 
-- Shared Browser/Now Playing sort state.
-- Repeat All permanently enabled for every nonempty standalone queue.
-- Selected/current track rotated to item zero with the remaining sorted order wrapping from it.
-- A newly selected folder/filter replacing the old queue outright.
-- 40dp search field.
-- Clear-search X that does not request focus or raise a hidden keyboard.
-- Recovery phase/status reporting.
-- Network-change-triggered early SMB probes.
-- Per-probe timeout persistence and stale-result rejection.
-- No-progress buffer-rebuild watchdog.
-- Correct cancellation/pause behavior during recovery.
-- Preservation of all confirmed v0.3.7 and earlier behavior.
+Real-phone testing confirmed:
+
+- v0.3.8 installs/runs normally with no obvious regressions.
+- Shared Browser/Now Playing sort state works in both directions.
+- Selected/current track remains queue item zero after deliberate sorting, using the agreed rotated order.
+- Repeat All wraps correctly from the final queued song back to the first.
+- The 40dp search field is the desired height.
+- The clear-search X behaves as intended: it clears/restores the list and does not raise a hidden keyboard.
+- No regressions were observed in the preserved v0.3.7/v0.3.6 behavior: Android Auto/audio focus, Garmin/Bluetooth controls, explicit Play/Resume fade, Tailscale startup behavior, metadata handling, Country Buffer, or SMB transport tuning.
+
+Treat these as the current standalone baseline unless a direct regression is reproduced.
+
+## v0.3.8 behavior still requiring targeted validation
+
+The prolonged-outage recovery hardening has **not yet been field-tested in v0.3.8**. Still verify:
+
+- recovery phase/status reporting;
+- network-change-triggered early SMB probes;
+- persistence after an individual failed/timed-out probe;
+- stale-result rejection;
+- no-progress buffer-rebuild watchdog behavior;
+- correct explicit Pause/Stop/Quit/queue-replacement behavior during recovery;
+- screen-off prolonged recovery.
+
+The older recovery architecture already has functional evidence: after understanding that the app first restores SMB access and then silently rebuilds about 20 seconds of buffer, prolonged recovery was observed to resume successfully at least twice. The v0.3.8 hardening should therefore be tested as targeted robustness work, not assumed to be replacing a fundamentally broken design.
 
 ## Current external-network note
 
