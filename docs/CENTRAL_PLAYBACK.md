@@ -97,7 +97,7 @@ The Pi, not every app independently, applies these agreed rules:
 | All nodes disconnect during playback | Finish the current track, then stop despite Repeat All. |
 | Any node reconnects before that final track ends | Cancel the pending stop and retain the current session. Apply the muted-only pause rule if applicable. |
 | Only a muted phone remains after the last audible node leaves | Pause MPD and retain the queue, track, and exact position. |
-| An audible node returns or the muted phone unmutes after that automatic pause | Resume the retained session, not a new default queue. Distinguish this from explicit user Pause. |
+| An audible node returns or the muted phone unmutes after that automatic pause | Resume the retained session, not a new default queue. A passive radio powering on is explicitly allowed to resume an existing paused session; controller attachment alone is not. |
 
 A future fresh passive-node session starts `MP3s` with Shuffle and Repeat All, continuing the saved default rotation. The Pi preserves that shuffled order/progress separately from controller-selected Rap/CD queues. Complete the remaining order, then generate a fresh shuffle without immediately repeating the last track. A completed track advances to the next; a genuinely unfinished track can resume at its bookmark. The Android app must neither reset this record on attachment nor force these default settings onto every manually selected queue.
 
@@ -131,7 +131,9 @@ The basic `house-audio-server` HTTP/MPD bridge now exists and has been runtime-v
 
 The server has now advanced beyond the basic control core: Snapserver renderer presence is also runtime-proven on the permanent Pi, including abrupt hard-power-off. The service distinguishes Snapserver's stale raw `connected` state from effective renderer `present` state using `lastSeen` freshness, and power-on/off transitions are reliable enough to drive policy.
 
-The remaining server work is the **house-session layer around those proven primitives**: autonomous passive-node behavior, controller presence/output state, persistent default shuffle, session-end policy, and concurrency/stale-command protection appropriate for multiple controllers.
+The passive-renderer side has now advanced beyond the basic primitives: fresh-idle passive-radio auto-start, active-session join/rejoin, effective hard-power presence, and passive-radio resume-through-Pause are runtime-proven on the permanent Pi. Two independent ESP32/PCM5102A renderers have also passed the real audible synchronization test.
+
+The remaining server work relevant to Android is now concentrated on **controller-aware session policy**: controller presence/output state, durable default-`MP3s` shuffle progress, muted-controller pause/retention edges, and concurrency/stale-command protection appropriate for multiple controllers.
 
 The Android app should **not use MPD's native control port as its HOUSE control API**. The one deliberate exception is the short LAN-presence probe described above, which reads MPD's `OK MPD ...` greeting to prove that the expected service is reachable over a bound non-VPN LAN path. Android, Windows, and the browser controller should otherwise target the same house-audio-server contract so the Pi can enforce one-session lifecycle, presence/output rules, persistent default shuffle, and HOUSE/STANDALONE behavior consistently.
 
@@ -147,6 +149,20 @@ The Android client needs:
 - **Errors and concurrency:** unsupported capability and unavailable-server responses; command acknowledgement and request identity or equivalent protection against duplicate Next/queue commands after retries. Reconcile against current server state after reconnect.
 
 Credentials stay local and out of Git/logs. Keep existing encrypted SMB storage separate from any house-service trust/token configuration. Do not embed private network addresses or user-specific filesystem roots in Android source or public examples.
+
+### Proven house-side milestones relevant to Android
+
+Current permanent-Pi/hardware facts that Android integration may rely on:
+
+- a passive radio can power on with no controller present and automatically start house music;
+- an arriving passive renderer joins the current song/queue instead of restarting it;
+- a hard-powered node can return after more than ten seconds and rejoin the still-active song; about six seconds from plug-in to audible output was observed once;
+- passive-radio arrival resumes an existing paused MPD session rather than replacing the queue;
+- two independent ESP32-S3 + PCM5102A outputs have been heard playing in sync through different analog systems;
+- effective renderer presence is based on fresh Snapcast activity, not raw stale TCP connection state;
+- occasional few-second single-node dropouts are still being diagnosed; v0.6.0 records renderer timing/presence and global stream events for later inspection.
+
+These facts reduce risk in the Android project: the remaining phone problem is principally controller integration plus packaging a synchronized phone renderer, not proving that the central synchronized-audio architecture can work.
 
 ## 8. Integration points in the existing app
 
@@ -184,6 +200,6 @@ All items below are **unimplemented/unverified Android integration work**:
 
 Retain the unresolved choices in the canonical server document: default output mute, departure/heartbeat grace periods and background presence, whole-queue away continuation, return-to-idle-house handling, and the last muted controller leaving a paused session. Control-service protocol schema, library-path mapping setup, exact heard-position timing, and Android receiver packaging also need engineering decisions and validation. The home/away probe itself no longer needs a custom discovery or handshake protocol.
 
-These gaps do not undo the approved behavior. They must not be filled with silent assumptions. The existing server/ESP32 network proof does not prove Android rendering, audible synchronization, or seamless handoff. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
+These gaps do not undo the approved behavior. They must not be filled with silent assumptions. **Two physical ESP32/PCM5102A renderers are now audibly synchronized**, so the Snapcast multi-renderer architecture itself is proven. That does **not** prove Android rendering, Android timing, or seamless phone handoff; those still require separate implementation and tests. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
 
-**Current Android status:** the server-side basic MPD API and passive-renderer presence detection are now both real and runtime-proven. No Android HOUSE runtime code has been added yet. Autonomous server session policy and controller-presence/output-state handling remain the next server prerequisites before the Android integration is considered complete.
+**Current Android status:** the server-side basic MPD API, renderer presence, passive-radio appliance behavior, paused-session resume, and two-node audible synchronization are all real and runtime-proven. No Android HOUSE runtime code has been added yet. Durable default-shuffle state plus controller-presence/output-state handling remain the main server prerequisites before Android HOUSE integration is considered complete. The server also now has v0.6.0 unattended renderer diagnostics for an occasional few-second single-node dropout under investigation.
