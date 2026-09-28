@@ -1,6 +1,6 @@
 # Android integration with house-audio-server
 
-**Status: required functionality to add; not implemented or runtime-tested in the Android app.** This document replaces the earlier manual This Phone / House selector proposal. The working standalone player remains the baseline.
+**Status: required HOUSE functionality to add; not implemented or runtime-tested in the Android app.** The standalone v0.3.8 player is now the confirmed baseline for normal phone use: search X/height, shared sort, current-track-first sorting, Repeat All, vehicle/Bluetooth behavior, fade, Tailscale startup, metadata, Country Buffer, and SMB tuning are working. Prolonged-outage recovery hardening still needs its dedicated field test.
 
 The authoritative product rules are in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md). This document translates those decisions into Android requirements and identifies the corresponding implementation work. Engineering proposals and unresolved details below are not additional user-approved behavior.
 
@@ -116,7 +116,11 @@ On returning home, adopt the existing house session without overwriting it with 
 
 ## 7. Required house-service contract (proposal, not implemented endpoints)
 
-Agree this contract with `house-audio-server` before coding a client against invented URLs. HTTP commands plus a persistent state feed remain a possible implementation, not a selected protocol. The Snapcast audio connection is distinct from the custom control service.
+The MPD side is no longer an architectural unknown: the required queue, browse, play/pause/stop, seek, previous/next, shuffle/repeat, current-song/position, queue inspection/replacement, and change-notification operations are understood. The missing piece is the **thin `house-audio-server` bridge** that exposes those operations with the house-session rules, discovery, presence, concurrency protection, and client-friendly state.
+
+The Android app should **not connect directly to MPD's native control port**. Android, Windows, and the browser controller should all target the same house-audio-server contract so the Pi can enforce one-session lifecycle, presence/output rules, persistent default shuffle, and HOUSE/STANDALONE behavior consistently.
+
+Agree the bridge contract before coding a client against invented URLs. HTTP commands plus a persistent state feed remain a possible implementation, not a selected protocol. The Snapcast audio connection is distinct from the custom control service.
 
 The Android client needs:
 
