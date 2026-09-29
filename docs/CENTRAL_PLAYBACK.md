@@ -216,7 +216,7 @@ All items below are **unimplemented/unverified Android integration work**:
 
 ## 10. Open details and scope
 
-Retain the unresolved choices in the canonical server document: home/away network grace periods, whole-queue away continuation, return-to-idle-house handling, and service-restart recovery. Controller background presence, five-second heartbeats/fifteen-second expiry, and ending the session when the last controller leaves an automatic pause were confirmed on 2026-09-29. Control-service protocol schema, library-path mapping setup, exact heard-position timing, and Android receiver packaging also need engineering decisions and validation. The home/away probe itself no longer needs a custom discovery or handshake protocol.
+Retain the unresolved choices in the canonical server document: home/away network grace periods, whole-queue away continuation, and return-to-idle-house handling. Service restart is settled as a fresh-session boundary, implemented in server v0.8.1. Controller background presence, five-second heartbeats/fifteen-second expiry, and ending the session when the last controller leaves an automatic pause were confirmed on 2026-09-29. Control-service protocol schema, library-path mapping setup, exact heard-position timing, and Android receiver packaging also need engineering decisions and validation. The home/away probe itself no longer needs a custom discovery or handshake protocol.
 
 These gaps do not undo the approved behavior. They must not be filled with silent assumptions. **Two physical ESP32/PCM5102A renderers are now audibly synchronized**, so the Snapcast multi-renderer architecture itself is proven. That does **not** prove Android rendering, Android timing, or seamless phone handoff; those still require separate implementation and tests. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
 
@@ -246,7 +246,7 @@ New HOUSE attachment still starts muted. Auto-unmute remains limited to phone-in
 
 The Pi auto-pauses when controllers remain without audible output, resumes that automatic pause when an audible output returns, and ends it without advancing when the last controller leaves. Explicit Pause/Stop are respected. Combined presence counts deduplicate phone control/audio roles. Snapserver outage does not imply that listeners departed.
 
-Server v0.8.0 has 73 passing local tests; installation/physical testing is pending. Android code and Browser polish remain the next integration work, with the existing SMB Player UI preserved. Automatic-pause reason recovery across a server restart remains open; the phone must not guess whether a retained Pause is automatic.
+Server v0.8.0 has 73 passing local tests and is installed; initial health/passive-S3 baseline validation passes. Physical controller transition tests remain pending. Android code and Browser polish remain the next integration work, with the existing SMB Player UI preserved. Restart ends the prior session; pause-reason reconstruction is not required.
 
 
 ### Restart contract for Android HOUSE
@@ -264,4 +264,12 @@ Android should:
 
 The Pi continues to persist the passive default and controller↔renderer ownership so the phone receiver cannot be misclassified as a passive radio after restart.
 
-This replaces the former idea of recovering automatic-pause ownership across service restart. The remaining server implementation gap is explicit startup normalization of MPD to fresh idle.
+This replaces the former idea of recovering automatic-pause ownership across service restart. v0.8.1 implements the startup fresh-idle boundary in source/tests; Pi deployment and restart validation remain pending.
+
+### v0.8.1 startup handling for HOUSE
+
+Before allowing playback writes, the server now stops MPD, clears the old queue, disables leftover playback modes, and verifies fresh idle. It retries when MPD is unavailable; ordinary dependency reconnection after readiness does not erase a new session. The server preserves settings/ownership and discards old live session state.
+
+Android should read `startup.ready` in `GET /health` (also `sessionPolicy.startup` in `GET /session` or `GET /state`). While false, show startup/reconnecting and treat old queue/state reads as provisional. MPD-changing POSTs return 503 `startup_pending` without applying the request. Settings and controller lifecycle calls remain available. Reattach with a new lease and the current local mute intent, refresh state when ready, and do not upload an old private/house queue or replay stale skip commands. A controller-only restart remains idle; a passive S3 may already have started a fresh configured default when the phone refreshes.
+
+85 server tests pass locally. v0.8.0 is the confirmed Pi deployment; v0.8.1 restart and physical controller transitions remain field checks. This changes the server contract, not Android runtime code. Implement HOUSE and the approved Browser polish together in the next app slice; STANDALONE remains unchanged.

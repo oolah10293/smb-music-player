@@ -205,7 +205,7 @@ Android can therefore treat the passive-default API as a proven dependency. Cont
 
 ### Server v0.8.0 dependency update
 
-Controller presence and muted-phone session handling are implemented/tested in server v0.8.0 (73 local tests pass; Pi installation/field validation pending). The latest confirmed deployed server remains v0.7.0.
+Controller presence and muted-phone session handling are implemented/tested in server v0.8.0 (73 tests and CI pass). v0.8.0 is installed on the permanent Pi; initial health/passive-S3 baseline checks pass, while physical controller transition tests remain pending.
 
 Background/screen-off controllers retain presence through five-second heartbeats and fifteen-second expiry. If the last controller leaves an automatically paused session, the Pi ends it without advancing. Phone control/audio roles are counted once, and known phone renderers cannot become passive auto-starters. Android HOUSE wiring, synchronized phone output, and the approved Browser polish remain upcoming app work; see [CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md).
 
@@ -224,3 +224,11 @@ Initial validation:
 Physical muted-controller pause/resume/expiry behavior still needs field testing before being called proven.
 
 Restart behavior is now also settled: a `house-audio-server` restart is a fresh-session boundary. Android should simply reattach after restart; it must not expect the old live lease, mute/readiness report, auto-pause reason, queue/session, or pending drain to be reconstructed. Durable controller↔renderer ownership and the server's passive-default setting remain persistent. Controller reconnect alone stays idle; a passive S3 may start a new shuffled default session.
+
+### Server v0.8.1 restart boundary — source/tests complete
+
+Server restart now clears the old MPD queue/session to fresh idle before accepting playback writes. The Pi keeps the saved MP3s/Rap default and controller↔renderer ownership. Controller reconnection alone stays idle; a passive S3 starts a newly shuffled default. Ordinary dependency reconnections within the running service do not reset its session.
+
+Android must reattach with a new lease, preserve its own mute intent, and respect `startup.ready` / 503 `startup_pending`; it must not restore its former queue into MPD. The server has 85 passing local tests. v0.8.0 remains the confirmed Pi deployment; v0.8.1 deployment and physical controller/restart validation are pending.
+
+Next app work remains HOUSE through the existing UI plus approved Browser polish and saved-default selector. No Android runtime or ESP32 firmware change is included in this server step.

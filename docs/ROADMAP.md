@@ -176,4 +176,12 @@ Server v0.8.0 implements this lifecycle, durable phone-renderer association, mut
 
 The controller/output backend is now deployed on the permanent Pi. With no controller attached, `GET /controllers` correctly reports the active S3 as one passive audible renderer and no controllers.
 
-A server restart is now intentionally a fresh-session boundary. The Android client should reattach with a new lease after restart and must not expect live controller/output/session state to survive. The Pi still persists controller↔renderer ownership and the selected passive default. Explicit MPD fresh-idle normalization on server startup remains a small server-side implementation step.
+A server restart is now intentionally a fresh-session boundary. The Android client should reattach with a new lease after restart and must not expect live controller/output/session state to survive. The Pi still persists controller↔renderer ownership and the selected passive default. v0.8.1 implements the startup fresh-idle boundary in source/tests; Pi deployment and restart validation remain pending.
+
+### Next implementation sequence after v0.8.0 baseline
+
+1. **Implemented in server v0.8.1 source/tests:** normalize MPD to fresh idle at process startup, preserve saved configuration/device ownership, gate new playback writes until verified ready, and retry MPD startup without resetting later sessions. 85 local tests pass. Combine its Pi restart check with the pending v0.8.0 controller pause/resume/expiry checks in one checkpoint.
+2. **Next app slice:** HOUSE backend and synchronized phone output through the existing Browser/Now Playing UI, including the agreed Browser alignment/folder-label/button swaps and server-owned MP3s/Rap selector. Preserve the existing STANDALONE SMB/Media3 implementation. Use startup readiness and new leases after server restart.
+3. **Next acceptance checkpoint:** silent HOUSE opening, deliberate phone unmute, phone/S3 synchronization, and Quit leaving the radio playing. Then complete home/away recovery and final device acceptance under the documented remaining decisions.
+
+The confirmed installed server remains v0.8.0 (healthy MPD/Snapserver; zero controllers, one present/audible passive S3). v0.8.1 installation and physical controller/restart checks are pending. No new Android APK or ESP32 firmware is claimed by this server step.
