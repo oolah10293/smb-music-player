@@ -264,7 +264,7 @@ Android should:
 
 The Pi continues to persist the passive default and controller↔renderer ownership so the phone receiver cannot be misclassified as a passive radio after restart.
 
-This replaces the former idea of recovering automatic-pause ownership across service restart. v0.8.1 implements the startup fresh-idle boundary in source/tests; Pi deployment and restart validation remain pending.
+This replaces the former idea of recovering automatic-pause ownership across service restart. v0.8.1 implements the startup fresh-idle boundary and is deployed. The permanent Pi has field-proven the case where a passive S3 is already present during restart: startup became ready and the server started a fresh randomized Rap default session.
 
 ### v0.8.1 startup handling for HOUSE
 
@@ -272,4 +272,4 @@ Before allowing playback writes, the server now stops MPD, clears the old queue,
 
 Android should read `startup.ready` in `GET /health` (also `sessionPolicy.startup` in `GET /session` or `GET /state`). While false, show startup/reconnecting and treat old queue/state reads as provisional. MPD-changing POSTs return 503 `startup_pending` without applying the request. Settings and controller lifecycle calls remain available. Reattach with a new lease and the current local mute intent, refresh state when ready, and do not upload an old private/house queue or replay stale skip commands. A controller-only restart remains idle; a passive S3 may already have started a fresh configured default when the phone refreshes.
 
-85 server tests pass locally. v0.8.0 is the confirmed Pi deployment; v0.8.1 restart and physical controller transitions remain field checks. This changes the server contract, not Android runtime code. Implement HOUSE and the approved Browser polish together in the next app slice; STANDALONE remains unchanged.
+85 server tests and GitHub CI pass. v0.8.1 is the confirmed Pi deployment. Its restart path with one already-present passive S3 is field-proven; physical controller transitions remain field checks. Restart with all radios off is still an optional separate confirmation. This changes the server contract, not Android runtime code. Implement HOUSE and the approved Browser polish together in the next app slice; STANDALONE remains unchanged.
