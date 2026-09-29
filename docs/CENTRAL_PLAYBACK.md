@@ -247,3 +247,21 @@ New HOUSE attachment still starts muted. Auto-unmute remains limited to phone-in
 The Pi auto-pauses when controllers remain without audible output, resumes that automatic pause when an audible output returns, and ends it without advancing when the last controller leaves. Explicit Pause/Stop are respected. Combined presence counts deduplicate phone control/audio roles. Snapserver outage does not imply that listeners departed.
 
 Server v0.8.0 has 73 passing local tests; installation/physical testing is pending. Android code and Browser polish remain the next integration work, with the existing SMB Player UI preserved. Automatic-pause reason recovery across a server restart remains open; the phone must not guess whether a retained Pause is automatic.
+
+
+### Restart contract for Android HOUSE
+
+A `house-audio-server` restart is a hard session boundary.
+
+Android should:
+
+- treat its old controller lease as dead and attach again;
+- preserve its own local preference/UI state only where appropriate, but not replay stale house transport/output reports;
+- not expect the Pi to restore the old live controller lease, output-ready report, automatic-pause reason, pending drain, or old house queue/session;
+- accept fresh idle after server restart;
+- remain silent/idle when it is the first controller to reconnect;
+- allow a passive S3 present/arriving after restart to start the configured default with a fresh shuffle.
+
+The Pi continues to persist the passive default and controller↔renderer ownership so the phone receiver cannot be misclassified as a passive radio after restart.
+
+This replaces the former idea of recovering automatic-pause ownership across service restart. The remaining server implementation gap is explicit startup normalization of MPD to fresh idle.
