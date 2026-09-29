@@ -157,3 +157,10 @@ Possible fallback/cache improvements without changing audio files:
 
 A richer MediaLibrary browse tree could be added later. Current playback already uses a `MediaLibraryService`; v0.3.6 enabled explicit media audio focus, and vehicle routing plus steering-wheel track skip were confirmed in real use. v0.3.8 must preserve that behavior.
 
+
+
+## v0.7.0 passive-default backend validation
+
+The server dependency for the planned HOUSE `MP3s` / `Rap` Browser button is now field-proven on the permanent Pi. Changing the default did not interrupt the active song, and after a completed drain the next S3 startup used the saved `Rap` choice with a fresh session. The first observed track was Ludacris — *Southern Hospitality*.
+
+The next server prerequisite for Android HOUSE work is controller presence/output-state handling.
