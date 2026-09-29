@@ -114,7 +114,7 @@ A completed final-track drain ends the old session, including MPD's `pause @ 0.0
 
 ### Current house-side proof
 
-Server **v0.6.2 is now running on the permanent Pi**. On 2026-09-29, the radio returned to the same song after about 10 seconds unplugged and to a different new song after about five minutes unplugged. The captured `/session` response confirms the short-return cancellation path, with `defaultFolder: MP3s`. Server v0.7.0 now implements the persisted MP3s/Rap settings API in source/tests (42 local tests pass; Pi installation pending). The Android selector and HOUSE implementation are still pending; detailed contracts and test scope are recorded in the server API documentation.
+Server **v0.6.2 was tested on the permanent Pi**. On 2026-09-29, the radio returned to the same song after about 10 seconds unplugged and to a different new song after about five minutes unplugged. The captured `/session` response confirms the short-return cancellation path, with `defaultFolder: MP3s`. Server v0.7.0 is now installed and field-proven for the persisted MP3s/Rap settings API. The Android selector and HOUSE implementation are still pending; detailed contracts and test scope are recorded in the server API documentation.
 
 The central architecture is now proven beyond the original single-renderer stage:
 
@@ -201,4 +201,10 @@ The server half of the planned HOUSE Browser `MP3s` / `Rap` button is now field-
 - The currently playing song did not change when the setting was changed.
 - After the last S3 stayed off for about ten minutes and the old session completed, powering the S3 back on started a fresh Rap session (first observed track: Ludacris — *Southern Hospitality*).
 
-Android can therefore treat the passive-default API as a proven dependency. Controller presence/output state and the Android HOUSE implementation remain pending.
+Android can therefore treat the passive-default API as a proven dependency. Controller presence/output state is implemented/tested in server v0.8.0 (Pi validation pending); the Android HOUSE implementation remains pending.
+
+### Server v0.8.0 dependency update
+
+Controller presence and muted-phone session handling are implemented/tested in server v0.8.0 (73 local tests pass; Pi installation/field validation pending). The latest confirmed deployed server remains v0.7.0.
+
+Background/screen-off controllers retain presence through five-second heartbeats and fifteen-second expiry. If the last controller leaves an automatically paused session, the Pi ends it without advancing. Phone control/audio roles are counted once, and known phone renderers cannot become passive auto-starters. Android HOUSE wiring, synchronized phone output, and the approved Browser polish remain upcoming app work; see [CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md).
