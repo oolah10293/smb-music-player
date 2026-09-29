@@ -158,6 +158,7 @@ Current permanent-Pi/hardware facts that Android integration may rely on:
 - an arriving passive renderer joins the current song/queue instead of restarting it;
 - a hard-powered node can return after more than ten seconds and rejoin the still-active song; about six seconds from plug-in to audible output was observed once;
 - passive-radio arrival resumes an existing paused MPD session rather than replacing the queue;
+- v0.6.1 is field-proven for the final-track drain edge where MPD `single oneshot` lands paused at 0.0 on the next track; a returning passive radio resumes that retained queue automatically;
 - two independent ESP32-S3 + PCM5102A outputs have been heard playing in sync through different analog systems;
 - effective renderer presence is based on fresh Snapcast activity, not raw stale TCP connection state;
 - occasional few-second single-node dropouts are still being diagnosed; v0.6.0 records renderer timing/presence and global stream events for later inspection.
@@ -202,4 +203,4 @@ Retain the unresolved choices in the canonical server document: default output m
 
 These gaps do not undo the approved behavior. They must not be filled with silent assumptions. **Two physical ESP32/PCM5102A renderers are now audibly synchronized**, so the Snapcast multi-renderer architecture itself is proven. That does **not** prove Android rendering, Android timing, or seamless phone handoff; those still require separate implementation and tests. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
 
-**Current Android status:** the server-side basic MPD API, renderer presence, passive-radio appliance behavior, paused-session resume, and two-node audible synchronization are all real and runtime-proven. No Android HOUSE runtime code has been added yet. Durable default-shuffle state plus controller-presence/output-state handling remain the main server prerequisites before Android HOUSE integration is considered complete. The server also now has v0.6.0 unattended renderer diagnostics for an occasional few-second single-node dropout under investigation.
+**Current Android status:** the server-side basic MPD API, renderer presence, passive-radio appliance behavior, ordinary paused-session resume, the v0.6.1 final-track-boundary pause/resume edge, and two-node audible synchronization are all real and runtime-proven. No Android HOUSE runtime code has been added yet. Durable default-shuffle state plus controller-presence/output-state handling remain the main server prerequisites before Android HOUSE integration is considered complete. The server also has unattended renderer diagnostics for the occasional few-second single-node dropout investigation.
