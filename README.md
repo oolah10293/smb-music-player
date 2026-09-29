@@ -114,6 +114,8 @@ A completed final-track drain ends the old session, including MPD's `pause @ 0.0
 
 ### Current house-side proof
 
+Server **v0.6.2 is now running on the permanent Pi**. On 2026-09-29, the radio returned to the same song after about 10 seconds unplugged and to a different new song after about five minutes unplugged. The captured `/session` response confirms the short-return cancellation path, with `defaultFolder: MP3s`. The runtime MP3s/Rap selector and Android HOUSE implementation are still pending; detailed test scope is recorded in the server API documentation.
+
 The central architecture is now proven beyond the original single-renderer stage:
 
 - `house-audio-server` browse/queue/state/transport control is runtime-proven;
