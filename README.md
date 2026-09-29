@@ -100,7 +100,8 @@ The v0.3.8 prolonged-outage recovery hardening still needs its dedicated field t
 
 Keep the same folder-first Browser and Now Playing interface. The Raspberry Pi owns the house session through MPD and distributes its sound through Snapserver. The Android app controls that session; it is not a required relay or the house queue owner.
 
-Playback authority and phone sound are separate:
+Playback authority and phone sound are separate. **HOUSE output starts muted by default**; this phone auto-unmutes only when it initiates playback by tapping a song, tapping PLAY LIST, or pressing Play while MPD is paused/stopped. Browsing, sorting, attaching to existing playback, and Next/Previous during active playback do not auto-unmute.
+
 
 - **HOUSE:** automatically discover and verify the house service directly on the home LAN. Display its current playlist/track and send `PLAY LIST`, selected-track, transport, queue-sort, Shuffle, and Repeat commands to the Pi. An unmuted phone receives the synchronized house stream; **Mute output / Unmute output** affects only this phone.
 - **STANDALONE:** away from home, preserve existing SMB/Tailscale → ExoPlayer playback, buffering, and recovery. An unmuted phone that was hearing house music automatically continues the same song at its last heard position; muted/paused/stopped phones stay silent.
@@ -168,8 +169,9 @@ For the product-level reasons behind the app, see [docs/PROJECT_CONTEXT.md](docs
 ## Planned / possible future work
 
 - Dedicated field validation of v0.3.8 prolonged-outage recovery hardening.
-- Small Browser UI pass: align both button rows with the search-bar outer edges, show only the current folder name in the path display, swap SMB/Parent Folder, and swap PLAY LIST/Sort.
-- House-audio-server control and synchronized phone output; approved behavior and implementation checklist in [docs/CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md).
+- One coordinated Android iteration: apply the already-approved Browser polish, then add automatic HOUSE/STANDALONE backend selection without changing proven STANDALONE behavior.
+- HOUSE control and synchronized phone output: phone starts muted, auto-unmutes only for playback initiated from that phone, and exposes an explicit Mute Output control in the lower Now Playing control strip.
+- HOUSE Browser reuses the SMB-button position as the Pi-owned `MP3s` / `Rap` passive-node default selector.
 - `.m3u` / `.m3u8` playlist-file support.
 - Smart Shuffle / listening-history database.
 - Metadata-assisted filename cleanup as a separate library-maintenance tool.
