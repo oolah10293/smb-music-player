@@ -225,10 +225,10 @@ Physical muted-controller pause/resume/expiry behavior still needs field testing
 
 Restart behavior is now also settled: a `house-audio-server` restart is a fresh-session boundary. Android should simply reattach after restart; it must not expect the old live lease, mute/readiness report, auto-pause reason, queue/session, or pending drain to be reconstructed. Durable controller↔renderer ownership and the server's passive-default setting remain persistent. Controller reconnect alone stays idle; a passive S3 may start a new shuffled default session.
 
-### Server v0.8.1 restart boundary — source/tests complete
+### Server v0.8.1 restart boundary — deployed / field-proven for radio-already-present restart
 
 Server restart now clears the old MPD queue/session to fresh idle before accepting playback writes. The Pi keeps the saved MP3s/Rap default and controller↔renderer ownership. Controller reconnection alone stays idle; a passive S3 starts a newly shuffled default. Ordinary dependency reconnections within the running service do not reset its session.
 
-Android must reattach with a new lease, preserve its own mute intent, and respect `startup.ready` / 503 `startup_pending`; it must not restore its former queue into MPD. The server has 85 passing local tests. v0.8.0 remains the confirmed Pi deployment; v0.8.1 deployment and physical controller/restart validation are pending.
+Android must reattach with a new lease, preserve its own mute intent, and respect `startup.ready` / 503 `startup_pending`; it must not restore its former queue into MPD. The server has 85 passing local tests and GitHub CI passed. v0.8.1 is now the confirmed Pi deployment. With one passive S3 already powered during the service restart, startup reached ready and a fresh randomized Rap session started; the server snapshot reported `lastAction: started_default_session`. Physical controller pause/resume/expiry validation remains pending, and the all-radios-off restart variant has not yet been separately exercised.
 
 Next app work remains HOUSE through the existing UI plus approved Browser polish and saved-default selector. No Android runtime or ESP32 firmware change is included in this server step.
