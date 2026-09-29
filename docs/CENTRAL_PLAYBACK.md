@@ -52,6 +52,8 @@ Do not add mDNS/DNS-SD, SSID matching, GPS, a separate discovery service, or a c
 
 The house LAN address is deployment configuration, not a source-code constant. Keep the current address in local app configuration rather than committing it into Android source or public examples.
 
+Tailscale may already be connected when SMB Player opens. HOUSE detection must therefore run against an explicitly selected non-VPN Wi-Fi/Ethernet Android `Network`, not the default route. Existing VPN state is ignored for the HOUSE decision. If HOUSE is not established, the app then follows the existing STANDALONE/Tailscale startup behavior.
+
 A temporary home-server, Wi-Fi, MPD-probe, or audio failure must not silently start an independent local playlist. Remain in HOUSE recovery while the phone is still plausibly on the home LAN. On confirmed departure, transition to STANDALONE under the handoff rules below. The departure grace period and ambiguous-network policy are still open, not a hard-coded timeout in this requirements record.
 
 Show the active control target and distinguish control-server failure from audio-receiver failure where possible. Suggested status wording includes `HOUSE - reconnecting`, `House server unavailable`, and `Audio reconnecting`. Start retrying when failure is detected, not only after an audio buffer empties. Recovery joins the current house position, not an old backlog.
@@ -81,7 +83,22 @@ Keep the controller connected while muted and report its output state separately
 
 Keep Android media-output routing, local volume, and interruptions separate from intentional house transport commands. A call, headphone disconnection, audio-focus change, or local renderer failure must not masquerade as the user pressing house Pause. The server still applies its presence/output policy to the actual remaining nodes.
 
-The initial/default mute choice has not been settled. Do not turn an earlier suggestion of silent-by-default into an implemented decision.
+The initial HOUSE output rule is now settled: **entering HOUSE starts the phone renderer muted.** The phone automatically unmutes only when that phone initiates playback by tapping a song, tapping PLAY LIST, or pressing Play while MPD is paused/stopped. Merely opening the app, browsing, sorting, or using Next/Previous while music is already playing does not auto-unmute.
+
+Place the HOUSE-only **Mute Output / Unmute Output** control in the lower Now Playing transport/control strip so the main Now Playing layout remains otherwise unchanged.
+
+### Passive-node default playlist selector
+
+HOUSE Browser needs a compact selector for the Pi's passive-radio default folder.
+
+Reuse the Browser button position that is **SMB** in STANDALONE:
+
+- STANDALONE: button remains SMB/settings;
+- HOUSE: button displays `MP3s` or `Rap` and toggles the Pi's persisted passive-node default.
+
+The setting is server-owned because it affects S3 startup even when the phone is absent. Changing it must not replace, restart, or otherwise disturb the current house queue. It applies only when the house later enters a genuinely fresh passive-renderer auto-start session.
+
+The server currently reads `PASSIVE_DEFAULT_FOLDER` at service startup, so HOUSE integration requires a runtime get/set API plus persistent server storage for this setting.
 
 ## 5. Controller presence and the Pi's session rules
 
