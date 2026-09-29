@@ -108,7 +108,7 @@ The Pi, not every app independently, applies these agreed rules:
 
 | Situation | Required result |
 | --- | --- |
-| Fresh idle; a phone/PC/browser connects first | Wait for explicit Play/selection, even with output unmuted. Only a passive node auto-starts the default rotation. |
+| Fresh idle; a phone/PC/browser connects first | Wait for explicit Play/selection, even with output unmuted. Only a passive node auto-starts a newly shuffled queue of the configured default folder. |
 | Existing music; a phone joins | Adopt/display the existing queue and track; join sound only if unmuted. Do not restart or replace the queue. |
 | Controller changes the queue, then leaves while other nodes remain | The new house queue remains in effect. |
 | All nodes disconnect during playback | Finish the current track, then stop despite Repeat All. |
@@ -116,7 +116,7 @@ The Pi, not every app independently, applies these agreed rules:
 | Only a muted phone remains after the last audible node leaves | Pause MPD and retain the queue, track, and exact position. |
 | An audible node returns or the muted phone unmutes after that automatic pause | Resume the retained session, not a new default queue. A passive radio powering on is explicitly allowed to resume an existing paused session; controller attachment alone is not. |
 
-A future fresh passive-node session starts `MP3s` with Shuffle and Repeat All, continuing the saved default rotation. The Pi preserves that shuffled order/progress separately from controller-selected Rap/CD queues. Complete the remaining order, then generate a fresh shuffle without immediately repeating the last track. A completed track advances to the next; a genuinely unfinished track can resume at its bookmark. The Android app must neither reset this record on attachment nor force these default settings onto every manually selected queue.
+Every genuinely fresh passive-node session starts the configured default folder (`MP3s` or `Rap`) with Shuffle and Repeat All and a newly randomized order. The selected folder setting persists; shuffled order/progress does not survive a completed session. Chance repeats of the first song are allowed, with no forced-difference rule. Returning before the final track ends preserves the existing session unchanged. After a completed drain, MPD's possible `pause @ 0.0` on the next old-queue track is only an artifact: the next passive start must load a fresh default queue, not resume the old controller selection. Ordinary paused sessions remain resumable. Android attachment must not reshape the queue or impose passive defaults on manually selected queues.
 
 **HOUSE Quit must detach this phone, not send global Stop/Clear.** The current standalone Quit implementation stops and clears its local player; that behavior must remain standalone-only. Other rooms continue under the server's rules. If this phone was the final node, the server handles the final-track stop; the app does not implement its own competing shutdown logic.
 
@@ -150,9 +150,9 @@ The server has now advanced beyond the basic control core: Snapserver renderer p
 
 The passive-renderer side has now advanced beyond the basic primitives: fresh-idle passive-radio auto-start, active-session join/rejoin, effective hard-power presence, and passive-radio resume-through-Pause are runtime-proven on the permanent Pi. Two independent ESP32/PCM5102A renderers have also passed the real audible synchronization test.
 
-The remaining server work relevant to Android is now concentrated on **controller-aware session policy**: controller presence/output state, durable default-`MP3s` shuffle progress, muted-controller pause/retention edges, and concurrency/stale-command protection appropriate for multiple controllers.
+The remaining server work relevant to Android is now concentrated on **controller-aware session policy**: controller presence/output state, persisted passive-default selection, muted-controller pause/retention edges, and concurrency/stale-command protection appropriate for multiple controllers.
 
-The Android app should **not use MPD's native control port as its HOUSE control API**. The one deliberate exception is the short LAN-presence probe described above, which reads MPD's `OK MPD ...` greeting to prove that the expected service is reachable over a bound non-VPN LAN path. Android, Windows, and the browser controller should otherwise target the same house-audio-server contract so the Pi can enforce one-session lifecycle, presence/output rules, persistent default shuffle, and HOUSE/STANDALONE behavior consistently.
+The Android app should **not use MPD's native control port as its HOUSE control API**. The one deliberate exception is the short LAN-presence probe described above, which reads MPD's `OK MPD ...` greeting to prove that the expected service is reachable over a bound non-VPN LAN path. Android, Windows, and the browser controller should otherwise target the same house-audio-server contract so the Pi can enforce one-session lifecycle, presence/output rules, fresh-session default shuffle, and HOUSE/STANDALONE behavior consistently.
 
 The Android client should now target the real v0.2.0 HTTP API documented in [house-audio-server/docs/API.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/API.md) for the basic browse/queue/transport operations rather than invent parallel endpoints. A push-state feed is still optional; initial integration can poll authoritative state. The Snapcast audio connection remains distinct from the custom control service.
 
@@ -175,7 +175,7 @@ Current permanent-Pi/hardware facts that Android integration may rely on:
 - an arriving passive renderer joins the current song/queue instead of restarting it;
 - a hard-powered node can return after more than ten seconds and rejoin the still-active song; about six seconds from plug-in to audible output was observed once;
 - passive-radio arrival resumes an existing paused MPD session rather than replacing the queue;
-- v0.6.1 is field-proven for the final-track drain edge where MPD `single oneshot` lands paused at 0.0 on the next track; a returning passive radio resumes that retained queue automatically;
+- v0.6.1 established that MPD `single oneshot` can land paused at 0.0 on the next old-queue track. Its old-queue resume behavior is superseded: v0.6.2 treats a completed drain as fresh idle and starts a new default shuffle on the next passive arrival. The v0.6.2 correction is unit-tested; Pi field validation is pending;
 - two independent ESP32-S3 + PCM5102A outputs have been heard playing in sync through different analog systems;
 - effective renderer presence is based on fresh Snapcast activity, not raw stale TCP connection state;
 - occasional few-second single-node dropouts are still being diagnosed; v0.6.0 records renderer timing/presence and global stream events for later inspection.
@@ -208,7 +208,7 @@ All items below are **unimplemented/unverified Android integration work**:
 - [ ] Phone HOUSE audio uses a real synchronized receiver; no independent ExoPlayer copy plays alongside it.
 - [ ] HOUSE-only Mute/Unmute affects this phone, survives reconnect, and preserves the server's muted-controller pause/resume behavior.
 - [ ] HOUSE Quit/controller departure preserves other listeners and their queue; final-node and reconnect-before-track-end behavior follow the Pi rules.
-- [ ] Controller-selected queues do not erase the server's saved default MP3s rotation.
+- [ ] Return before drain completion preserves the active queue. After completed drain, the next passive arrival uses the configured default with fresh randomness and permits chance repeats. No saved rotation/bookmark from the completed session is required.
 - [ ] Home audio/control outages recover independently as appropriate and rejoin the current stream without resetting MPD.
 - [ ] Unmuted playing departure continues the same track at the last heard position over SMB/Tailscale; muted/paused/stopped departure stays silent.
 - [ ] Returning to active HOUSE playback adopts it without replacing the queue; returning to fresh idle does not auto-start MPD.
@@ -216,8 +216,9 @@ All items below are **unimplemented/unverified Android integration work**:
 
 ## 10. Open details and scope
 
-Retain the unresolved choices in the canonical server document: default output mute, departure/heartbeat grace periods and background presence, whole-queue away continuation, return-to-idle-house handling, and the last muted controller leaving a paused session. Control-service protocol schema, library-path mapping setup, exact heard-position timing, and Android receiver packaging also need engineering decisions and validation. The home/away probe itself no longer needs a custom discovery or handshake protocol.
+Retain the unresolved choices in the canonical server document: departure/heartbeat grace periods and background presence, whole-queue away continuation, return-to-idle-house handling, and the last muted controller leaving a paused session. Control-service protocol schema, library-path mapping setup, exact heard-position timing, and Android receiver packaging also need engineering decisions and validation. The home/away probe itself no longer needs a custom discovery or handshake protocol.
 
 These gaps do not undo the approved behavior. They must not be filled with silent assumptions. **Two physical ESP32/PCM5102A renderers are now audibly synchronized**, so the Snapcast multi-renderer architecture itself is proven. That does **not** prove Android rendering, Android timing, or seamless phone handoff; those still require separate implementation and tests. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
 
-**Current Android status:** the server-side basic MPD API, renderer presence, passive-radio appliance behavior, ordinary paused-session resume, the v0.6.1 final-track-boundary pause/resume edge, and two-node audible synchronization are all real and runtime-proven. No Android HOUSE runtime code has been added yet. Durable default-shuffle state plus controller-presence/output-state handling remain the main server prerequisites before Android HOUSE integration is considered complete. The server also has unattended renderer diagnostics for the occasional few-second single-node dropout investigation.
+**Current Android status:** the server-side basic MPD API, renderer presence, passive-radio appliance behavior, ordinary paused-session resume, the MPD boundary-pause discovery, and two-node audible synchronization are runtime-proven. The corrected v0.6.2 fresh-session behavior is unit-tested and awaits Pi field validation. No Android HOUSE runtime code has been added yet. Persisted passive-default selection plus controller-presence/output-state handling remain the main server prerequisites before Android HOUSE integration is considered complete. The server also has unattended renderer diagnostics for the occasional few-second single-node dropout investigation.
+
