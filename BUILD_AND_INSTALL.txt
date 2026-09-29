@@ -1,4 +1,4 @@
-SMB Music Player v0.3.8 — build/install
+SMB Music Player v0.4.0 — build/install
 
 1. Clone or download this repository to a LOCAL folder.
 
@@ -8,17 +8,25 @@ SMB Music Player v0.3.8 — build/install
    run SETUP_GRADLE_WRAPPER.bat once. It downloads the official Gradle 9.6
    wrapper JAR and verifies its SHA-256 before using it.
 
-4. Let Gradle sync.
+4. Install Android SDK 36, Build Tools 36.0.0, NDK 28.2.13676358,
+   and CMake 3.22.1. Use Java 17. Run python3 native/prepare.py from
+   the repository root to fetch checksum-pinned receiver sources/licenses.
+   Then let Gradle sync. See native/README.md for receiver build details.
 
 5. Connect an Android device with USB debugging enabled.
 
 6. Click the green Run button for the app configuration.
 
 Current applicationId: com.smbmusic.player
-Current versionCode: 11
-Current versionName: 0.3.8
+Current versionCode: 12
+Current versionName: 0.4.0
 
-v0.3.8 preserves the confirmed v0.3.7 portrait, no-autofocus, fade-in,
-Garmin/Bluetooth, Tailscale-request, and Android Auto behavior. See README.md,
-CHANGELOG.md, and docs/TESTING.md for the new shared-sort, Repeat All,
-rotated-queue, search-clear, and outage-recovery checks.
+CI builds the APK and matching source archive, including corresponding
+Snapclient/FLAC/Boost sources. Keep both artifacts together when distributing.
+Local check: ./gradlew :app:assembleDebug :app:testDebugUnitTest --max-workers=2
+
+v0.4.0 adds the first HOUSE backend/receiver and approved Browser polish.
+Use server v0.8.2 for queue sorting. See docs/HOUSE_VALIDATION.md for the
+combined phone/S3 checkpoint and local House address configuration.
+Live home/away handoff remains a later slice; v0.3.8 is the proven phone
+baseline and standalone regression checks remain required for this build.

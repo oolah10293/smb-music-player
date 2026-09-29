@@ -1,5 +1,9 @@
 # Architecture
 
+## v0.4.0 HOUSE boundary
+
+Normal app startup probes the configured MPD LAN endpoint before choosing a backend. `PlaybackService` owns either the existing standalone ExoPlayer/SMB engine or `HouseRuntime` with a `HousePlayer` Media3 adapter. The existing Activities, notification, and media controllers use that selected authority. HOUSE HTTP and the Snapcast byte relay bind to the chosen non-VPN Android Network; the upstream receiver supplies decoding and synchronization. Controller heartbeats remain service-owned while the phone is muted/backgrounded. HOUSE Quit releases local sound and presence without MPD Stop/Clear. This first slice reconnects within HOUSE; live home/away handoff remains later work. See [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
+
 ## High-level flow
 
 `MainActivity` → browser / filter / queue construction → `MediaController` → `PlaybackService` → ExoPlayer → `SmbDataSource` → jcifs-ng → SMB server
@@ -110,3 +114,4 @@ Conceptually:
 - future central-server control/state protocol.
 
 In central mode, the server—not the Android app—must own the active queue, current position, decoding/streaming, and synchronized output-node timing. See [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md).
+

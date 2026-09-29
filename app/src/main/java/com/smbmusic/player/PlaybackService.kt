@@ -2,6 +2,10 @@ package com.smbmusic.player
 
 import android.content.Context
 import android.content.Intent
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -21,6 +25,14 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import androidx.media3.session.MediaStyleNotificationHelper
+import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
+import com.google.common.util.concurrent.ListenableFuture
+import com.smbmusic.player.house.HouseConnection
+import com.smbmusic.player.house.HouseRuntime
 import com.smbmusic.player.smb.SmbClient
 import com.smbmusic.player.smb.SmbDataSource
 import com.smbmusic.player.storage.CredentialStore
@@ -30,6 +42,7 @@ import java.util.concurrent.Future
 
 @UnstableApi
 class PlaybackService : MediaLibraryService() {
+    private var house: HouseRuntime? = null
     private lateinit var player: ExoPlayer
     private lateinit var session: MediaLibrarySession
     private lateinit var smb: SmbClient
@@ -69,6 +82,23 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+
+        HouseConnection.current?.let { endpoint ->
+            val runtime = HouseRuntime(this, endpoint) {
+                house?.let { active ->
+                    session.setSessionExtras(active.extras())
+                    updateHouseNotification()
+                }
+            }
+            house = runtime
+            session = MediaLibrarySession.Builder(this, runtime.player, HouseSessionCallback()).build()
+            session.setSessionExtras(runtime.extras())
+            updateHouseNotification()
+            runtime.start()
+            return
+        }
+
+        HouseConnection.resolved = true
 
         smb = SmbClient(CredentialStore(this))
         // A timed-out jcifs attempt must not permanently block every later recovery probe.
@@ -182,6 +212,61 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
+
+    private inner class HouseSessionCallback : MediaLibrarySession.Callback {
+        override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
+            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+            if (controller.packageName == packageName) HouseRuntime.CUSTOM_COMMANDS.forEach {
+                commands.add(SessionCommand(it, Bundle.EMPTY))
+            }
+            val result = MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
+                .setAvailableSessionCommands(commands.build())
+            if (controller.packageName == GARMIN_CONNECT_PACKAGE) {
+                result.setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS)
+            }
+            return result.build()
+        }
+        override fun onCustomCommand(session: MediaSession, controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand, args: Bundle): ListenableFuture<SessionResult> = house!!.custom(customCommand, args)
+    }
+
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        if (house != null) updateHouseNotification() else super.onUpdateNotification(session, startInForegroundRequired)
+    }
+
+    private fun updateHouseNotification() {
+        val runtime = house ?: return
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(NotificationChannel("house", "House music", NotificationManager.IMPORTANCE_LOW))
+        val open = PendingIntent.getActivity(this, 0, Intent(this, NowPlayingActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        fun action(name: String) = PendingIntent.getService(this, name.hashCode(),
+            Intent(this, PlaybackService::class.java).setAction(name), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val playing = runtime.state.transport == "play"
+        val notification = NotificationCompat.Builder(this, "house").setSmallIcon(R.drawable.ic_launcher)
+            .setContentTitle(runtime.player.mediaMetadata.title ?: "SMB Music — HOUSE")
+            .setContentText(runtime.extras().getString(HouseRuntime.EXTRA_STATUS)).setContentIntent(open)
+            .setOngoing(true).setOnlyAlertOnce(true)
+            .addAction(android.R.drawable.ic_media_previous, "Previous", action(HOUSE_PREVIOUS))
+            .addAction(if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+                if (playing) "Pause" else "Play", action(HOUSE_PLAY_PAUSE))
+            .addAction(android.R.drawable.ic_media_next, "Next", action(HOUSE_NEXT))
+            .setStyle(MediaStyleNotificationHelper.MediaStyle(session).setShowActionsInCompactView(0, 1, 2)).build()
+        // Connected-device foreground lifetime keeps muted/background controllers present too.
+        ServiceCompat.startForeground(this, 2401, notification,
+            if (android.os.Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        house?.let { runtime ->
+            when (intent?.action) {
+                HOUSE_PLAY_PAUSE -> if (runtime.state.transport == "play") runtime.player.pause() else runtime.player.play()
+                HOUSE_NEXT -> runtime.player.seekToNextMediaItem()
+                HOUSE_PREVIOUS -> runtime.player.seekToPreviousMediaItem()
+            }
+            return START_NOT_STICKY
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
 
     private inner class SessionCallback : MediaLibrarySession.Callback {
         override fun onConnect(
@@ -654,11 +739,22 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        if (house != null) return
         // Keep an active playback or pending recovery session alive if the UI is swiped away.
         if (!isPlaybackOngoing() && !recovering) stopSelf()
     }
 
     override fun onDestroy() {
+        house?.let { runtime ->
+            runtime.close()
+            session.release()
+            runtime.player.release()
+            house = null
+            HouseConnection.current = null
+            HouseConnection.resolved = false
+            super.onDestroy()
+            return
+        }
         cancelRecovery()
         cancelFade(resetToFull = false)
         handler.removeCallbacksAndMessages(null)
@@ -669,10 +765,14 @@ class PlaybackService : MediaLibraryService() {
         executor.shutdownNow()
         session.release()
         player.release()
+        HouseConnection.resolved = false
         super.onDestroy()
     }
 
     companion object {
+        private const val HOUSE_PLAY_PAUSE = "house.notification.playPause"
+        private const val HOUSE_NEXT = "house.notification.next"
+        private const val HOUSE_PREVIOUS = "house.notification.previous"
         private val RETRY_TOKEN = Any()
         private val BUFFER_TOKEN = Any()
         private val STATUS_TOKEN = Any()

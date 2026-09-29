@@ -2,6 +2,8 @@
 
 Unless explicitly linked to approved requirements, these are ideas, not commitments. Proven playback behavior takes priority over feature count.
 
+**Current source: v0.4.0.** The first HOUSE backend/receiver and approved Browser polish are implemented. The next checkpoint is the combined [phone/S3 acceptance session](HOUSE_VALIDATION.md), using server v0.8.2 for queue sorting. Live home/away handoff and final regression acceptance follow; their remaining product choices are still open. Historical dependency notes below are retained as dated progress records.
+
 ## v0.3.8 field validation
 
 The main standalone behavior is now confirmed on the real phone:
@@ -25,7 +27,7 @@ The remaining targeted v0.3.8 validation is prolonged SMB outage/recovery:
 
 See [TESTING.md](TESTING.md) and [OUTAGE_RECOVERY_PLAN.md](OUTAGE_RECOVERY_PLAN.md).
 
-## Next standalone UI polish
+## Browser polish — implemented in v0.4.0, phone acceptance pending
 
 Preserve all confirmed v0.3.8 playback behavior and make only these Browser layout/content changes:
 
@@ -38,7 +40,7 @@ Do not reopen the confirmed search-X behavior, search height, shared sort, curre
 
 ## Next coordinated Android iteration
 
-This is the next planned Android change set. **Do not split the HOUSE work from the already-approved Browser polish and do not disturb the proven v0.3.8 standalone transport behavior.**
+The first startup/control/audio slice of this change set is implemented in v0.4.0 alongside the Browser polish. Live handoff remains later work. **Keep HOUSE work and the approved Browser polish together, and preserve the proven v0.3.8 standalone transport behavior.**
 
 ### Preserve the v0.3.8 standalone baseline
 
@@ -181,7 +183,7 @@ A server restart is now intentionally a fresh-session boundary. The Android clie
 ### Next implementation sequence after v0.8.0 baseline
 
 1. **DONE for source/tests and one real restart path:** server v0.8.1 normalizes MPD to fresh idle at process startup, preserves saved configuration/device ownership, gates playback writes until verified ready, and retries MPD startup without resetting later sessions. 85 local tests and GitHub CI pass. On the permanent Pi, restarting with one passive S3 already powered reached `startup.ready: true` and started a fresh randomized Rap session. Physical controller pause/resume/expiry checks remain pending.
-2. **Next app slice:** HOUSE backend and synchronized phone output through the existing Browser/Now Playing UI, including the agreed Browser alignment/folder-label/button swaps and server-owned MP3s/Rap selector. Preserve the existing STANDALONE SMB/Media3 implementation. Use startup readiness and new leases after server restart.
+2. **IMPLEMENTED in v0.4.0; next checkpoint is phone/S3 acceptance:** HOUSE backend and bundled synchronized phone receiver through the existing Browser/Now Playing UI, including Browser alignment/folder-label/button swaps and server-owned MP3s/Rap selector. STANDALONE retains SMB/Media3. HOUSE respects startup readiness and reattaches after restart. Server v0.8.2 adds guarded in-place queue sorting. See [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
 3. **Next acceptance checkpoint:** silent HOUSE opening, deliberate phone unmute, phone/S3 synchronization, and Quit leaving the radio playing. Then complete home/away recovery and final device acceptance under the documented remaining decisions.
 
 The confirmed installed server is now v0.8.1. The already-present-radio restart case is field-proven; the all-radios-off restart variant has not yet been separately tested. Physical controller pause/resume/expiry checks remain pending. No new Android APK or ESP32 firmware is claimed by this server step.

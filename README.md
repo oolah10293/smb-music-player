@@ -2,7 +2,11 @@
 
 A native Android music player that streams audio directly from SMB shares using Media3/ExoPlayer and jcifs-ng. It is intentionally optimized for unreliable networks: it buffers aggressively when bandwidth is available, preserves the current track and position through SMB outages, and retries instead of treating a network failure as a bad song.
 
-Current version: **0.3.8**.
+Current source version: **0.4.0** — first Android HOUSE integration plus the approved Browser polish. Phone acceptance is pending; **v0.3.8 remains the confirmed standalone hardware baseline**. See [HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md) for installation and the combined phone/S3 checkpoint.
+
+HOUSE uses the existing Browser and Now Playing screens, with MPD authority through the Pi HTTP service and a bundled synchronized Snapcast receiver for phone sound. Opening HOUSE starts muted. A saved LAN address selects HOUSE through a non-VPN MPD greeting probe before standalone startup. STANDALONE retains the existing SMB/Media3 player. Live home/away handoff remains the next recovery slice.
+
+Server **v0.8.2** adds the queue reorder operation used by Now Playing Sort; install it for this build. The service's latest confirmed hardware baseline is v0.8.1, including fresh Rap startup with an S3 already powered during restart. The optional House server address is entered locally in the existing SMB connection panel; no private deployment address is embedded in source.
 
 ## What it does
 
@@ -125,7 +129,7 @@ The central architecture is now proven beyond the original single-renderer stage
 - passive-radio arrival now resumes an existing paused MPD session, and this was field-proven with two radios present;
 - two independent XIAO ESP32-S3 + PCM5102A nodes have produced **audibly synchronized** output through different downstream audio systems.
 
-Therefore Android HOUSE work is no longer blocked on proving that multi-room Snapcast playback can work. The remaining phone-specific work is the controller/backend integration, controller/output presence rules, wiring the default selector to the v0.7.0 settings API, and packaging a synchronized Android renderer.
+Android v0.4.0 now implements the first controller/backend and receiver slice, including the default selector. Its phone/S3 synchronization and controller lifecycle remain hardware checks; live home/away handoff is later work.
 
 A small renderer reliability issue remains under investigation: occasional few-second silence on one ESP32 node or the other. Both nodes have their external antennas installed. Server v0.6.0 adds unattended diagnostics so future dropouts can be correlated without assuming a Wi-Fi cause.
 
@@ -137,13 +141,14 @@ Related projects:
 
 ## Build
 
-Requirements used by v0.3.8:
+Requirements for v0.4.0:
 
 - Android Gradle Plugin 9.4.0
 - Gradle 9.6.0
 - compileSdk / targetSdk 36
 - minSdk 26
-- Java 17
+- Java 17 and Python 3
+- Android NDK 28.2.13676358 and CMake 3.22.1
 - Media3 1.11.0
 - jcifs-ng 2.1.10
 
@@ -154,7 +159,7 @@ Typical setup:
 1. Clone the repository to a local folder.
 2. Run `SETUP_GRADLE_WRAPPER.bat` once if `gradle/wrapper/gradle-wrapper.jar` is absent.
 3. Open the project in Android Studio.
-4. Let Gradle sync.
+4. Install the SDK/NDK/CMake versions above, run `python3 native/prepare.py`, then let Gradle sync.
 5. Connect an Android device with USB debugging enabled.
 6. Run the `app` configuration.
 
@@ -171,9 +176,8 @@ For the product-level reasons behind the app, see [docs/PROJECT_CONTEXT.md](docs
 ## Planned / possible future work
 
 - Dedicated field validation of v0.3.8 prolonged-outage recovery hardening.
-- One coordinated Android iteration: apply the already-approved Browser polish, then add automatic HOUSE/STANDALONE backend selection without changing proven STANDALONE behavior.
-- HOUSE control and synchronized phone output: phone starts muted, auto-unmutes only for playback initiated from that phone, and exposes an explicit Mute Output control in the lower Now Playing control strip.
-- HOUSE Browser reuses the SMB-button position as the Pi-owned `MP3s` / `Rap` passive-node default selector.
+- Complete the v0.4.0 phone/S3 acceptance checkpoint for HOUSE control/audio and Browser polish.
+- Implement live home/away handoff after settling the documented remaining recovery choices, then complete standalone/vehicle regression acceptance.
 - `.m3u` / `.m3u8` playlist-file support.
 - Smart Shuffle / listening-history database.
 - Metadata-assisted filename cleanup as a separate library-maintenance tool.
@@ -189,7 +193,7 @@ No SMB credentials, private network addresses, personal paths, or user-specific 
 
 ## License
 
-No open-source license has been selected yet. Until one is added, normal copyright rules apply.
+No license has been selected for the original app code. The isolated bundled Snapclient and its dependencies retain their own licenses; see [native/README.md](native/README.md). CI distributes corresponding receiver source and build files alongside the APK, and license texts are included in APK assets.
 
 
 ### Passive-default API field proof
@@ -201,13 +205,13 @@ The server half of the planned HOUSE Browser `MP3s` / `Rap` button is now field-
 - The currently playing song did not change when the setting was changed.
 - After the last S3 stayed off for about ten minutes and the old session completed, powering the S3 back on started a fresh Rap session (first observed track: Ludacris — *Southern Hospitality*).
 
-Android can therefore treat the passive-default API as a proven dependency. Controller presence/output state is implemented/tested in server v0.8.0 (Pi validation pending); the Android HOUSE implementation remains pending.
+Android v0.4.0 uses this field-proven passive-default API. Controller presence/output state is implemented in the deployed server; physical phone transition validation remains pending.
 
 ### Server v0.8.0 dependency update
 
 Controller presence and muted-phone session handling are implemented/tested in server v0.8.0 (73 tests and CI pass). v0.8.0 is installed on the permanent Pi; initial health/passive-S3 baseline checks pass, while physical controller transition tests remain pending.
 
-Background/screen-off controllers retain presence through five-second heartbeats and fifteen-second expiry. If the last controller leaves an automatically paused session, the Pi ends it without advancing. Phone control/audio roles are counted once, and known phone renderers cannot become passive auto-starters. Android HOUSE wiring, synchronized phone output, and the approved Browser polish remain upcoming app work; see [CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md).
+Background/screen-off controllers retain presence through five-second heartbeats and fifteen-second expiry. If the last controller leaves an automatically paused session, the Pi ends it without advancing. Phone control/audio roles are counted once, and known phone renderers cannot become passive auto-starters. Android v0.4.0 now supplies HOUSE wiring, the synchronized receiver, and the approved Browser polish, pending phone acceptance; see [CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md).
 
 
 ### v0.8.0 controller backend deployment
@@ -231,4 +235,4 @@ Server restart now clears the old MPD queue/session to fresh idle before accepti
 
 Android must reattach with a new lease, preserve its own mute intent, and respect `startup.ready` / 503 `startup_pending`; it must not restore its former queue into MPD. The server has 85 passing local tests and GitHub CI passed. v0.8.1 is now the confirmed Pi deployment. With one passive S3 already powered during the service restart, startup reached ready and a fresh randomized Rap session started; the server snapshot reported `lastAction: started_default_session`. Physical controller pause/resume/expiry validation remains pending, and the all-radios-off restart variant has not yet been separately exercised.
 
-Next app work remains HOUSE through the existing UI plus approved Browser polish and saved-default selector. No Android runtime or ESP32 firmware change is included in this server step.
+That server release made no Android or ESP32 firmware change. The subsequent Android v0.4.0 source now implements HOUSE through the existing UI plus Browser polish and the saved-default selector. The next checkpoint is the combined phone/S3 acceptance session; no ESP32 firmware update is required.

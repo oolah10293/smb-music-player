@@ -1,6 +1,6 @@
 # Android integration with house-audio-server
 
-**Status: required HOUSE functionality to add; not implemented or runtime-tested in the Android app.** The standalone v0.3.8 player is now the confirmed baseline for normal phone use: search X/height, shared sort, current-track-first sorting, Repeat All, vehicle/Bluetooth behavior, fade, Tailscale startup, metadata, Country Buffer, and SMB tuning are working. Prolonged-outage recovery hardening still needs its dedicated field test.
+**Current source status: v0.4.0 implements the first HOUSE startup/control/audio slice and approved Browser polish. Phone acceptance remains pending.** Live home/away handoff remains the next recovery slice. See [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md) for the implemented boundary and checkpoint. The standalone v0.3.8 player remains the confirmed hardware baseline: search X/height, shared sort, current-track-first sorting, Repeat All, vehicle/Bluetooth behavior, fade, Tailscale startup, metadata, Country Buffer, and SMB tuning. Prolonged-outage hardening still needs its targeted field check. Requirements below remain the full target, not claims that every item is already validated.
 
 The authoritative product rules are in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md). This document translates those decisions into Android requirements and identifies the corresponding implementation work. Engineering proposals and unresolved details below are not additional user-approved behavior.
 
@@ -184,22 +184,22 @@ These facts reduce risk in the Android project: the remaining phone problem is p
 
 ## 8. Integration points in the existing app
 
-These are code-level implementation notes based on the current source, not completed changes:
+v0.4.0 implements the initial startup/control/receiver boundary at these integration points. Live home/away handoff remains later work; all phone behavior below still needs hardware acceptance.
 
 | Existing code | Required adaptation |
 | --- | --- |
 | [MainActivity.kt](../app/src/main/java/com/smbmusic/player/MainActivity.kt): `browse`, `playCurrentFolder`, `sortedTracks` | Preserve browsing/search/sort semantics; route ordered queue selection through the active backend rather than always preparing/playing the local MediaController. |
 | [NowPlayingActivity.kt](../app/src/main/java/com/smbmusic/player/NowPlayingActivity.kt): controller binding, `sortCurrentQueue`, metadata/status | Display authoritative house state and queue, add output mute/target status, and route explicit sort/transport operations correctly. |
-| `NowPlayingActivity.kt`: `quitCleanly` | Currently calls Stop and Clear on its controller. In HOUSE, detach/stop only the phone renderer and presence; never clear or stop MPD as a side effect. Preserve standalone Quit. |
+| `NowPlayingActivity.kt`: `quitCleanly` | HOUSE detaches/stops only the phone renderer and presence, without MPD Stop/Clear. STANDALONE retains its existing Stop/Clear behavior. |
 | [PlaybackService.kt](../app/src/main/java/com/smbmusic/player/PlaybackService.kt) | Preserve the existing ExoPlayer/SMB path for standalone. Add the mode/backend boundary, handoff coordination, and separate house receiver lifecycle without allowing local recovery callbacks to start a competing song in HOUSE. |
 | Media3 session / notification / Bluetooth control integration | Use the selected authority consistently, not just the on-screen buttons. Keep deliberate house commands separate from local audio interruptions; preserve existing standalone and vehicle behavior. |
 | Existing SMB, credential, and UI components | Reuse their standalone behavior; do not rewrite transport or rename/reorganize the user's music to support HOUSE. |
 
-A `PlaybackBackend` abstraction remains the proposed integration boundary. Keep the house control client and synchronized receiver independently testable. Do not assume ExoPlayer or the current MediaLibrarySession already supplies a Snapcast receiver.
+The implementation boundary is `HousePlayer`, a Media3 `SimpleBasePlayer` adapter backed by the service-owned `HouseRuntime`. The existing Activities/media session use the selected authority. `HouseApi` and the separate `SnapcastReceiver` implement control and synchronized output; the latter runs pinned upstream Snapclient through a LAN-bound byte relay. HOUSE never creates the standalone ExoPlayer/SMB source.
 
 ## 9. Acceptance checklist
 
-All items below are **unimplemented/unverified Android integration work**:
+These remain **hardware acceptance checks**, not claims of field proof. Initial startup/control/receiver items are implemented in v0.4.0. Live departure/return handoff items are still unimplemented and belong to the next recovery slice.
 
 - [ ] A TCP probe bound to a non-VPN Wi-Fi/Ethernet Android `Network` reaches the configured house LAN address on MPD port 6600 and receives `OK MPD ...`; that selects HOUSE. Tailscale/VPN-only reachability does not. Brief outages do not silently start standalone music.
 - [ ] Fresh-idle controller attachment makes no playback/queue mutation. Passive-node default start remains server-owned.
@@ -216,11 +216,11 @@ All items below are **unimplemented/unverified Android integration work**:
 
 ## 10. Open details and scope
 
-Retain the unresolved choices in the canonical server document: home/away network grace periods, whole-queue away continuation, and return-to-idle-house handling. Service restart is settled as a fresh-session boundary, implemented in server v0.8.1. Controller background presence, five-second heartbeats/fifteen-second expiry, and ending the session when the last controller leaves an automatic pause were confirmed on 2026-09-29. Control-service protocol schema, library-path mapping setup, exact heard-position timing, and Android receiver packaging also need engineering decisions and validation. The home/away probe itself no longer needs a custom discovery or handshake protocol.
+Retain the unresolved choices in the canonical server document: home/away network grace periods, whole-queue away continuation, and return-to-idle-house handling. Service restart is settled as a fresh-session boundary, implemented in server v0.8.1. Controller background presence, five-second heartbeats/fifteen-second expiry, and ending the session when the last controller leaves an automatic pause were confirmed on 2026-09-29. v0.4.0 uses the documented HTTP schema, MPD-relative library paths, and bundled upstream Snapclient. Away-path mapping and exact heard-position timing still need engineering work and validation. The home/away probe itself needs no custom discovery or handshake protocol.
 
 These gaps do not undo the approved behavior. They must not be filled with silent assumptions. **Two physical ESP32/PCM5102A renderers are now audibly synchronized**, so the Snapcast multi-renderer architecture itself is proven. That does **not** prove Android rendering, Android timing, or seamless phone handoff; those still require separate implementation and tests. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
 
-**Current Android status:** the server-side basic MPD API, renderer presence, passive-radio appliance behavior, ordinary paused-session resume, the MPD boundary-pause discovery, and two-node audible synchronization are runtime-proven. The v0.6.2 correction is unit-tested and running on the Pi, with initial short/long radio power-cycle results recorded above. No Android HOUSE runtime code has been added yet. Persisted passive-default selection is field-proven in v0.7.0. Controller-presence/output-state handling is implemented in v0.8.0 source/tests, awaiting Pi validation and Android integration. The server also has unattended renderer diagnostics for the occasional few-second single-node dropout investigation.
+**Current Android status:** v0.4.0 implements the initial HOUSE runtime and Browser polish, with phone acceptance pending. The Pi-side basic API, passive-radio behavior, ordinary pause resume, two-S3 audible synchronization, saved default selection, and v0.8.1 restart with an already-present S3 have field evidence. Physical controller transitions and Android synchronization remain unproven. Server v0.8.2 supplies the guarded `/queue/reorder` helper required by Now Playing Sort; it preserves song identity, playback position, transport, and session-policy ownership using MPD queue IDs. The combined checkpoint is [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
 
 
 ### Proven passive-default selector dependency
@@ -246,7 +246,7 @@ New HOUSE attachment still starts muted. Auto-unmute remains limited to phone-in
 
 The Pi auto-pauses when controllers remain without audible output, resumes that automatic pause when an audible output returns, and ends it without advancing when the last controller leaves. Explicit Pause/Stop are respected. Combined presence counts deduplicate phone control/audio roles. Snapserver outage does not imply that listeners departed.
 
-Server v0.8.0 has 73 passing local tests and is installed; initial health/passive-S3 baseline validation passes. Physical controller transition tests remain pending. Android code and Browser polish remain the next integration work, with the existing SMB Player UI preserved. Restart ends the prior session; pause-reason reconstruction is not required.
+Server v0.8.0 introduced this contract with 73 passing tests; its initial health/passive-S3 deployment baseline passed. The installed v0.8.1 adds the field-proven already-present-radio restart path. v0.4.0 now implements Android control/audio and Browser polish against this contract. Physical controller transitions remain pending. Restart ends the prior session; pause-reason reconstruction is not required.
 
 
 ### Restart contract for Android HOUSE
@@ -272,4 +272,4 @@ Before allowing playback writes, the server now stops MPD, clears the old queue,
 
 Android should read `startup.ready` in `GET /health` (also `sessionPolicy.startup` in `GET /session` or `GET /state`). While false, show startup/reconnecting and treat old queue/state reads as provisional. MPD-changing POSTs return 503 `startup_pending` without applying the request. Settings and controller lifecycle calls remain available. Reattach with a new lease and the current local mute intent, refresh state when ready, and do not upload an old private/house queue or replay stale skip commands. A controller-only restart remains idle; a passive S3 may already have started a fresh configured default when the phone refreshes.
 
-85 server tests and GitHub CI pass. v0.8.1 is the confirmed Pi deployment. Its restart path with one already-present passive S3 is field-proven; physical controller transitions remain field checks. Restart with all radios off is still an optional separate confirmation. This changes the server contract, not Android runtime code. Implement HOUSE and the approved Browser polish together in the next app slice; STANDALONE remains unchanged.
+85 server tests and GitHub CI passed for v0.8.1, the confirmed Pi deployment. Its restart path with one already-present passive S3 is field-proven; physical controller transitions remain field checks. Restart with all radios off is a separate confirmation. Android v0.4.0 now uses this readiness/reattachment contract and includes the approved Browser polish; the standalone engine is preserved.

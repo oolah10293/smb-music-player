@@ -1,5 +1,6 @@
 # Android / Gradle
 .gradle/
+.kotlin/
 build/
 app/build/
 local.properties
@@ -23,3 +24,8 @@ signing.properties
 .DS_Store
 Thumbs.db
 *.swp
+.cxx/
+**/.cxx/
+native/vendor/
+native/deps/
+app/src/main/assets/licenses/

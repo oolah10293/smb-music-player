@@ -18,6 +18,9 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import androidx.media3.session.SessionCommand
+import androidx.media3.common.util.RepeatModeUtil
+import com.smbmusic.player.house.HouseRuntime
 import androidx.media3.ui.PlayerView
 import com.google.common.util.concurrent.ListenableFuture
 import com.smbmusic.player.media.AudioFormats
@@ -31,6 +34,8 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var albumText: TextView
     private lateinit var playbackStatus: TextView
     private lateinit var queueSortButton: Button
+    private lateinit var muteOutputButton: Button
+    private val isHouse: Boolean get() = controller?.sessionExtras?.getBoolean(HouseRuntime.EXTRA_HOUSE) == true
 
     private lateinit var controllerFuture: ListenableFuture<MediaController>
     private var controller: MediaController? = null
@@ -79,6 +84,10 @@ class NowPlayingActivity : AppCompatActivity() {
         albumText = findViewById(R.id.albumText)
         playbackStatus = findViewById(R.id.playbackStatus)
         queueSortButton = findViewById(R.id.queueSortButton)
+        muteOutputButton = findViewById(R.id.muteOutputButton)
+        muteOutputButton.setOnClickListener {
+            controller?.sendCustomCommand(SessionCommand(HouseRuntime.MUTE, Bundle.EMPTY), Bundle.EMPTY)
+        }
 
         findViewById<Button>(R.id.browseButton).setOnClickListener {
             val intent = Intent(this, MainActivity::class.java)
@@ -148,7 +157,8 @@ class NowPlayingActivity : AppCompatActivity() {
                     val mediaController = controllerFuture.get()
                     controller = mediaController
                     mediaController.addListener(playerListener)
-                    mediaController.repeatMode = Player.REPEAT_MODE_ALL
+                    if (!isHouse) mediaController.repeatMode = Player.REPEAT_MODE_ALL
+                    controlsPlayerView.setRepeatToggleModes(if (isHouse) RepeatModeUtil.REPEAT_TOGGLE_MODE_ALL else RepeatModeUtil.REPEAT_TOGGLE_MODE_NONE)
 
                     // Artwork and controls intentionally share the same MediaController.
                     // The first PlayerView is artwork-only; the second uses PlayerView's
@@ -172,6 +182,17 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun sortCurrentQueue(mode: SortMode): Boolean {
         val mediaController = controller ?: return false
+        if (isHouse) {
+            val future = mediaController.sendCustomCommand(SessionCommand(HouseRuntime.SORT, Bundle.EMPTY), Bundle().apply { putString("mode", mode.name) })
+            future.addListener({
+                if (runCatching { future.get().resultCode == 0 }.getOrDefault(false)) {
+                    queueSortMode = mode
+                    SortModeStore.save(this, mode)
+                    updateSortButton()
+                } else playbackStatus.text = "HOUSE sort failed — refresh before trying again."
+            }, ContextCompat.getMainExecutor(this))
+            return false // Commit the shared sort setting only after acknowledgement.
+        }
         val itemCount = mediaController.mediaItemCount
         mediaController.repeatMode = Player.REPEAT_MODE_ALL
         if (itemCount < 2) return true
@@ -222,8 +243,10 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun quitCleanly() {
         val mediaController = controller
-        mediaController?.stop()
-        mediaController?.clearMediaItems()
+        if (!isHouse) {
+            mediaController?.stop()
+            mediaController?.clearMediaItems()
+        }
         playerView.player = null
         controlsPlayerView.player = null
 
@@ -273,6 +296,12 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun updateStatus() {
         val mediaController = controller ?: return
+        muteOutputButton.visibility = if (isHouse) View.VISIBLE else View.GONE
+        if (isHouse) {
+            muteOutputButton.text = if (mediaController.sessionExtras.getBoolean(HouseRuntime.EXTRA_MUTED, true)) "Unmute Output" else "Mute Output"
+            playbackStatus.text = mediaController.sessionExtras.getString(HouseRuntime.EXTRA_STATUS, "HOUSE — connecting")
+            return
+        }
         playbackStatus.text = when (recoveryStatus.phase) {
             PlaybackService.RECOVERY_PHASE_WAITING -> {
                 val seconds = ((recoveryStatus.retryInMs + 999L) / 1000L).coerceAtLeast(0L)

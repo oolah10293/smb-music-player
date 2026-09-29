@@ -10,8 +10,12 @@ android {
         applicationId = "com.smbmusic.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.3.8"
+        versionCode = 12
+        versionName = "0.4.0"
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+        externalNativeBuild {
+            cmake { arguments += "-DANDROID_STL=c++_static" }
+        }
     }
 
     buildTypes {
@@ -28,9 +32,14 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    ndkVersion = "28.2.13676358"
+    externalNativeBuild { cmake { path = file("../native/CMakeLists.txt"); version = "3.22.1" } }
+    packaging { jniLibs { useLegacyPackaging = true } }
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
 

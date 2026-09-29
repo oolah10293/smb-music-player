@@ -2,6 +2,16 @@
 
 This history is reconstructed from the actual saved source checkpoints. Release notes are condensed, but behavior and rationale are preserved. Public copies remove device/location-specific comments; functional code is otherwise retained.
 
+## 0.4.0 — first HOUSE integration (phone acceptance pending)
+
+- Retained Browser/Now Playing and the standalone SMB/Media3 implementation; added a service-owned HOUSE adapter so on-screen, notification, and media controls target the Pi's MPD state.
+- Added optional local house address, non-VPN LAN MPD greeting probe before Browser startup, bound HTTP/audio connections, server readiness handling, stable controller/renderer identity, background heartbeats, reconnect/re-attach, and phone-only HOUSE Quit.
+- Bundled upstream Snapclient 0.31.0 built from checksum-pinned source for arm64-v8a and armeabi-v7a, using FLAC/PCM and OpenSL ES. Native timing/clock correction stays upstream; no independent SMB audio plays in HOUSE.
+- HOUSE starts muted, with Mute/Unmute Output in the lower controls. Song/PLAY LIST and Play from pause/stop unmute; browse/sort/Next/Previous during playback do not. Audio-focus/noisy-route interruptions stop only local output.
+- Added MPD browse/queue/metadata/state, deliberate transport/shuffle/repeat, saved MP3s/Rap selector, and guarded active-queue Sort (server v0.8.2). No stale transport writes are replayed after reconnect.
+- Aligned Browser button edges with Search, showed only the current folder, swapped SMB/Parent Folder, and swapped PLAY LIST/Sort. Shared sort, search X, portrait behavior, and scroll memory remain.
+- Live home/away handoff follows separately. Hardware sync/background/standalone acceptance is required; see docs/HOUSE_VALIDATION.md.
+
 ## 0.3.8
 
 - Based the revision on the separately tested v0.3.7 source rather than rebuilding directly from the older v0.3.6 repository tree.

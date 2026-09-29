@@ -132,6 +132,14 @@
         app:use_artwork="true"
         app:use_controller="false" />
 
+    <Button
+        android:id="@+id/muteOutputButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="8dp"
+        android:text="Unmute Output"
+        android:visibility="gone" />
+
     <androidx.media3.ui.PlayerView
         android:id="@+id/controlsPlayerView"
         android:layout_width="match_parent"
