@@ -114,7 +114,7 @@ A completed final-track drain ends the old session, including MPD's `pause @ 0.0
 
 ### Current house-side proof
 
-Server **v0.6.2 is now running on the permanent Pi**. On 2026-09-29, the radio returned to the same song after about 10 seconds unplugged and to a different new song after about five minutes unplugged. The captured `/session` response confirms the short-return cancellation path, with `defaultFolder: MP3s`. The runtime MP3s/Rap selector and Android HOUSE implementation are still pending; detailed test scope is recorded in the server API documentation.
+Server **v0.6.2 is now running on the permanent Pi**. On 2026-09-29, the radio returned to the same song after about 10 seconds unplugged and to a different new song after about five minutes unplugged. The captured `/session` response confirms the short-return cancellation path, with `defaultFolder: MP3s`. Server v0.7.0 now implements the persisted MP3s/Rap settings API in source/tests (42 local tests pass; Pi installation pending). The Android selector and HOUSE implementation are still pending; detailed contracts and test scope are recorded in the server API documentation.
 
 The central architecture is now proven beyond the original single-renderer stage:
 
@@ -125,7 +125,7 @@ The central architecture is now proven beyond the original single-renderer stage
 - passive-radio arrival now resumes an existing paused MPD session, and this was field-proven with two radios present;
 - two independent XIAO ESP32-S3 + PCM5102A nodes have produced **audibly synchronized** output through different downstream audio systems.
 
-Therefore Android HOUSE work is no longer blocked on proving that multi-room Snapcast playback can work. The remaining phone-specific work is the controller/backend integration, controller/output presence rules, persisted passive-default selection, and packaging a synchronized Android renderer.
+Therefore Android HOUSE work is no longer blocked on proving that multi-room Snapcast playback can work. The remaining phone-specific work is the controller/backend integration, controller/output presence rules, wiring the default selector to the v0.7.0 settings API, and packaging a synchronized Android renderer.
 
 A small renderer reliability issue remains under investigation: occasional few-second silence on one ESP32 node or the other. Both nodes have their external antennas installed. Server v0.6.0 adds unattended diagnostics so future dropouts can be correlated without assuming a Wi-Fi cause.
 
@@ -190,4 +190,3 @@ No SMB credentials, private network addresses, personal paths, or user-specific 
 ## License
 
 No open-source license has been selected yet. Until one is added, normal copyright rules apply.
-
