@@ -117,12 +117,14 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
                 sequence = 0
                 attachmentGeneration.incrementAndGet()
                 if (closed.get()) { detach(); return }
-                registered = true
             } else {
                 api.post("/controllers/heartbeat", JSONObject().put("controllerId", deviceId)
                     .put("leaseId", lease).put("sequence", ++sequence)
                     .put("outputMuted", muted).put("outputReady", receiver.ready))
             }
+            // A transient heartbeat failure disables writes but need not expire
+            // the lease. Any successful renewal restores controller authority.
+            registered = true
             main.post { reconcileOutput() }
         } catch (e: Exception) {
             registered = false
