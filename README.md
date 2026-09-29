@@ -208,3 +208,19 @@ Android can therefore treat the passive-default API as a proven dependency. Cont
 Controller presence and muted-phone session handling are implemented/tested in server v0.8.0 (73 local tests pass; Pi installation/field validation pending). The latest confirmed deployed server remains v0.7.0.
 
 Background/screen-off controllers retain presence through five-second heartbeats and fifteen-second expiry. If the last controller leaves an automatically paused session, the Pi ends it without advancing. Phone control/audio roles are counted once, and known phone renderers cannot become passive auto-starters. Android HOUSE wiring, synchronized phone output, and the approved Browser polish remain upcoming app work; see [CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md).
+
+
+### v0.8.0 controller backend deployment
+
+The server-side controller/output contract required by Android HOUSE mode is now deployed on the permanent Pi.
+
+Initial validation:
+
+- server health is `ok` on v0.8.0;
+- MPD and Snapserver remain healthy;
+- with no controller attached, the existing S3 is still correctly classified as a passive renderer;
+- `GET /controllers` reports zero controllers, one present passive renderer, and matching present/audible counts.
+
+Physical muted-controller pause/resume/expiry behavior still needs field testing before being called proven.
+
+Restart behavior is now also settled: a `house-audio-server` restart is a fresh-session boundary. Android should simply reattach after restart; it must not expect the old live lease, mute/readiness report, auto-pause reason, queue/session, or pending drain to be reconstructed. Durable controller↔renderer ownership and the server's passive-default setting remain persistent. Controller reconnect alone stays idle; a passive S3 may start a new shuffled default session.
