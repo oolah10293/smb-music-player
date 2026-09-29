@@ -221,3 +221,15 @@ Retain the unresolved choices in the canonical server document: departure/heartb
 These gaps do not undo the approved behavior. They must not be filled with silent assumptions. **Two physical ESP32/PCM5102A renderers are now audibly synchronized**, so the Snapcast multi-renderer architecture itself is proven. That does **not** prove Android rendering, Android timing, or seamless phone handoff; those still require separate implementation and tests. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
 
 **Current Android status:** the server-side basic MPD API, renderer presence, passive-radio appliance behavior, ordinary paused-session resume, the MPD boundary-pause discovery, and two-node audible synchronization are runtime-proven. The v0.6.2 correction is unit-tested and running on the Pi, with initial short/long radio power-cycle results recorded above. No Android HOUSE runtime code has been added yet. Persisted passive-default selection is implemented in server v0.7.0 source/tests, awaiting deployment. Controller-presence/output-state handling remains the main server prerequisite before Android HOUSE integration is considered complete. The server also has unattended renderer diagnostics for the occasional few-second single-node dropout investigation.
+
+
+### Proven passive-default selector dependency
+
+The Pi-side runtime selector required by the HOUSE Browser is now field-proven in `house-audio-server` v0.7.0.
+
+- reading the current default works;
+- changing `MP3s` -> `Rap` leaves active playback untouched;
+- after a completed no-renderer drain, the next S3 power-on uses the saved choice;
+- the observed fresh Rap session began with Ludacris — *Southern Hospitality*.
+
+The Android button can therefore be implemented against the existing `GET /settings` / `POST /settings` contract rather than waiting on further server design.
