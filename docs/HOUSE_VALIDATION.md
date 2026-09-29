@@ -2,10 +2,12 @@
 
 This is the first Android HOUSE build. The Pi's v0.8.1 restart with an already-powered S3 is field-proven; phone rendering and controller transitions are not yet field-proven.
 
+Test the final `9c89b24` APK, including heartbeat recovery, with server v0.8.2 (`9c98973`). Both CI runs passed. The APK has been delivered; no installation/listening pass is recorded yet. [Release record, downloads and checksums](RELEASE_0.4.0.md).
+
 ## Install and configure once
 
 1. Update the Pi service to **v0.8.2** for the guarded queue-sort endpoint. Other HOUSE endpoints use the existing v0.8.1 contract. Use the server repository's existing install/update procedure.
-2. Install **SMBMusicPlayer-debug** from the Android build artifacts. Its matching **SMBMusicPlayer-v0.4.0-source** archive includes the bundled receiver's corresponding source and build files.
+2. Install the delivered **SMBMusicPlayer-v0.4.0.apk**, or extract `app-debug.apk` from the exact **SMBMusicPlayer-debug** artifact linked in the release record; they are identical. Its matching **SMBMusicPlayer-v0.4.0-source** archive includes the bundled receiver's corresponding source and build files.
 3. In the existing **SMB** connection panel, keep the saved SMB credentials and enter the Pi's **LAN address** in the optional House server field. Save, then Quit from Now Playing and reopen. Allow notifications so the foreground controller remains visible. Long-press the MP3s/Rap button in HOUSE to reopen connection settings.
 
 The app probes MPD port 6600 through a non-VPN Wi-Fi/Ethernet Network before normal Browser startup. HOUSE HTTP and audio also use that selected LAN. Tailscale may remain connected. A failed connection after HOUSE selection stays HOUSE/reconnecting; this build does not implement live home/away handoff.

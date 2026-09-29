@@ -4,8 +4,11 @@ This history is reconstructed from the actual saved source checkpoints. Release 
 
 ## 0.4.0 — first HOUSE integration (phone acceptance pending)
 
+Released for device testing on 2026-09-29. Final Android build: `9c89b24`; server dependency: v0.8.2 (`9c98973`). Android CI (3 state tests plus APK/native packaging) and server CI (90 tests) passed. The APK was delivered; installation and phone/S3 acceptance remain pending. [Exact builds, downloads and checksums](docs/RELEASE_0.4.0.md).
+
 - Retained Browser/Now Playing and the standalone SMB/Media3 implementation; added a service-owned HOUSE adapter so on-screen, notification, and media controls target the Pi's MPD state.
 - Added optional local house address, non-VPN LAN MPD greeting probe before Browser startup, bound HTTP/audio connections, server readiness handling, stable controller/renderer identity, background heartbeats, reconnect/re-attach, and phone-only HOUSE Quit.
+- Fixed recovery after a transient heartbeat failure: a successful renewal restores HOUSE controls while the lease is still valid, without Quit/reopen or waiting for expiry.
 - Bundled upstream Snapclient 0.31.0 built from checksum-pinned source for arm64-v8a and armeabi-v7a, using FLAC/PCM and OpenSL ES. Native timing/clock correction stays upstream; no independent SMB audio plays in HOUSE.
 - HOUSE starts muted, with Mute/Unmute Output in the lower controls. Song/PLAY LIST and Play from pause/stop unmute; browse/sort/Next/Previous during playback do not. Audio-focus/noisy-route interruptions stop only local output.
 - Added MPD browse/queue/metadata/state, deliberate transport/shuffle/repeat, saved MP3s/Rap selector, and guarded active-queue Sort (server v0.8.2). No stale transport writes are replayed after reconnect.

@@ -6,6 +6,8 @@ The authoritative product rules are in [house-audio-server/docs/SESSION_BEHAVIOR
 
 Tracking: [Android Issue #1](https://github.com/oolah10293/smb-music-player/issues/1).
 
+Release handoff: [Android v0.4.0 / server v0.8.2](RELEASE_0.4.0.md). The final Android commit is `9c89b24`, including recovery of controls after a successful heartbeat renewal. The APK is delivered and both CI runs passed; phone/S3 acceptance remains pending.
+
 ## 1. Separate playback authority from phone sound
 
 There are two independent decisions:
@@ -33,7 +35,7 @@ Browser / Search / Sort / Now Playing / media controls
               +------------- phone audio output --------+
 ```
 
-The proposed backend boundary lets the same UI target either session. HOUSE control and HOUSE audio are separate connections and responsibilities. MPD remains the queue/transport authority; the phone is not a music relay. A remote-control API alone does not implement synchronized phone playback, and playing an independent SMB copy at approximately the same seek position is not a substitute for a Snapcast receiver.
+The v0.4.0 backend boundary lets the same UI target either session. HOUSE control and HOUSE audio are separate connections and responsibilities. MPD remains the queue/transport authority; the phone is not a music relay. A remote-control API alone does not implement synchronized phone playback, and playing an independent SMB copy at approximately the same seek position is not a substitute for a Snapcast receiver.
 
 ## 2. Automatic home-LAN detection and reconnection
 
@@ -98,7 +100,7 @@ Reuse the Browser button position that is **SMB** in STANDALONE:
 
 The setting is server-owned because it affects S3 startup even when the phone is absent. Changing it must not replace, restart, or otherwise disturb the current house queue. It applies only when the house later enters a genuinely fresh passive-renderer auto-start session.
 
-Server v0.7.0 implements the required persisted setting: `GET /settings` returns `settings.passiveDefaultFolder` and `settings.allowedPassiveDefaultFolders`; `POST /settings` accepts exactly `{"passiveDefaultFolder":"MP3s"}` or `{"passiveDefaultFolder":"Rap"}` and returns the saved settings. The phone should read the server value and send an explicit choice, then use the acknowledged value. Refresh after reconnect instead of replaying stale edits. Neither endpoint touches playback or registers controller presence. `PASSIVE_DEFAULT_FOLDER` remains the fallback when no saved value exists. The server setting is field-proven in v0.7.0; Android button integration remains pending.
+Server v0.7.0 implements the required persisted setting: `GET /settings` returns `settings.passiveDefaultFolder` and `settings.allowedPassiveDefaultFolders`; `POST /settings` accepts exactly `{"passiveDefaultFolder":"MP3s"}` or `{"passiveDefaultFolder":"Rap"}` and returns the saved settings. The phone should read the server value and send an explicit choice, then use the acknowledged value. Refresh after reconnect instead of replaying stale edits. Neither endpoint touches playback or registers controller presence. `PASSIVE_DEFAULT_FOLDER` remains the fallback when no saved value exists. The server setting is field-proven in v0.7.0; Android v0.4.0 implements the button, with phone acceptance pending.
 
 ## 5. Controller presence and the Pi's session rules
 
@@ -150,7 +152,7 @@ The server has now advanced beyond the basic control core: Snapserver renderer p
 
 The passive-renderer side has now advanced beyond the basic primitives: fresh-idle passive-radio auto-start, active-session join/rejoin, effective hard-power presence, and passive-radio resume-through-Pause are runtime-proven on the permanent Pi. Two independent ESP32/PCM5102A renderers have also passed the real audible synchronization test.
 
-Server v0.8.0 implements controller leases, output reporting, device/renderer association, muted-controller pause/resume, and stale lifecycle-report rejection in source/tests (Pi validation pending). Persisted passive-default selection is field-proven in v0.7.0. Transport-command deduplication/revision checks remain separate work; clients must not replay uncertain Next/queue writes.
+Server v0.8.0 implements controller leases, output reporting, device/renderer association, muted-controller pause/resume, and stale lifecycle-report rejection in source/tests (Pi validation pending). Persisted passive-default selection is field-proven in v0.7.0. General transport-command deduplication remains separate work; v0.8.2 guards queue reordering by revision and IDs. Clients must not replay uncertain Next/queue writes.
 
 The Android app should **not use MPD's native control port as its HOUSE control API**. The one deliberate exception is the short LAN-presence probe described above, which reads MPD's `OK MPD ...` greeting to prove that the expected service is reachable over a bound non-VPN LAN path. Android, Windows, and the browser controller should otherwise target the same house-audio-server contract so the Pi can enforce one-session lifecycle, presence/output rules, fresh-session default shuffle, and HOUSE/STANDALONE behavior consistently.
 
@@ -180,7 +182,7 @@ Current permanent-Pi/hardware facts that Android integration may rely on:
 - effective renderer presence is based on fresh Snapcast activity, not raw stale TCP connection state;
 - occasional few-second single-node dropouts are still being diagnosed; v0.6.0 records renderer timing/presence and global stream events for later inspection.
 
-These facts reduce risk in the Android project: the remaining phone problem is principally controller integration plus packaging a synchronized phone renderer, not proving that the central synchronized-audio architecture can work.
+These facts establish the central architecture. Android v0.4.0 now supplies the controller integration and bundled receiver; real phone/S3 synchronization and controller lifecycle still require acceptance.
 
 ## 8. Integration points in the existing app
 
@@ -218,7 +220,7 @@ These remain **hardware acceptance checks**, not claims of field proof. Initial 
 
 Retain the unresolved choices in the canonical server document: home/away network grace periods, whole-queue away continuation, and return-to-idle-house handling. Service restart is settled as a fresh-session boundary, implemented in server v0.8.1. Controller background presence, five-second heartbeats/fifteen-second expiry, and ending the session when the last controller leaves an automatic pause were confirmed on 2026-09-29. v0.4.0 uses the documented HTTP schema, MPD-relative library paths, and bundled upstream Snapclient. Away-path mapping and exact heard-position timing still need engineering work and validation. The home/away probe itself needs no custom discovery or handshake protocol.
 
-These gaps do not undo the approved behavior. They must not be filled with silent assumptions. **Two physical ESP32/PCM5102A renderers are now audibly synchronized**, so the Snapcast multi-renderer architecture itself is proven. That does **not** prove Android rendering, Android timing, or seamless phone handoff; those still require separate implementation and tests. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
+These gaps do not undo the approved behavior. They must not be filled with silent assumptions. **Two physical ESP32/PCM5102A renderers are now audibly synchronized**, so the Snapcast multi-renderer architecture itself is proven. That does **not** prove Android rendering, Android timing, or seamless phone handoff. Android rendering/timing need hardware acceptance; live handoff still requires implementation and tests. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
 
 **Current Android status:** v0.4.0 implements the initial HOUSE runtime and Browser polish, with phone acceptance pending. The Pi-side basic API, passive-radio behavior, ordinary pause resume, two-S3 audible synchronization, saved default selection, and v0.8.1 restart with an already-present S3 have field evidence. Physical controller transitions and Android synchronization remain unproven. Server v0.8.2 supplies the guarded `/queue/reorder` helper required by Now Playing Sort; it preserves song identity, playback position, transport, and session-policy ownership using MPD queue IDs. The combined checkpoint is [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
 
@@ -232,7 +234,7 @@ The Pi-side runtime selector required by the HOUSE Browser is now field-proven i
 - after a completed no-renderer drain, the next S3 power-on uses the saved choice;
 - the observed fresh Rap session began with Ludacris — *Southern Hospitality*.
 
-The Android button can therefore be implemented against the existing `GET /settings` / `POST /settings` contract rather than waiting on further server design.
+Android v0.4.0 implements the button against the existing `GET /settings` / `POST /settings` contract; its phone acceptance remains pending.
 
 ### v0.8.0 controller contract for the Android implementation
 
@@ -240,7 +242,7 @@ The server supplies `GET /controllers` and `POST /controllers/attach`, `/control
 
 Register the stable app-device id and its own stable Snapcast renderer id **before connecting that receiver**. Ownership is saved on the Pi so a known phone cannot become a passive auto-starter after a control disconnect or service restart. Use the returned lease id and increasing sequence numbers; reject stale callbacks from an older attachment. Expired leases require a new attachment, with the current local mute choice reported explicitly.
 
-The five-second heartbeat reports `outputMuted` separately from `outputReady`. Ready means the receiver/output path can render, even if MPD is paused. Report calls, route failures, or renderer failures as not-ready without discarding the mute choice. The Pi requires a live audible associated renderer as well as unmuted/ready reports before treating the phone as audible. This API reports state; Android must implement the actual local mute and synchronized receiver.
+The five-second heartbeat reports `outputMuted` separately from `outputReady`. Ready means the receiver/output path can render, even if MPD is paused. Report calls, route failures, or renderer failures as not-ready without discarding the mute choice. The Pi requires a live audible associated renderer as well as unmuted/ready reports before treating the phone as audible. This API reports state; Android v0.4.0 implements the actual local mute and synchronized receiver, with phone acceptance pending.
 
 New HOUSE attachment still starts muted. Auto-unmute remains limited to phone-initiated song/PLAY LIST/Play actions. Keep the heartbeat alive in the background/screen-off service. On HOUSE Quit, stop the phone's receiver and heartbeat, then detach; do not send MPD Stop/Clear. Attachment and output reports never auto-start a fresh session.
 

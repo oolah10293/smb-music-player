@@ -4,6 +4,8 @@ This file separates behavior exercised in real use from source changes that stil
 
 ## v0.4.0 HOUSE source checkpoint
 
+Final release artifact: Android `9c89b24` (includes heartbeat recovery), paired with server v0.8.2 `9c98973`. Android CI passed the APK build, 3 state tests and both native receiver/license checks; server CI passed with 90 tests. The delivered APK was recovered from that exact run and its archive digest matched GitHub's digest. This is build/package verification only. [Release record](RELEASE_0.4.0.md).
+
 The first Android HOUSE backend/receiver and Browser polish are implemented; phone/S3 audio synchronization and background/standalone regression acceptance remain **pending**. See [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md). The v0.3.8 phone baseline below is preserved as historical field evidence, not automatically promoted to v0.4.0 validation. Server v0.8.1 is installed, and restart with an already-present S3 starting a fresh randomized Rap session is proven. Server v0.8.2's queue reorder helper is source/unit-test work awaiting Pi update.
 
 ## Proven in regular use before v0.3.7

@@ -4,6 +4,8 @@ A native Android music player that streams audio directly from SMB shares using 
 
 Current source version: **0.4.0** — first Android HOUSE integration plus the approved Browser polish. Phone acceptance is pending; **v0.3.8 remains the confirmed standalone hardware baseline**. See [HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md) for installation and the combined phone/S3 checkpoint.
 
+The final APK is delivered, including the heartbeat recovery fix in `9c89b24`. [Release record and downloads](docs/RELEASE_0.4.0.md) identify the exact APK/source artifacts, checksums, successful Android/server CI runs, and pending installation/device checks.
+
 HOUSE uses the existing Browser and Now Playing screens, with MPD authority through the Pi HTTP service and a bundled synchronized Snapcast receiver for phone sound. Opening HOUSE starts muted. A saved LAN address selects HOUSE through a non-VPN MPD greeting probe before standalone startup. STANDALONE retains the existing SMB/Media3 player. Live home/away handoff remains the next recovery slice.
 
 Server **v0.8.2** adds the queue reorder operation used by Now Playing Sort; install it for this build. The service's latest confirmed hardware baseline is v0.8.1, including fresh Rap startup with an S3 already powered during restart. The optional House server address is entered locally in the existing SMB connection panel; no private deployment address is embedded in source.
@@ -98,9 +100,9 @@ Confirmed:
 
 The v0.3.8 prolonged-outage recovery hardening still needs its dedicated field test.
 
-## Future whole-house audio integration
+## Whole-house audio integration
 
-**Approved requirements; not implemented in the current Android player.** Read [docs/CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md) for the Android functionality, code integration points, server-contract needs, and acceptance checklist. [Issue #1](https://github.com/oolah10293/smb-music-player/issues/1) tracks the work. The authoritative cross-project decisions are in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md).
+**Initial HOUSE startup/control/audio and Browser polish are implemented in v0.4.0; phone acceptance and live home/away handoff remain pending.** Read [docs/CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md) for the full target, implementation boundary, and acceptance checklist. [Issue #1](https://github.com/oolah10293/smb-music-player/issues/1) tracks the work. The authoritative cross-project decisions are in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md).
 
 Keep the same folder-first Browser and Now Playing interface. The Raspberry Pi owns the house session through MPD and distributes its sound through Snapserver. The Android app controls that session; it is not a required relay or the house queue owner.
 
@@ -108,7 +110,7 @@ Playback authority and phone sound are separate. **HOUSE output starts muted by 
 
 
 - **HOUSE:** automatically discover and verify the house service directly on the home LAN. Display its current playlist/track and send `PLAY LIST`, selected-track, transport, queue-sort, Shuffle, and Repeat commands to the Pi. An unmuted phone receives the synchronized house stream; **Mute output / Unmute output** affects only this phone.
-- **STANDALONE:** away from home, preserve existing SMB/Tailscale → ExoPlayer playback, buffering, and recovery. An unmuted phone that was hearing house music automatically continues the same song at its last heard position; muted/paused/stopped phones stay silent.
+- **STANDALONE:** preserve existing SMB/Tailscale → ExoPlayer playback, buffering, and recovery. Automatic same-song continuation after leaving HOUSE is approved but not implemented in v0.4.0; that later slice must continue only a phone that was audibly playing, leaving muted/paused/stopped phones silent.
 
 Wi-Fi and Ethernet both count as home-LAN connections. HOUSE detection is intentionally simple: bind a short connection to a **non-VPN** Wi-Fi/Ethernet Android network, probe the locally configured house LAN address on MPD port **6600**, and require MPD's normal `OK MPD ...` greeting. That probe identifies home presence only; normal HOUSE control still uses the shared house-audio-server layer. Tailscale/VPN-only reachability must not count as home. mDNS, SSID matching, GPS, and a custom discovery handshake are not required unless real testing later proves otherwise. A temporary failure at home means **HOUSE reconnecting**, not permission to start a competing independent playlist.
 
@@ -118,7 +120,7 @@ A completed final-track drain ends the old session, including MPD's `pause @ 0.0
 
 ### Current house-side proof
 
-Server **v0.6.2 was tested on the permanent Pi**. On 2026-09-29, the radio returned to the same song after about 10 seconds unplugged and to a different new song after about five minutes unplugged. The captured `/session` response confirms the short-return cancellation path, with `defaultFolder: MP3s`. Server v0.7.0 is now installed and field-proven for the persisted MP3s/Rap settings API. The Android selector and HOUSE implementation are still pending; detailed contracts and test scope are recorded in the server API documentation.
+Server **v0.6.2 was tested on the permanent Pi**. On 2026-09-29, the radio returned to the same song after about 10 seconds unplugged and to a different new song after about five minutes unplugged. The captured `/session` response confirms the short-return cancellation path, with `defaultFolder: MP3s`. The persisted MP3s/Rap settings API was subsequently field-proven in v0.7.0. Android v0.4.0 implements its selector and initial HOUSE integration, with phone acceptance pending; detailed contracts and test scope are recorded in the server API documentation.
 
 The central architecture is now proven beyond the original single-renderer stage:
 
