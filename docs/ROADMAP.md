@@ -36,6 +36,70 @@ Preserve all confirmed v0.3.8 playback behavior and make only these Browser layo
 
 Do not reopen the confirmed search-X behavior, search height, shared sort, current-track-first queue behavior, Repeat All, portrait lock, fade, vehicle/Bluetooth behavior, Tailscale behavior, metadata handling, Country Buffer, or SMB tuning while doing this UI pass.
 
+## Next coordinated Android iteration
+
+This is the next planned Android change set. **Do not split the HOUSE work from the already-approved Browser polish and do not disturb the proven v0.3.8 standalone transport behavior.**
+
+### Preserve the v0.3.8 standalone baseline
+
+STANDALONE continues to use the existing SMB/Tailscale -> Media3/ExoPlayer path, including Country Buffer, SMB read-ahead, outage recovery, metadata fallback, Android Auto/Bluetooth/Garmin behavior, explicit Play/Resume fade, Repeat All, search, and shared sort behavior.
+
+### Apply the already-approved Browser polish
+
+- align the left/right outer edges of both Browser button rows with the search bar;
+- show only the current folder name in the path display;
+- swap the SMB and Parent Folder button positions/functions;
+- swap the PLAY LIST and Sort button positions/functions.
+
+### Automatic HOUSE / STANDALONE startup
+
+On app launch, determine HOUSE before starting the ordinary standalone startup path:
+
+1. enumerate Android networks;
+2. choose a Wi-Fi or Ethernet `Network` that is **not VPN**;
+3. through that specific network, connect to the locally configured house LAN address on MPD port 6600;
+4. require the normal `OK MPD ` greeting;
+5. valid greeting over that bound physical-LAN path => HOUSE;
+6. otherwise use STANDALONE behavior and request/use Tailscale as the existing app does.
+
+Tailscale may already be connected when SMB Player opens. That must not affect the decision: HOUSE detection is explicitly bound to the non-VPN Wi-Fi/Ethernet network rather than the system/default route.
+
+### HOUSE control/UI behavior
+
+Keep the existing Browser and Now Playing UI model. In HOUSE, the playback authority changes from the phone's local Media3 player to the Pi's MPD session through `house-audio-server`.
+
+- Browser/search/sort semantics remain the same.
+- Tapping a song or PLAY LIST sends the corresponding ordered relative paths to the house queue instead of building a local SMB queue.
+- Play/Pause, Previous/Next, Seek, Shuffle, Repeat, and deliberate queue sort operate on MPD.
+- HOUSE Quit detaches the phone and must not Stop/Clear the house session.
+- Merely opening the app, browsing, sorting, or attaching to an existing house session must not mutate playback.
+
+### HOUSE phone-output rule
+
+The phone's synchronized HOUSE output starts **muted** when the app enters HOUSE.
+
+The phone automatically unmutes only when that phone itself initiates playback by:
+
+- tapping a song;
+- tapping PLAY LIST;
+- pressing Play while MPD is paused or stopped.
+
+Merely opening the app, browsing, sorting, or pressing Next/Previous while music is already playing leaves the phone's output mute state unchanged.
+
+Provide an explicit HOUSE-only **Mute Output / Unmute Output** control in the lower Now Playing control strip. It controls only the phone renderer, never MPD/global audio.
+
+### Passive-node default playlist selector
+
+In HOUSE, reuse the Browser button position that is SMB in STANDALONE as the passive-node default selector.
+
+- button displays `MP3s` or `Rap`;
+- tapping toggles the Pi's persisted passive-node default between those two folders;
+- the setting belongs to the Pi because it controls S3 behavior even when no phone is connected;
+- changing it must **not** replace or restart the currently playing queue;
+- it applies to the next genuinely fresh passive-S3 auto-start session.
+
+STANDALONE keeps the normal SMB button and settings behavior.
+
 ## Near-term candidates
 
 - `.m3u` / `.m3u8` playlist-file support.
