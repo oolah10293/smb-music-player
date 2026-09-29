@@ -190,3 +190,15 @@ No SMB credentials, private network addresses, personal paths, or user-specific 
 ## License
 
 No open-source license has been selected yet. Until one is added, normal copyright rules apply.
+
+
+### Passive-default API field proof
+
+The server half of the planned HOUSE Browser `MP3s` / `Rap` button is now field-proven on the permanent Pi.
+
+- `GET /settings` reported the current default and allowed values.
+- `POST /settings` changed the default from `MP3s` to `Rap`.
+- The currently playing song did not change when the setting was changed.
+- After the last S3 stayed off for about ten minutes and the old session completed, powering the S3 back on started a fresh Rap session (first observed track: Ludacris — *Southern Hospitality*).
+
+Android can therefore treat the passive-default API as a proven dependency. Controller presence/output state and the Android HOUSE implementation remain pending.
