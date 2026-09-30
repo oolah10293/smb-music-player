@@ -368,3 +368,35 @@ Real-phone testing after the drive-away checkpoint found:
 - The required correction is event-driven retry: when Android reports a qualifying home Wi-Fi/Ethernet route becoming available, immediately perform the real HOUSE identity/control probe instead of waiting for the stale retry timer.
 
 Do not solve either defect by stopping/clearing the server session. A later fresh server read may legitimately return the same song that was playing before Quit.
+
+
+## 14. v0.4.2 physical results and revised route intent
+
+v0.4.2 physical testing changes the acceptance state but not the Pi's authority model.
+
+Confirmed:
+
+- HOUSE Bluetooth connect -> phone auto-unmute: **PASS**.
+- HOUSE Bluetooth disconnect -> phone auto-mute: **PASS**.
+- A **+400 ms** correction makes the currently tested phone/output path audibly align with the S3. Keep route-specific correction adjustable until additional phones and Bluetooth devices are measured.
+
+Still failing:
+
+- HOUSE -> STANDALONE live departure continuation does not occur. Home-LAN loss is detected, but the active HOUSE track is not handed to the standalone SMB/Tailscale player.
+- STANDALONE -> HOUSE live return transition does not occur reliably. The app can remain in standalone after the physical home LAN has returned. Closing/reopening may then qualify HOUSE successfully.
+- Because of that failed return transition, a manually playing standalone phone and a newly powered S3 can run different queues at the same time. This is an observed split-brain failure that automatic mode ownership must prevent.
+- If the app reopens into an already-playing HOUSE session while Bluetooth is already connected, the phone can attach muted. HOUSE attachment must evaluate the **current** media-output route, not only future route-change callbacks. Existing Bluetooth should cause the phone to join an already-playing HOUSE session; it must not by itself start a deliberately idle/stopped HOUSE session.
+- Galaxy S8 v0.4.2 launch crashes immediately; diagnosis remains open.
+- HOUSE Quit cleanup remains pending dedicated physical validation.
+
+### STANDALONE Bluetooth parity
+
+Bluetooth output intent now applies to STANDALONE ergonomics too, while the standalone Media3/SMB player remains the playback authority:
+
+- on Bluetooth disconnect, pause/silence the local player and retain exact queue/song/position rather than falling through to phone speaker;
+- on Bluetooth reconnect, resume that retained local session;
+- on app start or transition into STANDALONE, evaluate an already-connected Bluetooth route instead of requiring a fresh connection event;
+- explicit Stop/Quit remains authoritative;
+- if no retained standalone session exists, Bluetooth connection alone starts nothing.
+
+This parity is helpful but must not mask the more important return-home bug: once a qualifying home LAN and Pi identity are restored, the phone must transition back to HOUSE and adopt the authoritative house session.
