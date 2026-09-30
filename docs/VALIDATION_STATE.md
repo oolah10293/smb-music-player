@@ -79,20 +79,6 @@ The prolonged-outage recovery hardening has **not yet been field-tested in v0.3.
 
 The older recovery architecture already has functional evidence: after understanding that the app first restores SMB access and then silently rebuilds about 20 seconds of buffer, prolonged recovery was observed to resume successfully at least twice. The v0.3.8 hardening should therefore be tested as targeted robustness work, not assumed to be replacing a fundamentally broken design.
 
-## Current HOUSE/Tailscale field note
-
-A direct SMB Music HOUSE reproduction now exists and is separate from the older general Tailscale/Android networking observations.
-
-With server v0.8.2 installed and MPD reachable on the home LAN:
-
-- Android v0.4.0 entered HOUSE with Tailscale off and adopted the current MPD track.
-- Turning Tailscale on while HOUSE was active stopped app updates.
-- The phone browser could still read the Pi's HTTP health JSON with Tailscale on or off.
-
-This isolates the current HOUSE failure to v0.4.0's explicit Android-`Network` transport binding rather than general loss of Pi/LAN reachability. The required correction is to use physical non-VPN network/routes for HOUSE qualification and departure detection while normal Android routing carries HOUSE MPD/HTTP/Snapcast traffic. Do not require Tailscale to be disabled as a workaround.
-
-The same field pass also found two behavior/UI corrections: song/PLAY LIST starts preserve local phone mute only when the house was already audibly playing elsewhere; otherwise the initiating phone auto-unmutes, and Mute/Unmute belongs in the lower Media3 control strip.
-
 ## General rule
 
 When changing playback behavior, preserve known-good transport behavior first. A change that looks like cleanup can regress screen-off playback, SMB recovery, Country Buffer behavior, Media3 controls, vehicle routing, or large-queue performance.
