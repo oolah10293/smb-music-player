@@ -2,7 +2,7 @@
 
 v0.4.2 implements immediate service-owned HOUSE Quit cleanup, event-triggered identity/control reacquisition with browser retry reset, and the approved Bluetooth local-output policy. Holding the existing output icon opens separate phone/wired and Bluetooth sync adjustments with reported buffer/latency diagnostics. The offset defaults to zero; the roughly one-second phone/S3 delay remains undiagnosed and needs physical measurement.
 
-Server v0.8.2 stays installed. Build results and exact APK/source artifacts are recorded in [RELEASE_0.4.2.md](RELEASE_0.4.2.md). **No v0.4.2 physical pass is claimed.**
+Server v0.8.2 stays installed. Build results and exact APK/source artifacts are recorded in [RELEASE_0.4.2.md](RELEASE_0.4.2.md). **v0.4.2 now has partial physical results; do not treat untested cases as passing.**
 
 ## Install and configure
 
@@ -74,3 +74,29 @@ These v0.4.0 observations explain the v0.4.1 corrections; the fixes still requir
 - The separate v0.4.0 Mute/Unmute button was not the desired UI. v0.4.1 places its icon inside the lower Media3 controller strip.
 
 After those corrections, repeat the checkpoint with **Tailscale already on before app launch** and again by toggling Tailscale while HOUSE is active. HOUSE control/state and synchronized audio must remain functional while the physical home Wi-Fi/Ethernet network remains present.
+
+
+## v0.4.2 live field results — 2026-09-30
+
+- **PASS:** Bluetooth connect automatically unmutes the HOUSE phone output.
+- **PASS:** Bluetooth disconnect automatically mutes the HOUSE phone output.
+- **PASS, route-specific:** **+400 ms** timing correction is audibly correct against the S3 on the currently tested phone/output path. Keep the adjustment exposed until other devices/routes are measured.
+- **FAIL:** leaving the physical home LAN while audibly playing HOUSE still does not hand the same track to STANDALONE SMB/Tailscale. The app detects departure and remains in HOUSE reconnecting.
+- **FAIL:** returning physically home while in STANDALONE does not reliably transition back into HOUSE. The phone can remain on its private SMB player even though the qualifying home LAN is present.
+- **PASS only after restart/reopen:** closing/reopening the app after that failed return can detect HOUSE and show the shared Now Playing state.
+- **FAIL:** when Bluetooth was already connected during that HOUSE reopen and the HOUSE/S3 session was already playing, the phone attached muted. Existing Bluetooth route state must count as current output intent; do not depend solely on a new connection callback.
+- **Observed consequence of failed return transition:** while the phone remained STANDALONE, manually starting SMB playback and then powering an S3 produced simultaneous independent phone and HOUSE queues. This is the split-brain condition automatic mode selection is supposed to prevent.
+- **FAIL:** Galaxy S8 launch: v0.4.2 crashes when opened. No diagnosis is recorded yet.
+- **PENDING:** dedicated HOUSE Quit/reopen stale-state validation remains open.
+
+### Additional STANDALONE Bluetooth requirement
+
+STANDALONE should use Bluetooth output intent consistently with HOUSE while retaining standalone ownership:
+
+- Bluetooth disconnect -> pause/silence local playback and retain the exact standalone queue/song/position.
+- Bluetooth reconnect -> resume that retained standalone session.
+- If Bluetooth is already connected when the app starts or transitions into STANDALONE, recognize the existing route state rather than requiring a fresh callback.
+- Explicit Stop/Quit remains authoritative and must not be undone merely because Bluetooth is connected.
+- If there is no retained standalone session, Bluetooth connection alone has nothing to start.
+
+This behavior is **not** a substitute for fixing live STANDALONE -> HOUSE return-home transition.
