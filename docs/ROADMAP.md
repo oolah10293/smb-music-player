@@ -228,3 +228,20 @@ Current field results:
 - PASS: lower-strip output icon appearance/location.
 - PASS: muted phone changes song/PLAY LIST without unmuting while an S3 is already audible.
 - FAIL/open: phone/S3 sync, with the phone observed about one second behind the S3.
+
+
+### HOUSE Country Buffer
+
+Approved direction: give the synchronized HOUSE stream a deliberately large **multi-second** playout buffer, while keeping small Snapcast chunks (currently ~20 ms).
+
+Goals:
+
+- ride through short LAN/Wi-Fi contention without audible dropouts;
+- create enough timing headroom for per-client offset correction, especially the Android phone;
+- keep all renderers on the same scheduled house timeline.
+
+Do **not** equate buffer depth with packet/chunk size. Also do not accept "wait for the whole old buffer to drain" as the desired control behavior: deliberate Play/Pause/Next/Previous/Seek/playlist changes should invalidate or rebase stale buffered audio as quickly as the underlying Snapcast path supports.
+
+Exact production buffer depth is intentionally **not locked yet**. Start with several seconds in field testing and balance continuity against radio power-on/rejoin and audible command latency. Verify Snapcast's real discontinuity/flush behavior before claiming aggressive stale-buffer invalidation is solved.
+
+The current S3 dropout correlation with heavier LAN/Internet traffic is motivation for this experiment, not proof of cause.
