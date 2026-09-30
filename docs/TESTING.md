@@ -1,6 +1,6 @@
 # Regression testing
 
-v0.4.0 HOUSE and Browser acceptance is tracked in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md). Run the standalone checks below as regression checks for this build; older field results do not automatically validate it.
+Current HOUSE device acceptance is tracked only in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md). This file is the reusable standalone/regression suite; older field results do not automatically validate a new build.
 
 The project accumulated several fixes where a seemingly harmless UI or performance change could regress proven playback behavior. Run these checks after meaningful playback, SMB, queue, Media3, or Browser changes.
 
@@ -124,8 +124,11 @@ Given the sorted list `A B C D E F`:
 
 ## Quit
 
+Standalone regression:
 - Quit stops standalone playback.
 - Queue clears.
 - Foreground playback notification disappears.
 - Service stops when the UI disconnects.
+
+HOUSE Quit behavior/acceptance is maintained in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md), not duplicated here.
 
