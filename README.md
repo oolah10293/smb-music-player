@@ -98,7 +98,7 @@ The v0.3.8 prolonged-outage recovery hardening still needs its dedicated field t
 
 HOUSE uses the existing Browser/Now Playing UI while the Raspberry Pi remains the authoritative playback host: MPD owns the house session, `house-audio-server` supplies control/session policy, and Snapserver distributes synchronized audio. STANDALONE continues to use the proven SMB/Tailscale -> Media3/ExoPlayer path.
 
-Current Android source is **v0.4.2**. Real-device acceptance is partial: Bluetooth route automation works and the currently tested phone/output route aligns with the S3 at **+400 ms** correction, while live home/away mode transitions, pre-connected-Bluetooth attachment behavior, Galaxy S8 launch compatibility, and HOUSE Quit cleanup still have open work.
+Current Android source is **v0.4.2**. Current device acceptance and open failures are maintained only in [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md).
 
 To avoid duplicating state across documents:
 
