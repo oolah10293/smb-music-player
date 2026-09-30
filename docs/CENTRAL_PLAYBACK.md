@@ -92,6 +92,17 @@ The initial HOUSE output rule is now settled: **entering HOUSE starts the phone 
 
 Place the HOUSE-only **Mute Output / Unmute Output** control in the **lower Media3 Now Playing control strip beside the existing transport/Shuffle/Repeat/time controls** so the main Now Playing layout remains otherwise unchanged. A separate standalone mute button above that strip is not the desired UI.
 
+### Bluetooth output automation
+
+Bluetooth connection state is a local phone-output signal, not a HOUSE transport command.
+
+- When an audio-capable Bluetooth device connects to the phone, **unmute the phone's HOUSE renderer every time**, even if the phone had previously been manually muted.
+- Bluetooth connect by itself does **not** issue MPD Play. If MPD is already playing, the phone joins the current stream. If the server had automatically paused a retained session because the muted phone was the only remaining node, unmuting allows that existing auto-pause rule to resume the retained session. A deliberate MPD Pause/Stop or fresh idle remains respected.
+- When that Bluetooth device disconnects, **mute the phone's HOUSE renderer** and do **not** send MPD Pause/Stop.
+- If another audible house node remains, MPD continues normally.
+- If the Bluetooth disconnect leaves the phone as the only remaining node and therefore muted/inaudible, the server's existing muted-controller rule automatically pauses and retains the queue, track and exact position. This pause is server policy caused by zero audible outputs, not an explicit Pause command from the phone.
+- Bluetooth route loss must never stop playback merely because this phone stopped producing sound while another house output remains audible.
+
 ### Passive-node default playlist selector
 
 HOUSE Browser needs a compact selector for the Pi's passive-radio default folder.
