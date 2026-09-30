@@ -10,12 +10,34 @@ v0.4.2 implements immediate service-owned HOUSE Quit cleanup, event-triggered id
 - Hold the existing output icon for route-specific timing correction. Default 0 ms, range ±2000 ms; positive is earlier. Actual Snapclient ServerSettings provide buffer and server latency; advance retains at least 200 ms headroom. The receiver rejoins when correction changes. The cause of the field sync error has not been established.
 - Optional [shared 3000 ms buffer trial](https://github.com/oolah10293/house-audio-server/blob/main/docs/HOUSE_BUFFER_TRIAL.md) is prepared separately. No Pi configuration or ESP32 firmware was changed. Ordinary FIFO transport changes do not guarantee a shared buffer flush; audible control latency must be measured.
 
-Version name **0.4.2**, version code **14**. Local debug APK assembly and all **27 unit tests** pass: 5 network, 8 output-intent, 3 state, 3 selection/quit epoch, 4 Bluetooth-transition and 4 timing tests. Both native receiver ABIs and all three license notices are packaged. Exact CI/artifact verification follows below. The matching source archive retains pinned native sources and license notices.
+Version name **0.4.2**, version code **14**. Local debug APK assembly and all **27 unit tests** pass: 5 network, 8 output-intent, 3 state, 3 selection/quit epoch, 4 Bluetooth-transition and 4 timing tests. Both native receiver ABIs and all three license notices are packaged. GitHub CI also passed for source `bfb785d94c84778487b898d132c95b79ffa6462b`; exact artifacts are below. The matching source archive retains pinned native sources and license notices.
 
 ## Installation and signing
 
-The CI workflow currently generates a new debug certificate for each runner. Stable upgrade signing is not configured. Expect to save the SMB credentials/House address, uninstall the older debug build and re-enter settings after installation if the signing certificates differ. Exact certificate verification accompanies the delivered APK below.
+The CI workflow currently generates a new debug certificate for each runner. Stable upgrade signing is not configured. **The delivered v0.4.2 certificate differs from v0.4.1, so an in-place update will fail. Save the SMB credentials/House address, uninstall the older debug build, install v0.4.2 and re-enter settings.** Exact certificate verification accompanies the delivered APK below.
 
 ## Physical acceptance
 
 No v0.4.2 phone/S3 pass is claimed. Follow [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md), starting with Quit/reopen and route regain, then Bluetooth and measured sync. Automatic HOUSE→standalone same-song continuation is still unimplemented; the repository's open transition/queue/idle-return/heard-position choices are preserved. v0.3.8 remains the confirmed standalone field baseline.
+
+
+## Exact CI build and artifacts
+
+Source/build commit: [`bfb785d94c84778487b898d132c95b79ffa6462b`](https://github.com/oolah10293/smb-music-player/commit/bfb785d94c84778487b898d132c95b79ffa6462b). [CI run 36756928917](https://github.com/oolah10293/smb-music-player/actions/runs/36756928917) passed on 2026-09-30, including APK assembly, unit tests, native/license checks and source packaging. Later documentation-only commits do not change the app implementation.
+
+| Artifact | Exact download |
+| --- | --- |
+| APK ZIP — extract `app-debug.apk` | [SMBMusicPlayer-debug](https://github.com/oolah10293/smb-music-player/actions/runs/36756928917/artifacts/11117930488) |
+| Matching corresponding source | [SMBMusicPlayer-v0.4.2-source](https://github.com/oolah10293/smb-music-player/actions/runs/36756928917/artifacts/11117995242) |
+
+The delivered `SMBMusicPlayer-v0.4.2.apk` is the exact extracted CI APK, **12,912,426 bytes**. Manifest version name/code, signature, both native receivers and Snapcast/FLAC/Boost notices were verified. The artifact ZIP digest matches GitHub. Keep the corresponding source available alongside the APK when redistributing.
+
+| Bytes identified | SHA-256 |
+| --- | --- |
+| Delivered APK | `cbaa46d41a739419e5ebee095392236030430333d648790a8e113373067b4f60` |
+| APK artifact ZIP | `57ebaa8c1def1576d89d5fb75b6320782086fcaaad0e78b7cdfd0a9af4ee7003` |
+| Source artifact ZIP (GitHub digest) | `d4b45645e11bb4ffc88ebeb6ee343e5d3b0caa3beaec3c54b9185a76e88393e6` |
+
+Verified v0.4.2 signing certificate SHA-256: `256f969b2b6c1d9302c8f9f1686d8193d66a69b9b8ef10e0869491a4774484ac`. The delivered v0.4.1 used `bcd9d0b72e296d90a0cc1a9b1f72a4eeb018f25050f7b12f63b80a649296d285`.
+
+The coordinated server documentation/helper commit is [`3032e08`](https://github.com/oolah10293/house-audio-server/commit/3032e0864c977d7610486ab178ccae6a40b3c308); [server CI](https://github.com/oolah10293/house-audio-server/actions/runs/36756569693) passes all 95 tests. ESP32 handoff notes are [`e46b859`](https://github.com/oolah10293/house-audio-esp32/commit/e46b8596cb61f1a640b10e52af3edb3aa58b7a29), without firmware changes.
