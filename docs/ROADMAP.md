@@ -2,7 +2,7 @@
 
 Unless explicitly linked to approved requirements, these are ideas, not commitments. Proven playback behavior takes priority over feature count.
 
-**Current source: v0.4.2.** v0.4.2 implements immediate service-owned HOUSE Quit cleanup, event-triggered identity/control reacquisition with browser retry reset, and the approved Bluetooth local-output policy. Holding the existing output icon opens separate phone/wired and Bluetooth sync adjustments with reported buffer/latency diagnostics. The offset defaults to zero; the roughly one-second phone/S3 delay remains undiagnosed and needs physical measurement.
+**Current source: v0.4.2.** Bluetooth connect/unmute and disconnect/mute now pass on real hardware, and **+400 ms** is the current route-specific good sync value. Keep timing adjustable pending other devices. Live HOUSE -> STANDALONE continuation and STANDALONE -> HOUSE return-home transition still fail; an already-connected Bluetooth route can be missed on HOUSE reattachment; Galaxy S8 launch crashes. HOUSE Quit cleanup still needs its dedicated v0.4.2 field verdict.
 
 **Current handoff:** [v0.4.2 revision](RELEASE_0.4.2.md), followed by [phone/S3 acceptance](HOUSE_VALIDATION.md). The server repository contains the reversible shared-buffer trial; it has not been applied. Live home/away continuation still needs explicit departure grace/ambiguous-network, queue scope, idle-return and heard-position decisions. Do not count it as implemented.
 
@@ -256,3 +256,17 @@ New v0.4.1 field findings:
 - A network-change callback is only a reason to probe immediately; the real Pi identity/service check still decides whether HOUSE is available.
 
 These corrections belong with the next Android recovery/state-machine slice alongside automatic HOUSE→STANDALONE same-song continuation.
+
+
+### v0.4.2 field-driven next work
+
+Priority corrections from real use:
+
+- fix live HOUSE -> STANDALONE same-song continuation;
+- fix live STANDALONE -> HOUSE return-home transition so reopening is not required and private SMB playback cannot coexist with a separately started HOUSE queue;
+- on HOUSE attachment, evaluate Bluetooth that is already connected and auto-unmute/join when the shared session is already playing;
+- retain adjustable route-specific timing; +400 ms is proven only for the currently tested path;
+- diagnose Galaxy S8 launch crash;
+- finish the dedicated HOUSE Quit/reopen cleanup check.
+
+New standalone output requirement: Bluetooth disconnect retains/pauses the exact SMB session, reconnect resumes it, and already-connected Bluetooth is recognized on app/mode entry. Explicit Stop/Quit still wins; no retained session means no auto-start.
