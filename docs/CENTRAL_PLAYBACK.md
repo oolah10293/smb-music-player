@@ -294,7 +294,7 @@ That evidence points to v0.4.0's explicit Android-`Network` transport binding ra
 
 The same field pass corrected two phone-output requirements:
 
-1. Starting a new playlist or selected track does **not** imply local phone sound. Queue replacement/selection preserves the phone's existing mute state.
+1. Starting a new playlist or selected track follows the pre-command audible-house state: preserve local mute when another house output was already audibly playing; auto-unmute the initiating phone when nothing was audibly playing.
 2. The HOUSE mute/unmute control belongs in the lower Media3 control strip with transport, Shuffle/Repeat, and track time. The separate v0.4.0 mute button is a UI miss to correct.
 
 These findings are product/acceptance updates, not proof of phone/S3 synchronization. That audible checkpoint still follows the networking/UI correction.
