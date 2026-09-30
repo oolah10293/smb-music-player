@@ -1,4 +1,4 @@
-SMB Music Player v0.4.1 — build/install
+SMB Music Player v0.4.2 — build/install
 
 1. Clone or download this repository to a LOCAL folder.
 
@@ -18,21 +18,17 @@ SMB Music Player v0.4.1 — build/install
 6. Click the green Run button for the app configuration.
 
 Current applicationId: com.smbmusic.player
-Current versionCode: 13
-Current versionName: 0.4.1
+Current versionCode: 14
+Current versionName: 0.4.2
 
 CI builds the APK and matching source archive, including corresponding
 Snapclient/FLAC/Boost sources. Keep both artifacts together when distributing.
 Local check: ./gradlew :app:assembleDebug :app:testDebugUnitTest --max-workers=2
 
-v0.4.1 corrects HOUSE/Tailscale routing, conditional playlist auto-unmute,
-and the placement of the output icon in the lower Media3 control strip.
-Keep installed server v0.8.2; no Pi or ESP32 firmware update is required. See docs/HOUSE_VALIDATION.md for the
-combined phone/S3 checkpoint and local House address configuration.
-Live home/away handoff remains a later slice; v0.3.8 is the proven phone
-baseline and standalone regression checks remain required for this build.
+For current v0.4.2 behavior/build boundaries, exact artifacts, checksums,
+and signing details, see docs/RELEASE_0.4.2.md. Current physical HOUSE
+acceptance belongs in docs/HOUSE_VALIDATION.md; standalone regression checks
+are in docs/TESTING.md.
 
-The delivered CI debug APK has a different signing key from v0.4.0.
-It requires a fresh install; save connection details before uninstalling,
-as that clears local settings. See docs/RELEASE_0.4.1.md for exact artifacts,
-checksums and certificate comparison.
+The CI debug certificate can differ between releases, so an in-place update
+may fail. Save connection details before uninstalling an older debug build.
