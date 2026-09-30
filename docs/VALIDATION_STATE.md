@@ -79,7 +79,7 @@ With server v0.8.2 installed and MPD reachable on the home LAN:
 
 This isolates the current HOUSE failure to v0.4.0's explicit Android-`Network` transport binding rather than general loss of Pi/LAN reachability. The required correction is to use physical non-VPN network/routes for HOUSE qualification and departure detection while normal Android routing carries HOUSE MPD/HTTP/Snapcast traffic. Do not require Tailscale to be disabled as a workaround.
 
-The same field pass also found two behavior/UI corrections: song/PLAY LIST starts must preserve local phone mute, and Mute/Unmute belongs in the lower Media3 control strip.
+The same field pass also found two behavior/UI corrections: song/PLAY LIST starts preserve local phone mute only when the house was already audibly playing elsewhere; otherwise the initiating phone auto-unmutes, and Mute/Unmute belongs in the lower Media3 control strip.
 
 ## General rule
 
