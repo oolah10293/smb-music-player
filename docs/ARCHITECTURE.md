@@ -1,14 +1,24 @@
 # Architecture
 
-## v0.4.0 HOUSE boundary
+## Playback backend boundary
 
-Normal app startup probes the configured MPD LAN endpoint before choosing a backend. `PlaybackService` owns either the existing standalone ExoPlayer/SMB engine or `HouseRuntime` with a `HousePlayer` Media3 adapter. The existing Activities, notification, and media controllers use that selected authority. HOUSE HTTP and the Snapcast byte relay bind to the chosen non-VPN Android Network; the upstream receiver supplies decoding and synchronization. Controller heartbeats remain service-owned while the phone is muted/backgrounded. HOUSE Quit releases local sound and presence without MPD Stop/Clear. This first slice reconnects within HOUSE; live home/away handoff remains later work. See [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
+`PlaybackService` owns the selected playback authority behind the same Activities, notification, and Media3 controller surface:
+
+- **STANDALONE:** ExoPlayer / `SmbDataSource` / jcifs-ng owns local playback.
+- **HOUSE:** `HouseRuntime` / `HousePlayer` adapts the Pi-owned session into the app while the bundled Snapcast receiver supplies synchronized phone audio when enabled.
+
+HOUSE qualification uses the physical non-VPN LAN as presence evidence, while ordinary HOUSE control/audio traffic follows normal Android routing. Product rules and transition behavior are intentionally not duplicated here; see [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md). Current physical acceptance belongs in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
 
 ## High-level flow
 
-`MainActivity` → browser / filter / queue construction → `MediaController` → `PlaybackService` → ExoPlayer → `SmbDataSource` → jcifs-ng → SMB server
-
-`NowPlayingActivity` is another controller-facing UI for the same service/player.
+```text
+MainActivity / NowPlayingActivity
+        -> MediaController
+        -> PlaybackService
+             -> STANDALONE: ExoPlayer -> SmbDataSource -> jcifs-ng -> SMB
+             -> HOUSE: HousePlayer / HouseRuntime -> house-audio-server / MPD
+                                      -> bundled Snapcast receiver -> local output
+```
 
 ## Main components
 
@@ -102,16 +112,7 @@ The same rotation is applied after an explicit active-queue sort using the curre
 - jcifs-ng
 - slf4j-nop
 
-## Future central-playback boundary
+## Behavior ownership
 
-A future central-house mode should be added behind a playback backend abstraction rather than by rewriting the Browser or replacing the existing Media3 service.
-
-Conceptually:
-
-`MainActivity / Now Playing` → `PlaybackBackend` → either:
-
-- existing local `MediaController` / `PlaybackService`; or
-- future central-server control/state protocol.
-
-In central mode, the server—not the Android app—must own the active queue, current position, decoding/streaming, and synchronized output-node timing. See [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md).
+This file describes code structure. HOUSE/STANDALONE product behavior, output intent, home/away transitions, and server-session semantics are defined in [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md) and the server's [SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md). Do not copy live validation results into this architecture document.
 
