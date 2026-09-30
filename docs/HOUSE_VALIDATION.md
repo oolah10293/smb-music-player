@@ -20,6 +20,8 @@ Already observed on the real phone:
 - **PASS:** output/mute icon appearance and location are correct in the lower Media3 strip.
 - **PASS:** with an S3 already audible, changing song/PLAY LIST from a muted phone changes the S3/shared queue and the phone stays muted.
 - **FAIL / open:** phone/S3 sync; phone output was observed about **1 second behind** the S3.
+- **PASS:** leaving the qualifying home Wi-Fi correctly makes v0.4.1 recognize the home network as unavailable and stop HOUSE operation even with cellular/Tailscale available.
+- **EXPECTED FAIL / not implemented yet:** the phone did **not** continue the playing HOUSE track over standalone SMB/Tailscale after driving away. The app remained in `HOUSE — home network unavailable; reconnecting`, which matches the current v0.4.1 implementation boundary. Automatic same-song home→away continuation is the next recovery slice.
 
 These are acceptance results only. Do not treat the sync failure as diagnosed yet.
 
