@@ -6,7 +6,7 @@ This file separates behavior exercised in real use from source changes that stil
 
 Final release artifact: Android `9c89b24` (includes heartbeat recovery), paired with server v0.8.2 `9c98973`. Android CI passed the APK build, 3 state tests and both native receiver/license checks; server CI passed with 90 tests. The delivered APK was recovered from that exact run and its archive digest matched GitHub's digest. This is build/package verification only. [Release record](RELEASE_0.4.0.md).
 
-The first Android HOUSE backend/receiver and Browser polish are implemented; phone/S3 audio synchronization and background/standalone regression acceptance remain **pending**. See [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md). The v0.3.8 phone baseline below is preserved as historical field evidence, not automatically promoted to v0.4.0 validation. Server v0.8.1 is installed, and restart with an already-present S3 starting a fresh randomized Rap session is proven. Server v0.8.2's queue reorder helper is source/unit-test work awaiting Pi update.
+The first Android HOUSE backend/receiver and Browser polish are implemented; phone/S3 audio synchronization and background/standalone regression acceptance remain **pending**. See [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md). The v0.3.8 phone baseline below is preserved as historical field evidence, not automatically promoted to v0.4.0 validation. Server v0.8.2 is now installed and healthy. After MPD's LAN listener was enabled, Android v0.4.0 successfully entered HOUSE with Tailscale off and Now Playing adopted the current MPD track.
 
 ## Proven in regular use before v0.3.7
 
@@ -67,9 +67,19 @@ The prolonged-outage recovery hardening has **not yet been field-tested in v0.3.
 
 The older recovery architecture already has functional evidence: after understanding that the app first restores SMB access and then silently rebuilds about 20 seconds of buffer, prolonged recovery was observed to resume successfully at least twice. The v0.3.8 hardening should therefore be tested as targeted robustness work, not assumed to be replacing a fundamentally broken design.
 
-## Current external-network note
+## Current HOUSE/Tailscale field note
 
-Intermittent Android networking failures were previously observed while Tailscale was connected, including normal internet/notifications/Phone Link recovering immediately when Tailscale was disconnected. The same SMB Music build did not need to be open for the failure to occur, so this remains an external Tailscale/Android networking concern unless a direct SMB Music reproduction proves otherwise. Do not weaken the Country Buffer, SMB read-ahead, or audio-focus behavior in response without such evidence.
+A direct SMB Music HOUSE reproduction now exists and is separate from the older general Tailscale/Android networking observations.
+
+With server v0.8.2 installed and MPD reachable on the home LAN:
+
+- Android v0.4.0 entered HOUSE with Tailscale off and adopted the current MPD track.
+- Turning Tailscale on while HOUSE was active stopped app updates.
+- The phone browser could still read the Pi's HTTP health JSON with Tailscale on or off.
+
+This isolates the current HOUSE failure to v0.4.0's explicit Android-`Network` transport binding rather than general loss of Pi/LAN reachability. The required correction is to use physical non-VPN network/routes for HOUSE qualification and departure detection while normal Android routing carries HOUSE MPD/HTTP/Snapcast traffic. Do not require Tailscale to be disabled as a workaround.
+
+The same field pass also found two behavior/UI corrections: song/PLAY LIST starts must preserve local phone mute, and Mute/Unmute belongs in the lower Media3 control strip.
 
 ## General rule
 
