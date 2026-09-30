@@ -102,54 +102,18 @@ The v0.3.8 prolonged-outage recovery hardening still needs its dedicated field t
 
 ## Whole-house audio integration
 
-**Initial HOUSE startup/control/audio and Browser polish are implemented in v0.4.0; phone acceptance and live home/away handoff remain pending.** Read [docs/CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md) for the full target, implementation boundary, and acceptance checklist. [Issue #1](https://github.com/oolah10293/smb-music-player/issues/1) tracks the work. The authoritative cross-project decisions are in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md).
+HOUSE uses the existing Browser/Now Playing UI while the Raspberry Pi remains the authoritative playback host: MPD owns the house session, `house-audio-server` supplies control/session policy, and Snapserver distributes synchronized audio. STANDALONE continues to use the proven SMB/Tailscale -> Media3/ExoPlayer path.
 
-Keep the same folder-first Browser and Now Playing interface. The Raspberry Pi owns the house session through MPD and distributes its sound through Snapserver. The Android app controls that session; it is not a required relay or the house queue owner.
+Current Android source is **v0.4.2**. Real-device acceptance is partial: Bluetooth route automation works and the currently tested phone/output route aligns with the S3 at **+400 ms** correction, while live home/away mode transitions, pre-connected-Bluetooth attachment behavior, Galaxy S8 launch compatibility, and HOUSE Quit cleanup still have open work.
 
-Playback authority and phone sound are separate. **HOUSE output starts muted by default. Playlist-start auto-unmute depends on the pre-command audible-house state.** If MPD is already playing and at least one other house output is audible, a muted phone stays muted while its song/PLAY LIST selection changes the shared queue. If nothing is audibly playing—MPD paused/stopped, or `audibleCount == 0` even while MPD is technically still playing—the initiating muted phone auto-unmutes. Explicit Play from paused/stopped also auto-unmutes. Browsing, sorting, attaching to existing playback, and Next/Previous during already-audible playback do not auto-unmute.
+To avoid duplicating state across documents:
 
-Bluetooth audio-route events are also treated as **phone-local output intent**, not as ordinary MPD transport commands:
-
-- when a Bluetooth audio device disconnects, mute the phone renderer;
-- if another house output remains audible, MPD and those outputs continue uninterrupted;
-- if the phone was the only audible output, the server's existing muted-controller rule auto-pauses and retains the exact queue/song/position **while the phone controller remains connected**;
-- if that last muted phone later disconnects/expires as a controller, the existing last-controller rule ends the retained session;
-- a Bluetooth disconnect itself never sends MPD Pause/Stop;
-- when Bluetooth connects while house music is already playing elsewhere, auto-unmute the phone and join the current HOUSE stream, even if the phone had been manually muted;
-- if Bluetooth connects while HOUSE is idle/paused, connection alone does not start music; when the user subsequently starts music from that phone, Bluetooth presence is strong output intent and the phone must be unmuted for that deliberate start.
-
-
-- **HOUSE:** automatically discover and verify the house service directly on the home LAN. Display its current playlist/track and send `PLAY LIST`, selected-track, transport, queue-sort, Shuffle, and Repeat commands to the Pi. An unmuted phone receives the synchronized house stream; **Mute output / Unmute output** affects only this phone and belongs in the lower Now Playing Media3 control strip beside the existing transport/Shuffle/Repeat/time controls, not as a separate standalone button.
-- **STANDALONE:** preserve existing SMB/Tailscale → ExoPlayer playback, buffering, and recovery. Automatic same-song continuation after leaving HOUSE is approved but not implemented in v0.4.0; that later slice must continue only a phone that was audibly playing, leaving muted/paused/stopped phones silent.
-
-Wi-Fi and Ethernet both count as home-LAN connections. The first v0.4.0 field test showed that pinning HOUSE traffic to an Android non-VPN `Network` stops working when Tailscale is enabled even though the Pi remains reachable through normal Android routing. The revised rule is therefore: use the non-VPN Wi-Fi/Ethernet `Network` and its directly connected routes to prove the configured Pi LAN address is physically on the attached LAN; then verify the expected Pi service and carry MPD/HTTP/Snapcast traffic through normal Android routing. Keep watching that qualifying physical `Network`; losing it is the departure signal, subject to the later grace policy. Tailscale/VPN-only reachability must never count as home. mDNS, SSID matching, GPS, and a custom discovery handshake are not required unless real testing later proves otherwise. A temporary failure at home means **HOUSE reconnecting**, not permission to start a competing independent playlist.
-
-A phone connecting to a freshly idle house waits for explicit Play; **only passive nodes auto-start** a new shuffle of the configured passive default (`MP3s` or `Rap`). Joining existing playback adopts its queue without replacing or restarting it. Closing/quitting the app detaches this phone rather than sending MPD Stop/Clear. The Pi retains controller-selected queues while other nodes remain, finishes the current track when all nodes leave, and cancels that pending stop if a node returns before track end. If only a muted phone remains, it pauses and retains the session until an audible node returns or the phone unmutes.
-
-A completed final-track drain ends the old session, including MPD's `pause @ 0.0` boundary artifact. The next passive start uses a newly randomized order of the configured default folder. The default folder setting persists; the old shuffle order/progress does not. Chance repeats of the first song are allowed, with no forced-different-first-song rule. Reconnecting before track end preserves the existing session without reshuffling. Returning home adopts the existing house session rather than overwriting it with the phone's away queue. Exact transition timing, whole-queue away continuation, and other unresolved edges are listed in the detailed plan rather than treated as decided.
-
-### Current house-side proof
-
-Server **v0.6.2 was tested on the permanent Pi**. On 2026-09-29, the radio returned to the same song after about 10 seconds unplugged and to a different new song after about five minutes unplugged. The captured `/session` response confirms the short-return cancellation path, with `defaultFolder: MP3s`. The persisted MP3s/Rap settings API was subsequently field-proven in v0.7.0. Android v0.4.0 implements its selector and initial HOUSE integration, with phone acceptance pending; detailed contracts and test scope are recorded in the server API documentation.
-
-The central architecture is now proven beyond the original single-renderer stage:
-
-- `house-audio-server` browse/queue/state/transport control is runtime-proven;
-- passive renderer presence survives the real hard-power-switch use case;
-- a passive radio can power on from fresh idle and start house music without a phone;
-- a hard-powered renderer can return and rejoin the still-active song; about six seconds from plug-in to audible output was observed once;
-- passive-radio arrival now resumes an existing paused MPD session, and this was field-proven with two radios present;
-- two independent XIAO ESP32-S3 + PCM5102A nodes have produced **audibly synchronized** output through different downstream audio systems.
-
-Android v0.4.0 now implements the first controller/backend and receiver slice, including the default selector. Its phone/S3 synchronization and controller lifecycle remain hardware checks; live home/away handoff is later work.
-
-A small renderer reliability issue remains under investigation: occasional few-second silence on one ESP32 node or the other. Both nodes have their external antennas installed. Server v0.6.0 adds unattended diagnostics so future dropouts can be correlated without assuming a Wi-Fi cause.
-
-Related projects:
-
-- [house-audio-server](https://github.com/oolah10293/house-audio-server) — Raspberry Pi MPD/Snapserver backend plus shared control/discovery layer and browser controller
-- [house-audio-esp32](https://github.com/oolah10293/house-audio-esp32) — ESP32-S3 synchronized renderer nodes
-- [smb-player-pc](https://github.com/oolah10293/smb-player-pc) — Windows player/controller
+- [docs/CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md) is the **normative Android HOUSE behavior/architecture**.
+- [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md) is the **current physical-test checklist and live field results**.
+- [docs/VALIDATION_STATE.md](docs/VALIDATION_STATE.md) is the **historical validation summary**.
+- [docs/RELEASE_0.4.2.md](docs/RELEASE_0.4.2.md) is the **immutable v0.4.2 build/artifact record**.
+- [docs/ROADMAP.md](docs/ROADMAP.md) contains **open work and future features only**.
+- The authoritative cross-project session rules live in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md).
 
 ## Build
 
@@ -206,102 +170,3 @@ No SMB credentials, private network addresses, personal paths, or user-specific 
 ## License
 
 No license has been selected for the original app code. The isolated bundled Snapclient and its dependencies retain their own licenses; see [native/README.md](native/README.md). CI distributes corresponding receiver source and build files alongside the APK, and license texts are included in APK assets.
-
-
-### Passive-default API field proof
-
-The server half of the planned HOUSE Browser `MP3s` / `Rap` button is now field-proven on the permanent Pi.
-
-- `GET /settings` reported the current default and allowed values.
-- `POST /settings` changed the default from `MP3s` to `Rap`.
-- The currently playing song did not change when the setting was changed.
-- After the last S3 stayed off for about ten minutes and the old session completed, powering the S3 back on started a fresh Rap session (first observed track: Ludacris — *Southern Hospitality*).
-
-Android v0.4.0 uses this field-proven passive-default API. Controller presence/output state is implemented in the deployed server; physical phone transition validation remains pending.
-
-### Server v0.8.0 dependency update
-
-Controller presence and muted-phone session handling are implemented/tested in server v0.8.0 (73 tests and CI pass). v0.8.0 is installed on the permanent Pi; initial health/passive-S3 baseline checks pass, while physical controller transition tests remain pending.
-
-Background/screen-off controllers retain presence through five-second heartbeats and fifteen-second expiry. If the last controller leaves an automatically paused session, the Pi ends it without advancing. Phone control/audio roles are counted once, and known phone renderers cannot become passive auto-starters. Android v0.4.0 now supplies HOUSE wiring, the synchronized receiver, and the approved Browser polish, pending phone acceptance; see [CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md).
-
-
-### v0.8.0 controller backend deployment
-
-The server-side controller/output contract required by Android HOUSE mode is now deployed on the permanent Pi.
-
-Initial validation:
-
-- server health is `ok` on v0.8.0;
-- MPD and Snapserver remain healthy;
-- with no controller attached, the existing S3 is still correctly classified as a passive renderer;
-- `GET /controllers` reports zero controllers, one present passive renderer, and matching present/audible counts.
-
-Physical muted-controller pause/resume/expiry behavior still needs field testing before being called proven.
-
-Restart behavior is now also settled: a `house-audio-server` restart is a fresh-session boundary. Android should simply reattach after restart; it must not expect the old live lease, mute/readiness report, auto-pause reason, queue/session, or pending drain to be reconstructed. Durable controller↔renderer ownership and the server's passive-default setting remain persistent. Controller reconnect alone stays idle; a passive S3 may start a new shuffled default session.
-
-### Server v0.8.1 restart boundary — deployed / field-proven for radio-already-present restart
-
-Server restart now clears the old MPD queue/session to fresh idle before accepting playback writes. The Pi keeps the saved MP3s/Rap default and controller↔renderer ownership. Controller reconnection alone stays idle; a passive S3 starts a newly shuffled default. Ordinary dependency reconnections within the running service do not reset its session.
-
-Android must reattach with a new lease, preserve its own mute intent, and respect `startup.ready` / 503 `startup_pending`; it must not restore its former queue into MPD. The server has 85 passing local tests and GitHub CI passed. v0.8.1 is now the confirmed Pi deployment. With one passive S3 already powered during the service restart, startup reached ready and a fresh randomized Rap session started; the server snapshot reported `lastAction: started_default_session`. Physical controller pause/resume/expiry validation remains pending, and the all-radios-off restart variant has not yet been separately exercised.
-
-That server release made no Android or ESP32 firmware change. The subsequent Android v0.4.0 source now implements HOUSE through the existing UI plus Browser polish and the saved-default selector. The next checkpoint is the combined phone/S3 acceptance session; no ESP32 firmware update is required.
-
-
-### v0.4.0 first phone field findings
-
-The first real-phone HOUSE startup exposed three actionable issues/decisions:
-
-- The Pi's MPD daemon was initially listening only on loopback, so no LAN client could complete the HOUSE identity probe. The permanent configuration must keep MPD available on localhost **and** the configured home-LAN address. No private deployment address belongs in source/docs examples.
-- After the LAN MPD listener was enabled, Android v0.4.0 successfully entered HOUSE with Tailscale off and Now Playing adopted the track already playing on MPD.
-- Turning Tailscale on while HOUSE was active caused the app to stop updating, while the phone browser could still read the house server JSON over the same LAN address with Tailscale either on or off. This isolates the problem to v0.4.0's explicit Android-`Network` transport binding, not Pi reachability.
-
-The corrective networking design is to use the physical non-VPN network for **presence/identity and departure detection only**, while ordinary HOUSE MPD/HTTP/Snapcast connections use normal Android routing.
-
-Two UI/behavior corrections are also locked from this field pass:
-
-- starting a new playlist/selected track uses the pre-command audible-house state: preserve mute if MPD was already playing with another audible output; otherwise auto-unmute the initiating phone, including when `audibleCount == 0`;
-- the HOUSE **Mute Output / Unmute Output** control belongs in the lower Now Playing Media3 control strip with the existing Shuffle/Repeat/time controls, not as a separate standalone button.
-
-These are follow-up requirements to the delivered v0.4.0 build, not claims that the current APK already satisfies them.
-
-
-### v0.4.1 first physical results
-
-The correction build now has partial real-phone acceptance:
-
-- **PASS:** HOUSE works with Tailscale connected.
-- **PASS:** the HOUSE output/mute icon is correct in appearance and location inside the lower Media3 strip.
-- **PASS:** with an S3 already audibly playing, changing song/PLAY LIST from a muted phone changes the shared S3 playback while the phone stays muted.
-- **FAIL / open:** phone/S3 audible synchronization is not yet acceptable; the phone was observed roughly **1 second behind** the S3.
-
-The Bluetooth route policy above is newly approved product behavior and is **not yet claimed implemented** by v0.4.1.
-
-
-### v0.4.1 return-home / Quit field findings
-
-A real drive-away and return-home pass exposed two additional Android state/recovery defects:
-
-- **HOUSE Quit local-state cleanup FAIL:** after explicit Quit, the phone can retain/display the previous HOUSE track in local Now Playing state. HOUSE Quit must detach the controller and stop local output **without** stopping MPD for other nodes, but it must also clear the phone's cached HOUSE playback/UI state. On the next launch, Now Playing must come from a fresh server read. If the server is genuinely still playing the same song, showing it again is correct only after that fresh adoption.
-- **Return-home reacquisition PARTIAL/FAIL:** after the phone is physically back on the home Wi-Fi, v0.4.1 can remain at `HOUSE unavailable: Socket closed / Retrying in 15s...` before eventually recovering. Gaining a qualifying physical home route must trigger an **immediate HOUSE identity/control reconnect attempt** rather than waiting for the ordinary 15-second retry backoff.
-
-These are Android client findings; they do not imply that the Pi session should be stopped or cleared.
-
-
-### v0.4.2 physical feedback
-
-Real-device testing has now established the following:
-
-- **PASS:** Bluetooth audio connect automatically unmutes the HOUSE phone output.
-- **PASS:** Bluetooth audio disconnect automatically mutes the HOUSE phone output.
-- **PASS for the current tested route:** a **+400 ms** HOUSE timing correction makes the phone and S3 audibly line up. Keep the correction adjustable; this is not yet a universal offset for every phone/Bluetooth device.
-- **FAIL:** automatic HOUSE -> STANDALONE continuation after physically leaving the home LAN still does not occur. The app detects home-LAN loss but remains in HOUSE reconnecting instead of continuing the same playing track through SMB/Tailscale.
-- **FAIL:** automatic STANDALONE -> HOUSE transition on returning to the home LAN still does not occur reliably. The app can remain in standalone playback until it is closed/reopened; reopening then detects HOUSE.
-- **Observed split-brain consequence:** while stranded in STANDALONE after returning home, the phone can play its private SMB queue while powering an S3 starts the separate authoritative HOUSE queue.
-- **FAIL:** if Bluetooth is already connected when the app reopens/reattaches to an already-playing HOUSE session, the phone can attach muted. Existing Bluetooth output intent must be evaluated on HOUSE attachment, not only on a new Bluetooth-connect callback.
-- **FAIL:** v0.4.2 crashes on launch on a Galaxy S8. No cause is assigned yet.
-- HOUSE Quit stale-state cleanup still needs its dedicated v0.4.2 physical verdict; closing the standalone player and reopening is not evidence for that HOUSE-specific case.
-
-A new desired STANDALONE behavior is also approved: Bluetooth output intent should mirror HOUSE ergonomics. Disconnect should silence/pause while retaining the exact standalone queue/song/position; reconnect should resume that retained session. An already-connected Bluetooth route must be recognized at app start or mode entry. Explicit Stop/Quit remains authoritative, and Bluetooth alone has nothing to start when no retained standalone session exists.
