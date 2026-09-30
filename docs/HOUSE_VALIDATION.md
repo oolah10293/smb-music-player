@@ -1,6 +1,6 @@
 # v0.4.2 HOUSE correction checkpoint
 
-v0.4.2 implements immediate service-owned HOUSE Quit cleanup, event-triggered identity/control reacquisition with browser retry reset, and the approved Bluetooth local-output policy. Holding the existing output icon opens separate phone/wired and Bluetooth sync adjustments with reported buffer/latency diagnostics. The offset defaults to zero; the roughly one-second phone/S3 delay remains undiagnosed and needs physical measurement.
+v0.4.2 implements immediate service-owned HOUSE Quit cleanup, event-triggered identity/control reacquisition with browser retry reset, and the approved Bluetooth local-output policy. Holding the existing output icon opens separate phone/wired and Bluetooth sync adjustments with reported buffer/latency diagnostics. Physical testing now shows **+400 ms** is audibly correct for the currently tested phone/output route; keep timing adjustable pending other devices.
 
 Server v0.8.2 stays installed. Build results and exact APK/source artifacts are recorded in [RELEASE_0.4.2.md](RELEASE_0.4.2.md). **v0.4.2 now has partial physical results; do not treat untested cases as passing.**
 
