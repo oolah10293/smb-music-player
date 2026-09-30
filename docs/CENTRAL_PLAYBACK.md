@@ -1,12 +1,12 @@
 # Android integration with house-audio-server
 
-**Current source status: v0.4.1 implements the three corrections from the v0.4.0 phone pass: physical-route qualification with normal packet routing, pre-command conditional auto-unmute, and an output icon inside the lower Media3 controller strip. Phone acceptance remains pending.** Live home/away handoff remains the next recovery slice. See [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md) for the implemented boundary and checkpoint. The standalone v0.3.8 player remains the confirmed hardware baseline: search X/height, shared sort, current-track-first sorting, Repeat All, vehicle/Bluetooth behavior, fade, Tailscale startup, metadata, Country Buffer, and SMB tuning. Prolonged-outage hardening still needs its targeted field check. Requirements below remain the full target, not claims that every item is already validated.
+This document is the **normative Android HOUSE/STANDALONE behavior and architecture contract**. Current source/build identity belongs in the release record; current real-device pass/fail status belongs in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md); historical validation belongs in [VALIDATION_STATE.md](VALIDATION_STATE.md).
 
 The authoritative product rules are in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md). This document translates those decisions into Android requirements and identifies the corresponding implementation work. Engineering proposals and unresolved details below are not additional user-approved behavior.
 
 Tracking: [Android Issue #1](https://github.com/oolah10293/smb-music-player/issues/1).
 
-Current handoff: [Android v0.4.1 correction release](RELEASE_0.4.1.md), paired with already-installed server v0.8.2. The [v0.4.0 record](RELEASE_0.4.0.md) preserves its artifacts and heartbeat fix. Phone/S3 acceptance remains pending.
+Current implementation/build references are intentionally kept out of this behavior contract. See [RELEASE_0.4.2.md](RELEASE_0.4.2.md) and [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
 
 ## 1. Separate playback authority from phone sound
 
@@ -237,7 +237,7 @@ Retain the unresolved choices in the canonical server document: home/away networ
 
 These gaps do not undo the approved behavior. They must not be filled with silent assumptions. **Two physical ESP32/PCM5102A renderers are now audibly synchronized**, so the Snapcast multi-renderer architecture itself is proven. That does **not** prove Android rendering, Android timing, or seamless phone handoff. Android rendering/timing need hardware acceptance; live handoff still requires implementation and tests. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
 
-**Current Android status:** v0.4.1 retains the initial HOUSE runtime/Browser polish and implements the first phone-pass corrections, with hardware acceptance pending. The Pi-side basic API, passive-radio behavior, ordinary pause resume, two-S3 audible synchronization, saved default selection, and v0.8.1 restart with an already-present S3 have field evidence. Physical controller transitions and Android synchronization remain unproven. Server v0.8.2 supplies the guarded `/queue/reorder` helper required by Now Playing Sort; it preserves song identity, playback position, transport, and session-policy ownership using MPD queue IDs. The combined checkpoint is [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
+Implementation and field evidence are tracked outside this contract. Use [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md) for Android acceptance and the server [API.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/API.md) for the deployed control contract.
 
 ### Controller lease and renderer-ownership contract
 
@@ -263,19 +263,19 @@ While `startup.ready` is false, show startup/reconnecting and treat old queue/st
 
 The whole-house path should adopt the same basic resilience philosophy as the standalone Country Buffer, but at a much smaller time scale: **use a deliberately generous multi-second Snapcast playout buffer so brief LAN/Wi-Fi contention does not become audible.**
 
-This is a design requirement, not a claim that the current v0.4.1/S3 stack already implements the final value.
+This is a design requirement, not a claim that the currently deployed stack already implements the final value.
 
 Required direction:
 
 - Keep Snapcast source chunking small (currently about `20 ms`). **Chunk size and playout-buffer depth are separate controls.** A multi-second buffer does not imply multi-second packets.
 - Increase the HOUSE synchronized playout buffer beyond the current ~`1000 ms` baseline and tune it experimentally. Exact production depth is not yet locked; start with several seconds rather than one second.
-- The purpose is to absorb short Wi-Fi/LAN stalls and provide headroom for per-client latency compensation, including the Android phone's currently observed ~1-second lag.
+- The purpose is to absorb short Wi-Fi/LAN stalls and provide headroom for renderer-specific output-latency compensation.
 - Deliberate user controls—Play/Pause, Next/Previous, Seek, selected-track/PLAY LIST changes—must not be designed around waiting for the entire old playout buffer to drain. Obsolete buffered audio should be invalidated/rebased as promptly as the Snapcast/client stack permits, then resume on the new synchronized timeline.
 - Verify the actual upstream Snapcast behavior for discontinuities/flush/rejoin before treating instant stale-buffer invalidation as implemented. If the current client/server path cannot do that cleanly, choose the largest buffer that preserves acceptable control responsiveness or add an explicit reset/rejoin mechanism.
 - A larger HOUSE buffer is allowed to increase node power-on/rejoin time and overall MPD-to-speaker latency within reason; continuity and synchronization are more important than sub-second command-to-sound latency for music playback.
 - Phone/S3 per-client latency calibration remains a separate feature from the shared HOUSE buffer. The shared buffer provides timing headroom; the client offset compensates a repeatable output-path delay.
 
-Field motivation: the S3 renderers have shown brief dropouts that appear correlated with heavier LAN/Internet traffic. A larger synchronized buffer is an approved mitigation experiment, **not yet a root-cause diagnosis**.
+The reversible experiment, current deployment status, and renderer-dropout motivation are tracked in the server's [HOUSE_BUFFER_TRIAL.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/HOUSE_BUFFER_TRIAL.md) and ESP32 Issue #3 rather than duplicated here.
 
 ## Implementation status reference
 
