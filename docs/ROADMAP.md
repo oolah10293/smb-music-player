@@ -12,7 +12,7 @@ This file contains **open work and future features only**. Completed implementat
 
 2. **Finish Bluetooth output-intent handling**
    - On HOUSE attach/reopen, honor Bluetooth that is already connected when HOUSE is already playing.
-   - Keep route timing adjustable; **+400 ms** is proven only for the currently tested phone/output route.
+   - Keep route timing adjustable; current measured values belong in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md), not the roadmap.
    - Add STANDALONE parity: disconnect retains/pauses the exact local session; reconnect resumes; existing Bluetooth is recognized on app/mode entry; explicit Stop/Quit wins.
 
 3. **Galaxy S8 compatibility**
@@ -33,19 +33,8 @@ This file contains **open work and future features only**. Completed implementat
 
 ## Next major HOUSE features
 
-### Internet radio through MPD
-
-Keep MPD as the one playback/source authority:
-
-```text
-station URL -> MPD -> FIFO -> Snapserver -> HOUSE
-```
-
-Open design work: station storage/selection, controller UI, metadata, source switching, and reconnect behavior.
-
-### Dedicated synchronized subwoofer node
-
-Treat the subwoofer as another renderer of the authoritative HOUSE stream. Prototype crossover/low-pass handling, mono/sub output, level control, and per-node timing/phase compensation before freezing hardware or firmware requirements.
+- **Internet radio through MPD:** tracked in [house-audio-server Issue #5](https://github.com/oolah10293/house-audio-server/issues/5). MPD remains the source authority.
+- **Dedicated synchronized subwoofer node:** tracked in [house-audio-esp32 Issue #4](https://github.com/oolah10293/house-audio-esp32/issues/4).
 
 ## Later candidates
 
