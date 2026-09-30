@@ -2,6 +2,15 @@
 
 This history is reconstructed from the actual saved source checkpoints. Release notes are condensed, but behavior and rationale are preserved. Public copies remove device/location-specific comments; functional code is otherwise retained.
 
+## 0.4.2 — HOUSE recovery/output-intent correction build
+
+- Added service-owned HOUSE Quit teardown/cleanup protections so local receiver/session state can be cleared without sending MPD Stop/Clear.
+- Added event-triggered HOUSE identity/control reacquisition and browser retry reset around physical-network changes.
+- Added Bluetooth media-output intent handling for HOUSE: media-capable output addition unmutes locally; final removal/noisy-route loss mutes locally; route events do not directly issue MPD transport commands.
+- Added separate phone/wired and Bluetooth synchronization adjustments through the existing output control, with reported Snapcast buffer/latency diagnostics and bounded correction.
+- Retained server v0.8.2 as the control/session dependency; the optional larger shared Snapcast-buffer trial is separate and not part of the Android APK.
+- Build/artifact/signing details are frozen in [docs/RELEASE_0.4.2.md](docs/RELEASE_0.4.2.md). Live physical acceptance is maintained only in [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md).
+
 ## 0.4.1 — first HOUSE phone-test corrections (physical acceptance pending)
 
 - Qualify home using non-VPN Wi-Fi/Ethernet and a directly connected route to the configured Pi address, then check MPD/house-service identity. Use normal Android routing for MPD/HTTP/Snapcast so Tailscale can remain on.
