@@ -18,7 +18,24 @@ The CI workflow currently generates a new debug certificate for each runner. Sta
 
 ## Physical acceptance
 
-No v0.4.2 phone/S3 pass is claimed. Follow [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md), starting with Quit/reopen and route regain, then Bluetooth and measured sync. Automatic HOUSE→standalone same-song continuation is still unimplemented; the repository's open transition/queue/idle-return/heard-position choices are preserved. v0.3.8 remains the confirmed standalone field baseline.
+v0.4.2 now has **partial** real-device acceptance. Follow [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md) for the live checkpoint. v0.3.8 remains the confirmed standalone field baseline.
+
+Confirmed on the current primary test path:
+
+- Bluetooth connect -> HOUSE phone output auto-unmutes: **PASS**.
+- Bluetooth disconnect -> HOUSE phone output auto-mutes: **PASS**.
+- Phone/S3 audible synchronization at **+400 ms** correction: **PASS for the currently tested phone/output route**. Keep route timing adjustable until other phones/Bluetooth devices are tested; do not make +400 ms a universal hard-coded value.
+
+Open/failing:
+
+- HOUSE -> STANDALONE same-song continuation after physical home-LAN loss: **FAIL / still absent**. The app detects departure but remains HOUSE-reconnecting rather than continuing over SMB/Tailscale.
+- STANDALONE -> HOUSE on physical return home: **FAIL**. v0.4.2 can remain in local SMB playback after the qualifying home LAN is restored. Closing/reopening the app can then detect HOUSE, which proves cold/reopen qualification can work while live mode transition is still broken.
+- The failed return transition can create **two independent playback worlds**: the phone continues its standalone SMB queue while powering an S3 starts/joins the separate authoritative HOUSE queue.
+- HOUSE attachment with Bluetooth **already connected**: **FAIL** when HOUSE is already playing. Reopen can detect HOUSE yet leave the phone muted. Existing route state must be evaluated at attachment; a pre-existing Bluetooth output should join an already-playing HOUSE session just as a new Bluetooth-connect event does. Existing Bluetooth alone must not start a deliberately idle/stopped HOUSE session.
+- Galaxy S8 launch compatibility: **FAIL**; v0.4.2 crashes when opened. Root cause is not yet established.
+- HOUSE Quit cleanup still needs a dedicated v0.4.2 physical verdict.
+
+New desired behavior recorded after this release: STANDALONE/SMB should receive the same Bluetooth output-intent ergonomics. Disconnect should pause/silence local playback while retaining exact queue/song/position; reconnect should resume the retained standalone session; already-connected Bluetooth must be recognized on app/mode entry; explicit Stop/Quit wins; with no retained session, Bluetooth connect alone starts nothing.
 
 
 ## Exact CI build and artifacts
