@@ -6,7 +6,7 @@ This file separates behavior exercised in real use from source changes that stil
 
 The three first-phone-pass corrections are implemented: physical-route home qualification with normal Android routing, pre-command conditional playlist auto-unmute, and an output icon inside the Media3 bottom strip. Local APK build and all 15 tests pass (5 network-policy, 7 output-policy, 3 state), along with both native ABI/license checks. GitHub CI passed for source `6d4305a`, and the delivered APK was extracted from that exact run with the archive digest verified. See [release record](RELEASE_0.4.1.md) for artifacts, checksums and the debug-signing/fresh-install requirement.
 
-**No v0.4.1 physical pass is claimed.** Tailscale-on launch/toggle, route loss/recovery, audible-output mute cases, lower-strip layout, phone/S3 synchronization, background controller lifecycle, and standalone regression are the next [checkpoint](HOUSE_VALIDATION.md). Server v0.8.2 is already installed and healthy; no server/ESP32 update is part of this slice. Automatic home/away handoff remains subsequent work.
+v0.4.1 now has a **partial physical pass**. Confirmed on the real phone: HOUSE works with Tailscale connected; the output icon is correct in appearance/location; and changing song/PLAY LIST from a muted phone while an S3 is already audible keeps the phone muted while the shared S3 playback changes. **Phone/S3 synchronization is currently a failed/open check:** the phone was observed about one second behind the S3. Route-loss/recovery, remaining conditional-output cases, background controller lifecycle, and standalone regression are still pending. Server v0.8.2 is already installed and healthy. Automatic home/away handoff remains subsequent work.
 
 ## v0.4.0 HOUSE source checkpoint
 
@@ -90,3 +90,15 @@ The same field pass also found two behavior/UI corrections: song/PLAY LIST start
 ## General rule
 
 When changing playback behavior, preserve known-good transport behavior first. A change that looks like cleanup can regress screen-off playback, SMB recovery, Country Buffer behavior, Media3 controls, vehicle routing, or large-queue performance.
+
+
+## Approved Bluetooth HOUSE output behavior
+
+This is a **new requirement**, not a v0.4.1 validation claim.
+
+- Bluetooth disconnect -> mute phone output; never directly Pause/Stop MPD.
+- If another audible node remains, shared playback continues.
+- If the phone was the only audible node, server policy auto-pauses and retains the exact session while the muted phone controller remains connected.
+- If that final muted phone controller later disconnects/expires, existing session-end policy applies.
+- Bluetooth connect while house music is already playing -> auto-unmute/rejoin the phone, overriding a prior manual local mute.
+- Bluetooth connect by itself does not start idle/paused playback; a later deliberate music start from that phone should be audible through the connected Bluetooth route.
