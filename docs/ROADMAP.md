@@ -188,4 +188,27 @@ A server restart is now intentionally a fresh-session boundary. The Android clie
 2. **IMPLEMENTED in v0.4.0; next checkpoint is phone/S3 acceptance:** HOUSE backend and bundled synchronized phone receiver through the existing Browser/Now Playing UI, including Browser alignment/folder-label/button swaps and server-owned MP3s/Rap selector. STANDALONE retains SMB/Media3. HOUSE respects startup readiness and reattaches after restart. Server v0.8.2 adds guarded in-place queue sorting. See [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
 3. **Next acceptance checkpoint:** silent HOUSE opening, deliberate phone unmute, phone/S3 synchronization, and Quit leaving the radio playing. Then complete home/away recovery and final device acceptance under the documented remaining decisions.
 
-The confirmed installed server is now v0.8.1. The already-present-radio restart case is field-proven; the all-radios-off restart variant has not yet been separately tested. Physical controller pause/resume/expiry checks remain pending. No new Android APK or ESP32 firmware is claimed by this server step.
+The confirmed installed server is now v0.8.2. Its health/startup baseline is good and Android v0.4.0 successfully entered HOUSE once MPD was exposed on the LAN, with Now Playing adopting the current MPD track. Physical controller pause/resume/expiry and phone/S3 synchronization checks remain pending.
+
+
+### First v0.4.0 phone findings
+
+The initial phone checkpoint produced useful corrections before the synchronization test:
+
+- MPD had been listening on localhost only. The Pi configuration now requires both localhost and the configured LAN listener so HOUSE identity checks are possible.
+- With that fixed and Tailscale off, v0.4.0 entered HOUSE and showed the current MPD track.
+- Turning Tailscale on stopped HOUSE updates even though the same Pi HTTP JSON remained reachable in the phone browser. The v0.4.0 explicit Android-`Network` transport binding is therefore a known field defect.
+- Revised design: qualify HOUSE using the presence/routes of a real non-VPN Wi-Fi/Ethernet network, watch that physical network for departure, but carry normal HOUSE MPD/HTTP/Snapcast traffic through normal Android routing so Tailscale may remain connected.
+- Starting/replacing a playlist must preserve local phone mute. Tapping a song or PLAY LIST no longer implies local unmute.
+- The HOUSE Mute/Unmute control must be moved into the lower Media3 control strip alongside transport, Shuffle/Repeat, and track time.
+
+### Immediate Android correction slice
+
+Before resuming the phone/S3 audible checkpoint:
+
+1. separate physical-home qualification from HOUSE packet routing so Tailscale-on-at-home remains HOUSE;
+2. preserve mute state across selected-track / PLAY LIST queue starts;
+3. move Mute/Unmute into the lower Media3 controller strip;
+4. rerun silent opening and then the phone/S3 synchronization/controller-lifecycle checkpoint.
+
+Automatic home/away same-song handoff remains the following slice. The physical network object/route, not mere Pi reachability through Tailscale, will be the departure authority.
