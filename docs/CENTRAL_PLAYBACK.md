@@ -63,6 +63,8 @@ A temporary home-server, Wi-Fi, MPD, HTTP, or audio failure must not silently st
 
 Show the active control target and distinguish control-server failure from audio-receiver failure where possible. Suggested status wording includes `HOUSE - reconnecting`, `House server unavailable`, and `Audio reconnecting`. Start retrying when failure is detected, not only after an audio buffer empties. Recovery joins the current house position, not an old backlog.
 
+A **physical network gain/change** that creates a qualifying directly connected home route is a high-value recovery signal. It must bring the next HOUSE identity/control probe forward immediately and reset/override an ordinary retry backoff. Do not leave a phone that has returned to home Wi-Fi sitting on a previous `Socket closed / Retrying in 15s` timer before trying the newly available home path. A network-change signal triggers a real probe; it is not itself proof that HOUSE is healthy.
+
 ## 3. Folder browsing, queue control, and shared state
 
 Preserve **folders are playlists**, Browser/Now Playing separation, browser scroll position, current-folder search, explicit sort modes, and filename fallback. Do not replace them with a metadata-first library UI.
@@ -148,6 +150,8 @@ The Pi, not every app independently, applies these agreed rules:
 Every genuinely fresh passive-node session starts the configured default folder (`MP3s` or `Rap`) with Shuffle and Repeat All and a newly randomized order. The selected folder setting persists; shuffled order/progress does not survive a completed session. Chance repeats of the first song are allowed, with no forced-difference rule. Returning before the final track ends preserves the existing session unchanged. After a completed drain, MPD's possible `pause @ 0.0` on the next old-queue track is only an artifact: the next passive start must load a fresh default queue, not resume the old controller selection. Ordinary paused sessions remain resumable. Android attachment must not reshape the queue or impose passive defaults on manually selected queues.
 
 **HOUSE Quit must detach this phone, not send global Stop/Clear.** The current standalone Quit implementation stops and clears its local player; that behavior must remain standalone-only. Other rooms continue under the server's rules. If this phone was the final node, the server handles the final-track stop; the app does not implement its own competing shutdown logic.
+
+HOUSE Quit must also clear **phone-local HOUSE presentation/cache state**: cached track/metadata/position/queue and stale HOUSE availability must not survive Quit as if they were current authoritative playback. On a later launch the app must freshly qualify HOUSE and fetch current server state before presenting a HOUSE track. If MPD is genuinely still playing the same song, that song may legitimately appear again only after the fresh server adoption.
 
 The 2026-09-29 choices settle these edges: background/screen-off apps remain controllers while sending five-second heartbeats, with fifteen-second expiry; Quit detaches immediately. The last controller leaving an automatically paused session ends it without advancing the song. A still-audible renderer can survive control-lease expiry as an output, counted once for that device. A stale established socket alone is not presence.
 
@@ -353,3 +357,14 @@ Required direction:
 - Phone/S3 per-client latency calibration remains a separate feature from the shared HOUSE buffer. The shared buffer provides timing headroom; the client offset compensates a repeatable output-path delay.
 
 Field motivation: the S3 renderers have shown brief dropouts that appear correlated with heavier LAN/Internet traffic. A larger synchronized buffer is an approved mitigation experiment, **not yet a root-cause diagnosis**.
+
+
+## 13. v0.4.1 Quit and return-home findings
+
+Real-phone testing after the drive-away checkpoint found:
+
+- Explicit HOUSE Quit can leave the prior HOUSE song cached/displayed locally. This is a **client cleanup failure**. Quit must detach/stop this phone's renderer and clear local HOUSE UI/cache while leaving MPD and other nodes alone.
+- After returning physically home, the app can show `HOUSE unavailable: Socket closed` and `Retrying in 15s...` before it eventually recognizes/reconnects to HOUSE. Recovery eventually works, but reacquisition is too slow.
+- The required correction is event-driven retry: when Android reports a qualifying home Wi-Fi/Ethernet route becoming available, immediately perform the real HOUSE identity/control probe instead of waiting for the stale retry timer.
+
+Do not solve either defect by stopping/clearing the server session. A later fresh server read may legitimately return the same song that was playing before Quit.
