@@ -4,7 +4,21 @@ This file separates behavior exercised in real use from source changes that stil
 
 ## v0.4.2 revision checkpoint
 
-v0.4.2 implements immediate service-owned HOUSE Quit cleanup, event-triggered identity/control reacquisition with browser retry reset, and the approved Bluetooth local-output policy. Holding the existing output icon opens separate phone/wired and Bluetooth sync adjustments with reported buffer/latency diagnostics. The offset defaults to zero; the roughly one-second phone/S3 delay remains undiagnosed and needs physical measurement. See [release verification](RELEASE_0.4.2.md) and the updated [physical checklist](HOUSE_VALIDATION.md). Build/unit tests do not establish device behavior. The shared 3000 ms buffer experiment is prepared in the server repository, not deployed. v0.4.1 Tailscale, output-icon and muted queue-change passes remain valid; its sync/Quit/return-home failures are the baseline for this revision.
+v0.4.2 implements service-owned HOUSE Quit cleanup, event-triggered identity/control reacquisition, the approved Bluetooth local-output policy, and separate phone/wired vs Bluetooth timing adjustment. See [release verification](RELEASE_0.4.2.md) and [physical checklist](HOUSE_VALIDATION.md).
+
+Real-device results are now partial:
+
+- Bluetooth connect/unmute and disconnect/mute: **PASS**.
+- **+400 ms** correction: **audibly synchronized on the currently tested phone/output path**; keep adjustment available until other devices are measured.
+- physical HOUSE departure detection: still works, but HOUSE -> STANDALONE same-song continuation remains **FAIL / absent**.
+- live return-home STANDALONE -> HOUSE transition: **FAIL**; closing/reopening can detect HOUSE, so live transition is specifically still broken.
+- existing Bluetooth at HOUSE reattachment while the shared session is already playing: **FAIL**; phone can attach muted.
+- Galaxy S8 launch: **FAIL**, immediate crash on open.
+- HOUSE Quit stale-state cleanup: still needs a dedicated v0.4.2 physical verdict.
+
+The failed return transition can leave standalone SMB and HOUSE running different queues simultaneously if the phone is manually played and an S3 is then powered on. This is a field-observed consequence, not a separate server-policy change.
+
+The shared 3000 ms buffer experiment is prepared in the server repository, not deployed. v0.4.1 Tailscale, output-icon and muted queue-change passes remain valid.
 
 ## v0.4.1 correction checkpoint
 
@@ -106,3 +120,16 @@ This is a **new requirement**, not a v0.4.1 validation claim.
 - If that final muted phone controller later disconnects/expires, existing session-end policy applies.
 - Bluetooth connect while house music is already playing -> auto-unmute/rejoin the phone, overriding a prior manual local mute.
 - Bluetooth connect by itself does not start idle/paused playback; a later deliberate music start from that phone should be audible through the connected Bluetooth route.
+
+
+### STANDALONE Bluetooth output intent — newly approved
+
+Bring the useful Bluetooth auto-output behavior to the existing SMB player as well:
+
+- disconnect pauses/silences local playback but retains exact queue/song/position;
+- reconnect resumes the retained standalone session;
+- app/mode entry must evaluate an already-connected Bluetooth route;
+- explicit Stop/Quit overrides route presence;
+- no retained session means no Bluetooth-triggered start.
+
+This is a desired next behavior, not a v0.4.2 implementation claim.
