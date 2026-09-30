@@ -45,7 +45,7 @@ jobs:
 
       - name: Package source archive
         run: |
-          zip -qr SMBMusicPlayer_v0_4_1_source.zip . \
+          zip -qr SMBMusicPlayer_v0_4_2_source.zip . \
             -x '.git/*' \
                '.gradle/*' \
                '.kotlin/*' \
@@ -56,7 +56,7 @@ jobs:
                'gradle/wrapper/gradle-wrapper.jar' \
                'local.properties' \
                '*.iml' \
-               'SMBMusicPlayer_v0_4_1_source.zip'
+               'SMBMusicPlayer_v0_4_2_source.zip'
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -67,5 +67,5 @@ jobs:
       - name: Upload source archive
         uses: actions/upload-artifact@v4
         with:
-          name: SMBMusicPlayer-v0.4.1-source
-          path: SMBMusicPlayer_v0_4_1_source.zip
+          name: SMBMusicPlayer-v0.4.2-source
+          path: SMBMusicPlayer_v0_4_2_source.zip

@@ -31,6 +31,7 @@ import androidx.media3.session.MediaStyleNotificationHelper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.Futures
 import com.smbmusic.player.house.HouseConnection
 import com.smbmusic.player.house.HouseRuntime
 import com.smbmusic.player.smb.SmbClient
@@ -43,6 +44,8 @@ import java.util.concurrent.Future
 @UnstableApi
 class PlaybackService : MediaLibraryService() {
     private var house: HouseRuntime? = null
+    private var released = false
+    private var selectionEpoch = 0L
     private lateinit var player: ExoPlayer
     private lateinit var session: MediaLibrarySession
     private lateinit var smb: SmbClient
@@ -82,6 +85,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        selectionEpoch = HouseConnection.epoch
 
         HouseConnection.current?.let { endpoint ->
             val runtime = HouseRuntime(this, endpoint) {
@@ -98,7 +102,7 @@ class PlaybackService : MediaLibraryService() {
             return
         }
 
-        HouseConnection.resolved = true
+        HouseConnection.publish(selectionEpoch, null)
 
         smb = SmbClient(CredentialStore(this))
         // A timed-out jcifs attempt must not permanently block every later recovery probe.
@@ -211,7 +215,8 @@ class PlaybackService : MediaLibraryService() {
         registerNetworkCallback()
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
+        if (released) null else session
 
     private inner class HouseSessionCallback : MediaLibrarySession.Callback {
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
@@ -227,14 +232,17 @@ class PlaybackService : MediaLibraryService() {
             return result.build()
         }
         override fun onCustomCommand(session: MediaSession, controller: MediaSession.ControllerInfo,
-            customCommand: SessionCommand, args: Bundle): ListenableFuture<SessionResult> = house!!.custom(customCommand, args)
+            customCommand: SessionCommand, args: Bundle): ListenableFuture<SessionResult> = house?.custom(customCommand, args)
+                ?: Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE))
     }
 
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        if (released) return
         if (house != null) updateHouseNotification() else super.onUpdateNotification(session, startInForegroundRequired)
     }
 
     private fun updateHouseNotification() {
+        if (released) return
         val runtime = house ?: return
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("house", "House music", NotificationManager.IMPORTANCE_LOW))
@@ -257,6 +265,14 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_QUIT) {
+            releasePlayback()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            getSystemService(NotificationManager::class.java).cancel(2401)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (released) return START_NOT_STICKY
         house?.let { runtime ->
             when (intent?.action) {
                 HOUSE_PLAY_PAUSE -> if (runtime.state.transport == "play") runtime.player.pause() else runtime.player.play()
@@ -739,37 +755,43 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (house != null) return
+        if (released || house != null) return
         // Keep an active playback or pending recovery session alive if the UI is swiped away.
         if (!isPlaybackOngoing() && !recovering) stopSelf()
     }
 
-    override fun onDestroy() {
-        house?.let { runtime ->
-            runtime.close()
+    /** Runs immediately on explicit Quit, even while an Activity still binds the service. */
+    private fun releasePlayback() {
+        if (released) return
+        released = true
+        val runtime = house
+        if (runtime != null) {
+            runtime.close() // Clears local state and detaches; never sends MPD Stop/Clear.
             session.release()
             runtime.player.release()
             house = null
-            HouseConnection.current = null
-            HouseConnection.resolved = false
-            super.onDestroy()
-            return
+        } else {
+            cancelRecovery()
+            cancelFade(resetToFull = false)
+            handler.removeCallbacksAndMessages(null)
+            networkCallback?.let { callback ->
+                runCatching { connectivityManager.unregisterNetworkCallback(callback) }
+            }
+            networkCallback = null
+            executor.shutdownNow()
+            session.release()
+            player.release()
         }
-        cancelRecovery()
-        cancelFade(resetToFull = false)
-        handler.removeCallbacksAndMessages(null)
-        networkCallback?.let { callback ->
-            runCatching { connectivityManager.unregisterNetworkCallback(callback) }
-        }
-        networkCallback = null
-        executor.shutdownNow()
-        session.release()
-        player.release()
-        HouseConnection.resolved = false
+        HouseConnection.clear(selectionEpoch)
+    }
+
+    override fun onDestroy() {
+        releasePlayback()
         super.onDestroy()
     }
 
     companion object {
+        const val ACTION_QUIT = "com.smbmusic.player.QUIT"
         private const val HOUSE_PLAY_PAUSE = "house.notification.playPause"
         private const val HOUSE_NEXT = "house.notification.next"
         private const val HOUSE_PREVIOUS = "house.notification.previous"

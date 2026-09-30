@@ -7,8 +7,9 @@ enum class HousePlaybackStart { NONE, PLAY, QUEUE }
 /** Decide from fresh pre-command state, not the playing state produced by the command. */
 object HouseOutputPolicy {
     fun shouldUnmute(start: HousePlaybackStart, muted: Boolean, transport: String,
-                     controllers: JSONObject?, ownControllerId: String): Boolean {
+                     controllers: JSONObject?, ownControllerId: String, bluetoothConnected: Boolean = false): Boolean {
         if (!muted || start == HousePlaybackStart.NONE) return false
+        if (bluetoothConnected && transport in setOf("play", "pause", "stop")) return true
         if (transport == "pause" || transport == "stop") return true
         if (start != HousePlaybackStart.QUEUE || transport != "play") return false
         val presence = controllers?.optJSONObject("presence") ?: return false

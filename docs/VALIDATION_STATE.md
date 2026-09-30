@@ -2,6 +2,10 @@
 
 This file separates behavior exercised in real use from source changes that still need targeted phone testing.
 
+## v0.4.2 revision checkpoint
+
+v0.4.2 implements immediate service-owned HOUSE Quit cleanup, event-triggered identity/control reacquisition with browser retry reset, and the approved Bluetooth local-output policy. Holding the existing output icon opens separate phone/wired and Bluetooth sync adjustments with reported buffer/latency diagnostics. The offset defaults to zero; the roughly one-second phone/S3 delay remains undiagnosed and needs physical measurement. See [release verification](RELEASE_0.4.2.md) and the updated [physical checklist](HOUSE_VALIDATION.md). Build/unit tests do not establish device behavior. The shared 3000 ms buffer experiment is prepared in the server repository, not deployed. v0.4.1 Tailscale, output-icon and muted queue-change passes remain valid; its sync/Quit/return-home failures are the baseline for this revision.
+
 ## v0.4.1 correction checkpoint
 
 The three first-phone-pass corrections are implemented: physical-route home qualification with normal Android routing, pre-command conditional playlist auto-unmute, and an output icon inside the Media3 bottom strip. Local APK build and all 15 tests pass (5 network-policy, 7 output-policy, 3 state), along with both native ABI/license checks. GitHub CI passed for source `6d4305a`, and the delivered APK was extracted from that exact run with the archive digest verified. See [release record](RELEASE_0.4.1.md) for artifacts, checksums and the debug-signing/fresh-install requirement.

@@ -23,10 +23,21 @@ class SnapcastReceiver(private val context: Context, private val changed: () -> 
     @Volatile var error: String? = null
         private set
     private var startedAt = 0L
+    @Volatile private var failedAt = 0L
+    private var playingEndpoint: HouseEndpoint? = null
+    private var latencyMs = 0
+    @Volatile var timing = HouseAudioTiming()
+        private set
 
-    @Synchronized fun start(endpoint: HouseEndpoint, rendererId: String) {
-        if (process?.isAlive == true && (ready || SystemClock.elapsedRealtime() - startedAt < 10_000)) return
+    @Synchronized fun start(endpoint: HouseEndpoint, rendererId: String, offsetMs: Int = 0) {
+        // Error callbacks also reconcile output. Do not spawn a tight crash/retry loop.
+        if (playingEndpoint == endpoint && latencyMs == offsetMs && failedAt != 0L &&
+            SystemClock.elapsedRealtime() - failedAt < 2000) return
+        if (process?.isAlive == true && playingEndpoint == endpoint && latencyMs == offsetMs &&
+            (ready || SystemClock.elapsedRealtime() - startedAt < 10_000)) return
         close()
+        playingEndpoint = endpoint
+        latencyMs = offsetMs
         try {
             val server = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
             listener = server
@@ -57,15 +68,19 @@ class SnapcastReceiver(private val context: Context, private val changed: () -> 
             }
             val child = ProcessBuilder(context.applicationInfo.nativeLibraryDir + "/libsnapclient.so",
                 "--host", "127.0.0.1", "--port", server.localPort.toString(), "--hostID", rendererId,
-                "--player", "opensl", "--logsink", "stdout", "--logfilter", "*:info")
+                "--player", "opensl", "--latency", offsetMs.toString(), "--logsink", "stdout", "--logfilter", "*:info")
                 .redirectErrorStream(true).start()
             process = child
             startedAt = SystemClock.elapsedRealtime()
             error = null
+            failedAt = 0L
             thread(name = "house-audio-events", isDaemon = true) {
                 try {
                     child.inputStream.bufferedReader().useLines { lines -> lines.forEach { line ->
                         if (process === child) {
+                            HouseAudioTiming.fromLog(line)?.let { reported ->
+                                if (reported != timing) { timing = reported; changed() }
+                            }
                             if (line.contains("(OpenSlPlayer)") && line.endsWith("Init done")) {
                                 ready = true; changed()
                             } else if (line.contains("uninitOpensl") || line.contains("[Error]") || line.contains("Failed to connect")) {
@@ -75,10 +90,18 @@ class SnapcastReceiver(private val context: Context, private val changed: () -> 
                     } }
                 } catch (_: Exception) { }
                 finally {
-                    if (process === child) { ready = false; error = "Audio reconnecting"; changed() }
+                    if (process === child) {
+                        failedAt = SystemClock.elapsedRealtime()
+                        ready = false; error = "Audio reconnecting"; changed()
+                    }
                 }
             }
-        } catch (_: Exception) { close(); error = "Audio receiver unavailable"; changed() }
+        } catch (_: Exception) {
+            close()
+            failedAt = SystemClock.elapsedRealtime()
+            error = "Audio receiver unavailable"
+            changed()
+        }
     }
 
     @Synchronized override fun close() {

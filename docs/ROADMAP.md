@@ -2,9 +2,9 @@
 
 Unless explicitly linked to approved requirements, these are ideas, not commitments. Proven playback behavior takes priority over feature count.
 
-**Current source: v0.4.1.** The first HOUSE backend/receiver and approved Browser polish are implemented, including the three corrections from the first phone pass. The next checkpoint is the combined [phone/S3 acceptance session](HOUSE_VALIDATION.md), using server v0.8.2 for queue sorting. Live home/away handoff and final regression acceptance follow; their remaining product choices are still open. Historical dependency notes below are retained as dated progress records.
+**Current source: v0.4.2.** v0.4.2 implements immediate service-owned HOUSE Quit cleanup, event-triggered identity/control reacquisition with browser retry reset, and the approved Bluetooth local-output policy. Holding the existing output icon opens separate phone/wired and Bluetooth sync adjustments with reported buffer/latency diagnostics. The offset defaults to zero; the roughly one-second phone/S3 delay remains undiagnosed and needs physical measurement.
 
-**Current handoff:** [v0.4.1 correction release](RELEASE_0.4.1.md). Pi v0.8.2 is confirmed installed and healthy. Resume phone acceptance with Tailscale on before launch and by toggling it during HOUSE; then test phone/S3 audio and controller lifecycle. Build checks do not imply a physical pass.
+**Current handoff:** [v0.4.2 revision](RELEASE_0.4.2.md), followed by [phone/S3 acceptance](HOUSE_VALIDATION.md). The server repository contains the reversible shared-buffer trial; it has not been applied. Live home/away continuation still needs explicit departure grace/ambiguous-network, queue scope, idle-return and heard-position decisions. Do not count it as implemented.
 
 ## v0.3.8 field validation
 

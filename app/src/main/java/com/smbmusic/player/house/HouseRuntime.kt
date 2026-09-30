@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioAttributes
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.net.ConnectivityManager
@@ -35,6 +37,7 @@ import java.util.concurrent.atomic.AtomicLong
 /** Service-owned HOUSE control/audio lifetime; Activities are only observers/controllers. */
 @UnstableApi
 class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, private val changed: () -> Unit) {
+    private val selectionEpoch = HouseConnection.epoch
     val api = HouseApi(context, endpoint)
     @Volatile var state = HouseState()
         private set
@@ -58,6 +61,8 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
     private val generation = AtomicLong(0)
     private val attachmentGeneration = AtomicLong(0)
     private val muteRevision = AtomicLong(0)
+    private val recoveryQueued = AtomicBoolean(false)
+    private val networkRetryToken = Any()
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) = networkChanged()
@@ -66,7 +71,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         override fun onLinkPropertiesChanged(network: Network, links: LinkProperties) = networkChanged()
     }
 
-    private fun networkChanged() {
+    private fun networkChanged(probeNow: Boolean = true) {
         main.post {
             if (closed.get()) return@post
             val present = HouseConnection.isPresent(context, api.endpoint)
@@ -79,16 +84,60 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
                 }
                 outputChanged()
             }
+            if (probeNow) requestNetworkRecovery()
         }
     }
+
+    /** Coalesce callback bursts, then probe now instead of waiting for the heartbeat tick. */
+    private fun requestNetworkRecovery() {
+        main.removeCallbacksAndMessages(networkRetryToken)
+        main.postAtTime({
+            if (closed.get() || !recoveryQueued.compareAndSet(false, true)) return@postAtTime
+            presence.execute {
+                try {
+                    recoverNetwork(forceProbe = true)
+                    if (!closed.get()) {
+                        renew()
+                        if (!closed.get()) runCatching { controls.execute { refresh() } }
+                    }
+                } finally { recoveryQueued.set(false) }
+            }
+        }, networkRetryToken, android.os.SystemClock.uptimeMillis() + 200)
+    }
+    private var connectionRevision = 0L // Main thread; advanced only after a successful identity probe.
     private var queueAttachment = -1L
     private var queue: List<HouseTrack> = emptyList()
     private var queueVersion = -1
     private var defaultFolder = ""
     @Volatile private var commandError: String? = null
     private var focusAllowed = false
+    private var requestFocusWhenReady = false
     private val audio = context.getSystemService(AudioManager::class.java)
-    private val receiver = SnapcastReceiver(context) { main.post { outputChanged() } }
+    private fun bluetoothDevices(): Set<Int> = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        .filter { it.isSink && it.type in setOf(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            AudioDeviceInfo.TYPE_BLE_HEADSET, AudioDeviceInfo.TYPE_BLE_SPEAKER,
+            AudioDeviceInfo.TYPE_BLE_BROADCAST, AudioDeviceInfo.TYPE_HEARING_AID) }
+        .map { it.id }.toSet()
+    private val bluetooth = HouseBluetoothPolicy(bluetoothDevices())
+    @Volatile private var bluetoothConnected = bluetooth.connected
+    private val audioDevices = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) = bluetoothChanged()
+        override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) = bluetoothChanged()
+    }
+    private fun bluetoothChanged() {
+        if (closed.get()) return
+        val change = bluetooth.update(bluetoothDevices())
+        bluetoothConnected = bluetooth.connected
+        when (change) {
+            BluetoothOutputChange.UNMUTE -> setMuted(false)
+            BluetoothOutputChange.MUTE -> setMuted(true)
+            BluetoothOutputChange.UNCHANGED -> reconcileOutput()
+        }
+    }
+    private fun syncKey(bluetooth: Boolean) = if (bluetooth) "sync_bluetooth_ms" else "sync_phone_ms"
+    private fun requestedOffset(bluetooth: Boolean = bluetoothConnected): Int =
+        HouseConnection.preferences(context).getInt(syncKey(bluetooth), 0).coerceIn(-2000, 2000)
+    private val receiver = SnapcastReceiver(context) { main.post { reconcileOutput() } }
     val player = HousePlayer(this)
     private val wake = context.getSystemService(PowerManager::class.java)
         .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SMBMusic:house-controller")
@@ -99,16 +148,15 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
         .setOnAudioFocusChangeListener({ change ->
-            focusAllowed = change == AudioManager.AUDIOFOCUS_GAIN
+            if (closed.get()) return@setOnAudioFocusChangeListener
+            focusAllowed = !muted && change == AudioManager.AUDIOFOCUS_GAIN
             if (!focusAllowed) receiver.close()
             reconcileOutput()
         }, main).build()
     private val noisy = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            focusAllowed = false
-            receiver.close()
-            audio.abandonAudioFocusRequest(focus)
-            outputChanged()
+            // Close before Android can fall back to the phone speaker. No MPD command.
+            setMuted(true)
         }
     }
 
@@ -116,6 +164,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         wake.acquire()
         wifi.acquire()
         ContextCompat.registerReceiver(context, noisy, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED)
+        audio.registerAudioDeviceCallback(audioDevices, main)
         connectivity.registerNetworkCallback(NetworkRequest.Builder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
@@ -129,6 +178,13 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         putBoolean(EXTRA_MUTED, muted)
         putString(EXTRA_STATUS, commandError ?: status)
         putString(EXTRA_DEFAULT, defaultFolder)
+        putBoolean(EXTRA_CONNECTED, connected && registered && homePresent)
+        putLong(EXTRA_CONNECTION_REVISION, connectionRevision)
+        putBoolean(EXTRA_BLUETOOTH, bluetoothConnected)
+        putInt(EXTRA_SYNC_OFFSET, requestedOffset())
+        putInt(EXTRA_SYNC_APPLIED, receiver.timing.effectiveOffset(requestedOffset()))
+        receiver.timing.bufferMs?.let { putInt(EXTRA_STREAM_BUFFER, it) }
+        putInt(EXTRA_SERVER_LATENCY, receiver.timing.serverLatencyMs)
     }
 
     private fun announce() {
@@ -144,7 +200,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         if (closed.get()) return
         if (!HouseConnection.isPresent(context, api.endpoint)) {
             recoverNetwork()
-            networkChanged()
+            networkChanged(probeNow = false)
             if (!HouseConnection.isPresent(context, api.endpoint)) return
         }
         try {
@@ -163,32 +219,37 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             }
             // A transient heartbeat failure disables writes but need not expire
             // the lease. Any successful renewal restores controller authority.
-            registered = true
-            main.post { reconcileOutput() }
+            main.post {
+                if (!closed.get()) { registered = true; reconcileOutput() }
+            }
         } catch (e: Exception) {
-            registered = false
-            if (e is HouseApiException && e.status == 409) leaseId = null
+            main.post { if (!closed.get()) { registered = false; reconcileOutput() } }
+            if (e is HouseApiException && e.status == 409) {
+                val expiredLease = leaseId != null
+                leaseId = null
+                if (expiredLease && !closed.get()) runCatching { presence.execute { renew() } }
+            }
             // Attach may have failed before receiving its token. Only lifecycle calls retry.
             // Ownership is durable, so an already-audible receiver may survive control loss.
             recoverNetwork()
         }
     }
 
-    private fun recoverNetwork() {
+    private fun recoverNetwork(forceProbe: Boolean = false) {
         // A failed server/heartbeat alone is not departure. Do not pin replacement traffic.
-        if (closed.get() || HouseConnection.isPresent(context, api.endpoint)) return
+        if (closed.get() || (!forceProbe && HouseConnection.isPresent(context, api.endpoint))) return
         val replacement = HouseConnection.probe(context) ?: return
         if (closed.get()) return
+        if (!HouseConnection.publish(selectionEpoch, replacement)) return
         if (replacement != api.endpoint) {
             generation.incrementAndGet()
             api.endpoint = replacement
-            HouseConnection.current = replacement
-            main.post {
-                if (!closed.get()) {
-                    homePresent = HouseConnection.isPresent(context, replacement)
-                    receiver.close()
-                    reconcileOutput()
-                }
+        }
+        main.post {
+            if (!closed.get() && HouseConnection.epoch == selectionEpoch) {
+                connectionRevision++
+                homePresent = HouseConnection.isPresent(context, replacement)
+                reconcileOutput()
             }
         }
     }
@@ -197,7 +258,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         if (closed.get()) return
         val endpoint = api.endpoint
         val epoch = generation.get()
-        if (!HouseConnection.isPresent(context, endpoint)) { networkChanged(); return }
+        if (!HouseConnection.isPresent(context, endpoint)) { networkChanged(probeNow = false); return }
         try {
             var nextQueue = queue
             var response = api.get("/state")
@@ -219,42 +280,50 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             queue = nextQueue
             queueVersion = version
             queueAttachment = attachment
-            state = next
-            defaultFolder = folder
-            connected = true
             main.post {
-                if (!closed.get()) {
+                if (!closed.get() && epoch == generation.get() && endpoint == api.endpoint &&
+                    HouseConnection.isPresent(context, endpoint)) {
+                    state = next
+                    defaultFolder = folder
+                    connected = true
                     if (!state.ready) receiver.close()
                     reconcileOutput()
                 }
             }
         } catch (_: Exception) {
             if (closed.get() || endpoint != api.endpoint || epoch != generation.get()) return
-            connected = false
-            generation.incrementAndGet()
-            status = "HOUSE — server unavailable; reconnecting"
-            announce()
+            main.post {
+                if (!closed.get() && epoch == generation.get() && endpoint == api.endpoint) {
+                    connected = false
+                    generation.incrementAndGet()
+                    outputChanged()
+                }
+            }
         }
     }
 
     fun setMuted(value: Boolean) {
-        if (closed.get() || (!value && (!homePresent || !connected || !state.ready))) return
+        if (closed.get()) return
         muteRevision.incrementAndGet()
         muted = value
+        requestFocusWhenReady = !value
         if (muted) {
             receiver.close()
             focusAllowed = false
             audio.abandonAudioFocusRequest(focus)
-        } else {
-            focusAllowed = audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         }
         reconcileOutput()
     }
 
     private fun reconcileOutput() {
         if (closed.get()) return
+        if (requestFocusWhenReady && !muted && homePresent && connected && registered && state.ready) {
+            requestFocusWhenReady = false
+            focusAllowed = audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        }
         if (!homePresent || muted || !focusAllowed || !state.ready) receiver.close()
-        else if (registered) receiver.start(api.endpoint, rendererId)
+        else if (registered) receiver.start(api.endpoint, rendererId,
+            receiver.timing.effectiveOffset(requestedOffset()))
         outputChanged()
     }
 
@@ -297,9 +366,9 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
                 // and the post-command transport would always say play regardless of prior listeners.
                 val before = if (muted && playbackStart != HousePlaybackStart.NONE) api.get("/state") else null
                 val transport = before?.getJSONObject("mpd")?.getString("transport").orEmpty()
-                val presence = if (playbackStart == HousePlaybackStart.QUEUE && transport == "play")
+                val presence = if (playbackStart == HousePlaybackStart.QUEUE && transport == "play" && !bluetoothConnected)
                     api.get("/controllers") else null
-                val unmute = HouseOutputPolicy.shouldUnmute(playbackStart, muted, transport, presence, deviceId)
+                val unmute = HouseOutputPolicy.shouldUnmute(playbackStart, muted, transport, presence, deviceId, bluetoothConnected)
                 if (!canControl || epoch != generation.get()) {
                     result.set(SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)); return@execute
                 }
@@ -324,6 +393,17 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
 
     fun custom(sessionCommand: SessionCommand, args: Bundle): ListenableFuture<SessionResult> = when (sessionCommand.customAction) {
         MUTE -> { setMuted(!muted); Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS)) }
+        SYNC -> {
+            val offset = args.getInt("offsetMs", Int.MAX_VALUE)
+            if (offset !in -2000..2000 || closed.get()) {
+                Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE))
+            } else {
+                HouseConnection.preferences(context).edit()
+                    .putInt(syncKey(args.getBoolean("bluetooth")), offset).apply()
+                reconcileOutput()
+                Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+        }
         PLAY_LIST -> {
             val tracks = args.getStringArrayList("tracks").orEmpty()
             if (tracks.isEmpty()) Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE))
@@ -357,8 +437,22 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
 
     fun close() {
         if (!closed.compareAndSet(false, true)) return
+        generation.incrementAndGet()
+        muteRevision.incrementAndGet()
+        main.removeCallbacksAndMessages(null)
+        // Clear the Media3 presentation now, even while Activities remain bound.
+        connected = false
+        registered = false
+        muted = true
+        requestFocusWhenReady = false
+        state = HouseState()
+        commandError = null
+        defaultFolder = ""
+        status = "HOUSE — closed"
+        player.refresh()
         receiver.close()
         audio.abandonAudioFocusRequest(focus)
+        audio.unregisterAudioDeviceCallback(audioDevices)
         runCatching { context.unregisterReceiver(noisy) }
         runCatching { connectivity.unregisterNetworkCallback(networkCallback) }
         controls.shutdownNow()
@@ -374,10 +468,18 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         const val EXTRA_MUTED = "house.muted"
         const val EXTRA_STATUS = "house.status"
         const val EXTRA_DEFAULT = "house.default"
+        const val EXTRA_CONNECTED = "house.connected"
+        const val EXTRA_CONNECTION_REVISION = "house.connectionRevision"
+        const val EXTRA_BLUETOOTH = "house.bluetooth"
+        const val EXTRA_SYNC_OFFSET = "house.syncOffset"
+        const val EXTRA_SYNC_APPLIED = "house.syncApplied"
+        const val EXTRA_STREAM_BUFFER = "house.streamBuffer"
+        const val EXTRA_SERVER_LATENCY = "house.serverLatency"
         const val MUTE = "house.toggleMute"
+        const val SYNC = "house.sync"
         const val PLAY_LIST = "house.playList"
         const val SORT = "house.sort"
         const val DEFAULT = "house.defaultFolder"
-        val CUSTOM_COMMANDS = listOf(MUTE, PLAY_LIST, SORT, DEFAULT)
+        val CUSTOM_COMMANDS = listOf(MUTE, PLAY_LIST, SORT, DEFAULT, SYNC)
     }
 }

@@ -58,4 +58,12 @@ class HouseOutputPolicyTest {
         assertFalse(decide("play", presence(1))) // Incomplete renderer evidence.
         assertFalse(decide("unknown", presence(0)))
     }
+    @Test fun connectedBluetoothUnmutesDeliberateStartsEvenWithOtherAudibleNodes() {
+        for (action in listOf(HousePlaybackStart.PLAY, HousePlaybackStart.QUEUE))
+            for (transport in listOf("play", "pause", "stop"))
+                assertTrue(HouseOutputPolicy.shouldUnmute(action, true, transport,
+                    presence(1, renderer(true)), own, bluetoothConnected = true))
+        assertFalse(HouseOutputPolicy.shouldUnmute(HousePlaybackStart.NONE, true, "play",
+            presence(1, renderer(true)), own, bluetoothConnected = true))
+    }
 }

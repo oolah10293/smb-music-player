@@ -16,8 +16,12 @@ data class HouseEndpoint(val host: String, val network: Network, val address: In
 
 /** Process-local selection. A HOUSE outage is never permission to play SMB. */
 object HouseConnection {
-    @Volatile var current: HouseEndpoint? = null
-    @Volatile var resolved = false
+    private val selection = HouseSelection<HouseEndpoint>()
+    val current: HouseEndpoint? get() = selection.endpoint
+    val resolved: Boolean get() = selection.resolved
+    val epoch: Long get() = selection.epoch
+    fun publish(expectedEpoch: Long, endpoint: HouseEndpoint?) = selection.publish(expectedEpoch, endpoint)
+    fun clear(expectedEpoch: Long = epoch) = selection.clear(expectedEpoch)
 
     fun preferences(context: Context) = context.getSharedPreferences("house_connection", Context.MODE_PRIVATE)
     fun host(context: Context): String = preferences(context).getString("host", "").orEmpty()

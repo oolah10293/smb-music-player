@@ -70,6 +70,9 @@ class MainActivity : AppCompatActivity() {
     private var controller: MediaController? = null
 
     private val browserHandler = Handler(Looper.getMainLooper())
+    private var browseRetryPending = false
+    private var lastHouseConnectionRevision = -1L
+    private var wasHouseConnected = false
     private var browseRetryIndex = 0
     private var browseRequestGeneration = 0
     private var browseRetryEnabled = true
@@ -105,13 +108,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         browserStatus.text = "Checking home connection…"
+        val selectionEpoch = HouseConnection.epoch
         executor.execute {
-            if (!HouseConnection.resolved) {
-                HouseConnection.current = HouseConnection.probe(this)
-                HouseConnection.resolved = true
-            }
+            val selected = if (HouseConnection.resolved) HouseConnection.current else HouseConnection.probe(this)
             runOnUiThread {
-                if (isDestroyed) return@runOnUiThread
+                if (isFinishing || isDestroyed || !HouseConnection.publish(selectionEpoch, selected)) return@runOnUiThread
                 if (!isHouse) requestTailscaleConnect()
                 setupController()
                 restoreSavedConnection()
@@ -331,6 +332,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun browse(url: String, resetRetry: Boolean = true) {
+        if (isFinishing || isDestroyed) return
+        browseRetryPending = false
+        val endpoint = HouseConnection.current
+        val selectionEpoch = HouseConnection.epoch
         if (resetRetry) {
             browseRetryEnabled = true
             browseRetryIndex = 0
@@ -341,14 +346,15 @@ class MainActivity : AppCompatActivity() {
         currentUrl = url
         pathText.text = if (isHouse) url.substringAfterLast('/').ifBlank { "Music" }
             else SmbUrl.display(url).trimEnd('/').substringAfterLast('/')
-        browserStatus.text = if (resetRetry) "Loading…" else "Retrying SMB…"
+        browserStatus.text = if (resetRetry) "Loading…" else if (endpoint != null) "Retrying HOUSE…" else "Retrying SMB…"
         val requestGeneration = ++browseRequestGeneration
 
         executor.execute {
             try {
-                val result = if (isHouse) HouseApi(this, HouseConnection.current!!).browse(url) else smb.list(url)
+                val result = if (endpoint != null) HouseApi(this, endpoint).browse(url) else smb.list(url)
                 runOnUiThread {
-                    if (currentUrl != url || requestGeneration != browseRequestGeneration) return@runOnUiThread
+                    if (isFinishing || isDestroyed || selectionEpoch != HouseConnection.epoch ||
+                        currentUrl != url || requestGeneration != browseRequestGeneration) return@runOnUiThread
                     cancelBrowseRetry()
                     browseRetryIndex = 0
                     tailscaleRecoveryRequested = false
@@ -365,7 +371,8 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    if (currentUrl != url || requestGeneration != browseRequestGeneration) return@runOnUiThread
+                    if (isFinishing || isDestroyed || selectionEpoch != HouseConnection.epoch ||
+                        currentUrl != url || requestGeneration != browseRequestGeneration) return@runOnUiThread
                     entries = emptyList()
                     adapter.submit(emptyList())
                     scheduleBrowseRetry(url, e)
@@ -388,6 +395,7 @@ class MainActivity : AppCompatActivity() {
         }
         val delay = BROWSE_RETRY_SCHEDULE_MS[minOf(browseRetryIndex, BROWSE_RETRY_SCHEDULE_MS.lastIndex)]
         browseRetryIndex++
+        browseRetryPending = true
         val seconds = delay / 1000
         browserStatus.text = "${if (isHouse) "HOUSE" else "SMB"} unavailable: ${friendlyError(error)}\nRetrying in ${seconds}s…"
         browserHandler.postAtTime(
@@ -398,6 +406,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun cancelBrowseRetry() {
+        browseRetryPending = false
         browserHandler.removeCallbacksAndMessages(BROWSE_RETRY_TOKEN)
     }
 
@@ -575,6 +584,12 @@ class MainActivity : AppCompatActivity() {
     private fun showHouseDefault(extras: Bundle) {
         if (extras.getBoolean(HouseRuntime.EXTRA_HOUSE)) {
             findViewById<Button>(R.id.settingsButton).text = extras.getString(HouseRuntime.EXTRA_DEFAULT).orEmpty().ifBlank { "…" }
+            val connected = extras.getBoolean(HouseRuntime.EXTRA_CONNECTED)
+            val revision = extras.getLong(HouseRuntime.EXTRA_CONNECTION_REVISION)
+            val recovered = connected && (!wasHouseConnected || revision != lastHouseConnectionRevision)
+            wasHouseConnected = connected
+            lastHouseConnectionRevision = revision
+            if (recovered && browseRetryPending) browse(currentUrl)
         }
     }
 
@@ -595,6 +610,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        browseRequestGeneration++
         browseRetryEnabled = false
         cancelBrowseRetry()
         browserHandler.removeCallbacksAndMessages(TAILSCALE_CONNECT_TOKEN)
