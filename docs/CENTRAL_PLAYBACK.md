@@ -334,3 +334,22 @@ The first v0.4.1 phone pass has produced a mixed checkpoint:
 - **FAIL / open:** phone/S3 synchronization; the phone was roughly **1 second behind** the S3.
 
 Do not diagnose or compensate the one-second offset in requirements text yet; it is simply an observed failed acceptance result. The Bluetooth route policy above is a subsequent approved behavior requirement and is not yet a v0.4.1 implementation claim.
+
+
+## HOUSE Country Buffer
+
+The whole-house path should adopt the same basic resilience philosophy as the standalone Country Buffer, but at a much smaller time scale: **use a deliberately generous multi-second Snapcast playout buffer so brief LAN/Wi-Fi contention does not become audible.**
+
+This is a design requirement, not a claim that the current v0.4.1/S3 stack already implements the final value.
+
+Required direction:
+
+- Keep Snapcast source chunking small (currently about `20 ms`). **Chunk size and playout-buffer depth are separate controls.** A multi-second buffer does not imply multi-second packets.
+- Increase the HOUSE synchronized playout buffer beyond the current ~`1000 ms` baseline and tune it experimentally. Exact production depth is not yet locked; start with several seconds rather than one second.
+- The purpose is to absorb short Wi-Fi/LAN stalls and provide headroom for per-client latency compensation, including the Android phone's currently observed ~1-second lag.
+- Deliberate user controls—Play/Pause, Next/Previous, Seek, selected-track/PLAY LIST changes—must not be designed around waiting for the entire old playout buffer to drain. Obsolete buffered audio should be invalidated/rebased as promptly as the Snapcast/client stack permits, then resume on the new synchronized timeline.
+- Verify the actual upstream Snapcast behavior for discontinuities/flush/rejoin before treating instant stale-buffer invalidation as implemented. If the current client/server path cannot do that cleanly, choose the largest buffer that preserves acceptable control responsiveness or add an explicit reset/rejoin mechanism.
+- A larger HOUSE buffer is allowed to increase node power-on/rejoin time and overall MPD-to-speaker latency within reason; continuity and synchronization are more important than sub-second command-to-sound latency for music playback.
+- Phone/S3 per-client latency calibration remains a separate feature from the shared HOUSE buffer. The shared buffer provides timing headroom; the client offset compensates a repeatable output-path delay.
+
+Field motivation: the S3 renderers have shown brief dropouts that appear correlated with heavier LAN/Internet traffic. A larger synchronized buffer is an approved mitigation experiment, **not yet a root-cause diagnosis**.
