@@ -278,3 +278,13 @@ The correction build now has partial real-phone acceptance:
 - **FAIL / open:** phone/S3 audible synchronization is not yet acceptable; the phone was observed roughly **1 second behind** the S3.
 
 The Bluetooth route policy above is newly approved product behavior and is **not yet claimed implemented** by v0.4.1.
+
+
+### v0.4.1 return-home / Quit field findings
+
+A real drive-away and return-home pass exposed two additional Android state/recovery defects:
+
+- **HOUSE Quit local-state cleanup FAIL:** after explicit Quit, the phone can retain/display the previous HOUSE track in local Now Playing state. HOUSE Quit must detach the controller and stop local output **without** stopping MPD for other nodes, but it must also clear the phone's cached HOUSE playback/UI state. On the next launch, Now Playing must come from a fresh server read. If the server is genuinely still playing the same song, showing it again is correct only after that fresh adoption.
+- **Return-home reacquisition PARTIAL/FAIL:** after the phone is physically back on the home Wi-Fi, v0.4.1 can remain at `HOUSE unavailable: Socket closed / Retrying in 15s...` before eventually recovering. Gaining a qualifying physical home route must trigger an **immediate HOUSE identity/control reconnect attempt** rather than waiting for the ordinary 15-second retry backoff.
+
+These are Android client findings; they do not imply that the Pi session should be stopped or cleared.
