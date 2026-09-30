@@ -105,7 +105,6 @@ Bluetooth route state is **phone-local output intent**, not a global MPD transpo
 - HOUSE attach/reopen must evaluate the **current** output route. If Bluetooth is already connected and HOUSE is already playing, join unmuted immediately; do not wait for a new connection callback.
 - Bluetooth connect or pre-existing Bluetooth alone must not start fresh idle or a deliberate Pause/Stop. If the user subsequently starts music, the connected Bluetooth route is strong output intent and the phone should be audible.
 
-
 ### STANDALONE Bluetooth parity
 
 STANDALONE/SMB should use the same human-facing output intent while retaining local playback authority:
@@ -200,21 +199,6 @@ The Android client needs:
 
 Credentials stay local and out of Git/logs. Keep existing encrypted SMB storage separate from any house-service trust/token configuration. Do not embed private network addresses or user-specific filesystem roots in Android source or public examples.
 
-### Proven house-side milestones relevant to Android
-
-Current permanent-Pi/hardware facts that Android integration may rely on:
-
-- a passive radio can power on with no controller present and automatically start house music;
-- an arriving passive renderer joins the current song/queue instead of restarting it;
-- a hard-powered node can return after more than ten seconds and rejoin the still-active song; about six seconds from plug-in to audible output was observed once;
-- passive-radio arrival resumes an existing paused MPD session rather than replacing the queue;
-- v0.6.1 established that MPD `single oneshot` can land paused at 0.0 on the next old-queue track. Its old-queue resume behavior is superseded: v0.6.2 treats a completed drain as fresh idle and starts a new default shuffle on the next passive arrival. v0.6.2 is installed on the Pi with initial radio results: same song after about 10 seconds unplugged, different new song after about five minutes. The supplied `/session` snapshot confirms the early-return path; exact CD/Rap-to-default replacement after drain remains a separate field check;
-- two independent ESP32-S3 + PCM5102A outputs have been heard playing in sync through different analog systems;
-- effective renderer presence is based on fresh Snapcast activity, not raw stale TCP connection state;
-- occasional few-second single-node dropouts are still being diagnosed; v0.6.0 records renderer timing/presence and global stream events for later inspection.
-
-These facts establish the central architecture. Android v0.4.0 now supplies the controller integration and bundled receiver; real phone/S3 synchronization and controller lifecycle still require acceptance.
-
 ## 8. Integration points in the existing app
 
 v0.4.0 implements the initial startup/control/receiver boundary at these integration points. Live home/away handoff remains later work; all phone behavior below still needs hardware acceptance.
@@ -255,55 +239,25 @@ These gaps do not undo the approved behavior. They must not be filled with silen
 
 **Current Android status:** v0.4.1 retains the initial HOUSE runtime/Browser polish and implements the first phone-pass corrections, with hardware acceptance pending. The Pi-side basic API, passive-radio behavior, ordinary pause resume, two-S3 audible synchronization, saved default selection, and v0.8.1 restart with an already-present S3 have field evidence. Physical controller transitions and Android synchronization remain unproven. Server v0.8.2 supplies the guarded `/queue/reorder` helper required by Now Playing Sort; it preserves song identity, playback position, transport, and session-policy ownership using MPD queue IDs. The combined checkpoint is [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
 
-### Proven passive-default selector dependency
+### Controller lease and renderer-ownership contract
 
-The Pi-side runtime selector required by the HOUSE Browser is now field-proven in `house-audio-server` v0.7.0.
+The server supplies `GET /controllers` and `POST /controllers/attach`, `/controllers/heartbeat`, and `/controllers/detach`; use the server API for complete schemas.
 
-- reading the current default works;
-- changing `MP3s` -> `Rap` leaves active playback untouched;
-- after a completed no-renderer drain, the next S3 power-on uses the saved choice;
-- the observed fresh Rap session began with Ludacris — *Southern Hospitality*.
+Register the stable app-device id and stable Snapcast renderer id **before connecting that receiver**. Ownership is persisted so a known phone cannot later masquerade as a passive auto-starter. Use the returned lease id and increasing sequence numbers; reject callbacks from older attachments. Expired leases require a new attachment with the current local mute choice.
 
-Android v0.4.0 implements the button against the existing `GET /settings` / `POST /settings` contract; its phone acceptance remains pending.
+Heartbeat every five seconds and treat fifteen seconds without renewal as expiry. Report `outputMuted` separately from `outputReady`. Ready means the local receiver/output path can render even if MPD is paused. The server requires both an audible associated renderer and unmuted/ready controller state before counting the phone as audible.
 
-### v0.8.0 controller contract for the Android implementation
+New HOUSE attachment normally starts muted. **Exception:** if Bluetooth is already connected and HOUSE is already playing, evaluate that current route and join unmuted. Existing Bluetooth alone must not start fresh idle or deliberate Pause/Stop.
 
-The server supplies `GET /controllers` and `POST /controllers/attach`, `/controllers/heartbeat`, `/controllers/detach`; see the server API for complete schemas.
+Keep the heartbeat alive through the foreground/background service lifecycle. HOUSE Quit stops the phone receiver/heartbeat and detaches the controller; it never sends MPD Stop/Clear merely because the app is closing.
 
-Register the stable app-device id and its own stable Snapcast renderer id **before connecting that receiver**. Ownership is saved on the Pi so a known phone cannot become a passive auto-starter after a control disconnect or service restart. Use the returned lease id and increasing sequence numbers; reject stale callbacks from an older attachment. Expired leases require a new attachment, with the current local mute choice reported explicitly.
+### Server restart/startup contract
 
-The five-second heartbeat reports `outputMuted` separately from `outputReady`. Ready means the receiver/output path can render, even if MPD is paused. Report calls, route failures, or renderer failures as not-ready without discarding the mute choice. The Pi requires a live audible associated renderer as well as unmuted/ready reports before treating the phone as audible. This API reports state; Android v0.4.0 implements the actual local mute and synchronized receiver, with phone acceptance pending.
+A `house-audio-server` restart is a hard listening-session boundary.
 
-New HOUSE attachment normally starts muted. **Exception:** if Bluetooth is already connected and HOUSE is already playing, attachment must evaluate that current route and join unmuted rather than waiting for a future Bluetooth callback. Existing Bluetooth alone must not start fresh idle or deliberate Stop/Pause. Outside that exception, auto-unmute remains limited to the approved phone-initiated song/PLAY LIST/Play actions. Keep the heartbeat alive in the background/screen-off service. On HOUSE Quit, stop the phone's receiver and heartbeat, then detach; do not send MPD Stop/Clear. Attachment and output reports never auto-start a fresh session.
+Android must treat its old lease as dead, attach again, and avoid replaying stale house transport/output state or uploading an old queue. The server preserves durable settings/renderer ownership but discards live leases, old queue/session state, automatic-pause ownership and pending drain state.
 
-The Pi auto-pauses when controllers remain without audible output, resumes that automatic pause when an audible output returns, and ends it without advancing when the last controller leaves. Explicit Pause/Stop are respected. Combined presence counts deduplicate phone control/audio roles. Snapserver outage does not imply that listeners departed.
-
-Server v0.8.0 introduced this contract with 73 passing tests; its initial health/passive-S3 deployment baseline passed. The installed v0.8.1 adds the field-proven already-present-radio restart path. v0.4.0 now implements Android control/audio and Browser polish against this contract. Physical controller transitions remain pending. Restart ends the prior session; pause-reason reconstruction is not required.
-
-### Restart contract for Android HOUSE
-
-A `house-audio-server` restart is a hard session boundary.
-
-Android should:
-
-- treat its old controller lease as dead and attach again;
-- preserve its own local preference/UI state only where appropriate, but not replay stale house transport/output reports;
-- not expect the Pi to restore the old live controller lease, output-ready report, automatic-pause reason, pending drain, or old house queue/session;
-- accept fresh idle after server restart;
-- remain silent/idle when it is the first controller to reconnect;
-- allow a passive S3 present/arriving after restart to start the configured default with a fresh shuffle.
-
-The Pi continues to persist the passive default and controller↔renderer ownership so the phone receiver cannot be misclassified as a passive radio after restart.
-
-This replaces the former idea of recovering automatic-pause ownership across service restart. v0.8.1 implements the startup fresh-idle boundary and is deployed. The permanent Pi has field-proven the case where a passive S3 is already present during restart: startup became ready and the server started a fresh randomized Rap default session.
-
-### v0.8.1 startup handling for HOUSE
-
-Before allowing playback writes, the server now stops MPD, clears the old queue, disables leftover playback modes, and verifies fresh idle. It retries when MPD is unavailable; ordinary dependency reconnection after readiness does not erase a new session. The server preserves settings/ownership and discards old live session state.
-
-Android should read `startup.ready` in `GET /health` (also `sessionPolicy.startup` in `GET /session` or `GET /state`). While false, show startup/reconnecting and treat old queue/state reads as provisional. MPD-changing POSTs return 503 `startup_pending` without applying the request. Settings and controller lifecycle calls remain available. Reattach with a new lease and the current local mute intent, refresh state when ready, and do not upload an old private/house queue or replay stale skip commands. A controller-only restart remains idle; a passive S3 may already have started a fresh configured default when the phone refreshes.
-
-85 server tests and GitHub CI passed for v0.8.1, the confirmed Pi deployment. Its restart path with one already-present passive S3 is field-proven; physical controller transitions remain field checks. Restart with all radios off is a separate confirmation. Android v0.4.0 now uses this readiness/reattachment contract and includes the approved Browser polish; the standalone engine is preserved.
+While `startup.ready` is false, show startup/reconnecting and treat old queue/state reads as provisional. MPD-changing writes may return `503 startup_pending`; settings and controller-lifecycle calls remain available. Once ready, refresh authoritative state. A controller reconnecting first remains idle; a passive S3 may already have started a fresh configured default session.
 
 ## HOUSE Country Buffer
 
@@ -322,7 +276,6 @@ Required direction:
 - Phone/S3 per-client latency calibration remains a separate feature from the shared HOUSE buffer. The shared buffer provides timing headroom; the client offset compensates a repeatable output-path delay.
 
 Field motivation: the S3 renderers have shown brief dropouts that appear correlated with heavier LAN/Internet traffic. A larger synchronized buffer is an approved mitigation experiment, **not yet a root-cause diagnosis**.
-
 
 ## Implementation status reference
 
