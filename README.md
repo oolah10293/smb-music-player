@@ -106,7 +106,7 @@ The v0.3.8 prolonged-outage recovery hardening still needs its dedicated field t
 
 Keep the same folder-first Browser and Now Playing interface. The Raspberry Pi owns the house session through MPD and distributes its sound through Snapserver. The Android app controls that session; it is not a required relay or the house queue owner.
 
-Playback authority and phone sound are separate. **HOUSE output starts muted by default. Starting/replacing a playlist must preserve the phone's current mute state.** Tapping a song or tapping PLAY LIST may start/change MPD playback, but a muted phone stays muted. The existing explicit Play action while MPD is paused/stopped may still auto-unmute. Browsing, sorting, attaching to existing playback, and Next/Previous during active playback do not auto-unmute.
+Playback authority and phone sound are separate. **HOUSE output starts muted by default. Playlist-start auto-unmute depends on the pre-command audible-house state.** If MPD is already playing and at least one other house output is audible, a muted phone stays muted while its song/PLAY LIST selection changes the shared queue. If nothing is audibly playing—MPD paused/stopped, or `audibleCount == 0` even while MPD is technically still playing—the initiating muted phone auto-unmutes. Explicit Play from paused/stopped also auto-unmutes. Browsing, sorting, attaching to existing playback, and Next/Previous during already-audible playback do not auto-unmute.
 
 
 - **HOUSE:** automatically discover and verify the house service directly on the home LAN. Display its current playlist/track and send `PLAY LIST`, selected-track, transport, queue-sort, Shuffle, and Repeat commands to the Pi. An unmuted phone receives the synchronized house stream; **Mute output / Unmute output** affects only this phone and belongs in the lower Now Playing Media3 control strip beside the existing transport/Shuffle/Repeat/time controls, not as a separate standalone button.
@@ -252,7 +252,7 @@ The corrective networking design is to use the physical non-VPN network for **pr
 
 Two UI/behavior corrections are also locked from this field pass:
 
-- starting a new playlist/selected track must **not unmute the phone**; preserve the current local mute state;
+- starting a new playlist/selected track uses the pre-command audible-house state: preserve mute if MPD was already playing with another audible output; otherwise auto-unmute the initiating phone, including when `audibleCount == 0`;
 - the HOUSE **Mute Output / Unmute Output** control belongs in the lower Now Playing Media3 control strip with the existing Shuffle/Repeat/time controls, not as a separate standalone button.
 
 These are follow-up requirements to the delivered v0.4.0 build, not claims that the current APK already satisfies them.
