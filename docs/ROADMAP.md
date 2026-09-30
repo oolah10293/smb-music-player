@@ -270,3 +270,11 @@ Priority corrections from real use:
 - finish the dedicated HOUSE Quit/reopen cleanup check.
 
 New standalone output requirement: Bluetooth disconnect retains/pauses the exact SMB session, reconnect resumes it, and already-connected Bluetooth is recognized on app/mode entry. Explicit Stop/Quit still wins; no retained session means no auto-start.
+
+
+### Next major HOUSE expansions
+
+After the current Android transition/reliability work is stable, the wider system has two next-major-goal directions:
+
+- **Internet radio through MPD:** station URLs should be played by MPD and flow through the existing FIFO/Snapserver path. Do not add a parallel radio playback authority. Android station/source UI is still to be designed.
+- **Dedicated synchronized subwoofer node:** a specialized HOUSE renderer, tracked in the ESP32 project. Crossover/mono/level/timing details remain open and should be prototyped before being treated as requirements.
