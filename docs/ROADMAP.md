@@ -205,3 +205,26 @@ The physical-route/normal-routing separation, pre-command conditional auto-unmut
 Next: install v0.4.1, rerun silent opening with Tailscale already on and toggled during HOUSE, then complete the phone/S3 synchronization/controller-lifecycle checkpoint.
 
 Automatic home/away same-song handoff remains the following slice. The physical network object/route, not mere Pi reachability through Tailscale, will be the departure authority.
+
+
+### Bluetooth-aware phone output
+
+Approved HOUSE behavior for Android:
+
+- Bluetooth audio **disconnect** mutes the phone output but never directly sends MPD Pause/Stop.
+- If another output remains audible, shared playback continues.
+- If the phone was the only audible output, server policy auto-pauses and retains the exact session while that phone remains connected as a muted controller.
+- If that last muted controller later disconnects/expires, the existing session-end rule applies.
+- Bluetooth audio **connect** while house music is already playing automatically unmutes the phone and joins the current stream, even if local output had previously been manually muted.
+- Bluetooth connect alone does not start idle/paused HOUSE playback. If the user subsequently starts music from the phone, Bluetooth presence means the phone should be unmuted for that start.
+
+This is a future Android correction after the current v0.4.1 checkpoint; do not claim it is implemented yet.
+
+### v0.4.1 physical checkpoint status
+
+Current field results:
+
+- PASS: Tailscale-connected HOUSE operation.
+- PASS: lower-strip output icon appearance/location.
+- PASS: muted phone changes song/PLAY LIST without unmuting while an S3 is already audible.
+- FAIL/open: phone/S3 sync, with the phone observed about one second behind the S3.
