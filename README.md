@@ -2,7 +2,7 @@
 
 A native Android music player that streams audio directly from SMB shares using Media3/ExoPlayer and jcifs-ng. It is intentionally optimized for unreliable networks: it buffers aggressively when bandwidth is available, preserves the current track and position through SMB outages, and retries instead of treating a network failure as a bad song.
 
-Current source version: **0.4.2** — v0.4.2 implements immediate service-owned HOUSE Quit cleanup, event-triggered identity/control reacquisition with browser retry reset, and the approved Bluetooth local-output policy. Holding the existing output icon opens separate phone/wired and Bluetooth sync adjustments with reported buffer/latency diagnostics. The offset defaults to zero; the roughly one-second phone/S3 delay remains undiagnosed and needs physical measurement. **v0.3.8 remains the confirmed standalone hardware baseline**. See [HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md).
+Current source version: **0.4.2** — v0.4.2 implements service-owned HOUSE Quit cleanup, event-triggered identity/control reacquisition, Bluetooth local-output policy, and route-specific sync adjustment. Physical testing is now partial: Bluetooth connect/unmute and disconnect/mute pass; **+400 ms is audibly correct for the currently tested phone/output path and must remain adjustable until other devices are measured**. Automatic home/away transitions still fail in both directions, pre-connected Bluetooth is not honored correctly on HOUSE reattachment, and the build crashes on launch on a Galaxy S8. **v0.3.8 remains the confirmed standalone hardware baseline**. See [HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md).
 
 [v0.4.2 release record](docs/RELEASE_0.4.2.md). The [v0.4.1 record](docs/RELEASE_0.4.1.md) preserves the previous exact artifacts; v0.4.1 field results below remain historical evidence.
 
@@ -288,3 +288,20 @@ A real drive-away and return-home pass exposed two additional Android state/reco
 - **Return-home reacquisition PARTIAL/FAIL:** after the phone is physically back on the home Wi-Fi, v0.4.1 can remain at `HOUSE unavailable: Socket closed / Retrying in 15s...` before eventually recovering. Gaining a qualifying physical home route must trigger an **immediate HOUSE identity/control reconnect attempt** rather than waiting for the ordinary 15-second retry backoff.
 
 These are Android client findings; they do not imply that the Pi session should be stopped or cleared.
+
+
+### v0.4.2 physical feedback
+
+Real-device testing has now established the following:
+
+- **PASS:** Bluetooth audio connect automatically unmutes the HOUSE phone output.
+- **PASS:** Bluetooth audio disconnect automatically mutes the HOUSE phone output.
+- **PASS for the current tested route:** a **+400 ms** HOUSE timing correction makes the phone and S3 audibly line up. Keep the correction adjustable; this is not yet a universal offset for every phone/Bluetooth device.
+- **FAIL:** automatic HOUSE -> STANDALONE continuation after physically leaving the home LAN still does not occur. The app detects home-LAN loss but remains in HOUSE reconnecting instead of continuing the same playing track through SMB/Tailscale.
+- **FAIL:** automatic STANDALONE -> HOUSE transition on returning to the home LAN still does not occur reliably. The app can remain in standalone playback until it is closed/reopened; reopening then detects HOUSE.
+- **Observed split-brain consequence:** while stranded in STANDALONE after returning home, the phone can play its private SMB queue while powering an S3 starts the separate authoritative HOUSE queue.
+- **FAIL:** if Bluetooth is already connected when the app reopens/reattaches to an already-playing HOUSE session, the phone can attach muted. Existing Bluetooth output intent must be evaluated on HOUSE attachment, not only on a new Bluetooth-connect callback.
+- **FAIL:** v0.4.2 crashes on launch on a Galaxy S8. No cause is assigned yet.
+- HOUSE Quit stale-state cleanup still needs its dedicated v0.4.2 physical verdict; closing the standalone player and reopening is not evidence for that HOUSE-specific case.
+
+A new desired STANDALONE behavior is also approved: Bluetooth output intent should mirror HOUSE ergonomics. Disconnect should silence/pause while retaining the exact standalone queue/song/position; reconnect should resume that retained session. An already-connected Bluetooth route must be recognized at app start or mode entry. Explicit Stop/Quit remains authoritative, and Bluetooth alone has nothing to start when no retained standalone session exists.
