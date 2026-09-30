@@ -12,7 +12,18 @@ This debug APK has a different signing key from the delivered v0.4.0. Save the S
 
 The v0.4.1 build requires a directly connected route to the configured Pi address on non-VPN Wi-Fi/Ethernet, then checks MPD and house-service identity using normal Android routing. HTTP and Snapcast use normal routing too. The physical network/route is monitored; losing it closes local audio and suspends HOUSE traffic/heartbeats, even when the Pi remains reachable over VPN. This slice stays HOUSE/reconnecting; automatic SMB handoff is still later work. Server-only failures while home remains present are recovery, not departure.
 
-## First: repeat the corrected phone cases
+## Current result tally
+
+Already observed on the real phone:
+
+- **PASS:** HOUSE works with Tailscale connected.
+- **PASS:** output/mute icon appearance and location are correct in the lower Media3 strip.
+- **PASS:** with an S3 already audible, changing song/PLAY LIST from a muted phone changes the S3/shared queue and the phone stays muted.
+- **FAIL / open:** phone/S3 sync; phone output was observed about **1 second behind** the S3.
+
+These are acceptance results only. Do not treat the sync failure as diagnosed yet.
+
+## First: remaining corrected phone cases
 
 - Launch at home with **Tailscale already on**, then toggle Tailscale off/on while HOUSE is active. Track/position updates, browse and control must keep working. Unmute and check audio recovery too.
 - Remove the qualifying Wi-Fi/Ethernet route while Tailscale can still reach the Pi: local HOUSE audio stops, controls become unavailable and controller heartbeats cease. Rejoin home and verify recovery. No competing SMB playback should start. Cold launch away from home with only VPN reachability must select STANDALONE.
@@ -20,6 +31,7 @@ The v0.4.1 build requires a directly connected route to the configured Pi addres
 - With MPD paused/stopped, song/PLAY LIST and explicit Play auto-unmute the phone. With MPD playing but zero audible outputs, song/PLAY LIST auto-unmutes; a connected but inaudible renderer must not prevent this. An already-unmuted phone stays unmuted.
 - Browse, browser sort, active queue sort and Next/Previous during playback preserve mute. A newer manual mute during a pending command must win; failed/uncertain writes must not auto-unmute or replay.
 - Confirm the speaker icon is **inside the bottom Media3 strip**, with Shuffle/Repeat/time, and works on the target phone width. Standalone has no output icon. Check Previous/Play/Next and seeking remain visible and usable.
+- **Bluetooth route policy (new, not yet implemented/accepted):** while HOUSE is active, disconnecting Bluetooth must mute the phone without issuing MPD Pause/Stop. If another audible node remains, playback continues; if the phone was the only audible node, the server auto-pauses/retains while the phone controller remains connected. Bluetooth reconnect while music is already playing elsewhere must auto-unmute/rejoin even after a prior manual mute. Bluetooth connection alone must not start an idle/paused house session; if the user then starts music from that phone, the phone should be unmuted for that deliberate start.
 - **Bluetooth output policy:** while an S3/other audible node is playing, connect Bluetooth to the phone: the phone auto-unmutes and joins HOUSE. Disconnect Bluetooth: the phone mutes locally, sends no Pause/Stop, and the other node keeps playing. Repeat with the phone as the only node: Bluetooth disconnect must mute the phone and cause the server's existing muted-only policy to pause/retain the exact session; reconnecting Bluetooth must auto-unmute and resume that retained automatic pause. Also verify Bluetooth connect overrides a prior manual phone mute, but does not start a deliberately paused/stopped or fresh-idle MPD session by itself.
 
 ## One phone/S3 acceptance session
