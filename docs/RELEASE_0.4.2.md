@@ -1,6 +1,6 @@
 # Android v0.4.2 revision
 
-v0.4.2 implements immediate service-owned HOUSE Quit cleanup, event-triggered identity/control reacquisition with browser retry reset, and the approved Bluetooth local-output policy. Holding the existing output icon opens separate phone/wired and Bluetooth sync adjustments with reported buffer/latency diagnostics. Subsequent physical testing found **+400 ms** audibly correct for the currently tested phone/output route; keep the adjustment available until other devices/routes are measured.
+v0.4.2 implements immediate service-owned HOUSE Quit cleanup, event-triggered identity/control reacquisition with browser retry reset, and the approved Bluetooth local-output policy. Holding the existing output icon opens separate phone/wired and Bluetooth sync adjustments with reported buffer/latency diagnostics. Live physical acceptance is intentionally maintained in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md), not in this release record.
 
 ## Behavior and boundaries
 
