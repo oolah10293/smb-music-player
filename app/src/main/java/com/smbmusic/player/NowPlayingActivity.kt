@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -34,7 +35,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var albumText: TextView
     private lateinit var playbackStatus: TextView
     private lateinit var queueSortButton: Button
-    private lateinit var muteOutputButton: Button
+    private lateinit var muteOutputButton: ImageButton
     private val isHouse: Boolean get() = controller?.sessionExtras?.getBoolean(HouseRuntime.EXTRA_HOUSE) == true
 
     private lateinit var controllerFuture: ListenableFuture<MediaController>
@@ -84,7 +85,7 @@ class NowPlayingActivity : AppCompatActivity() {
         albumText = findViewById(R.id.albumText)
         playbackStatus = findViewById(R.id.playbackStatus)
         queueSortButton = findViewById(R.id.queueSortButton)
-        muteOutputButton = findViewById(R.id.muteOutputButton)
+        muteOutputButton = controlsPlayerView.findViewById(R.id.muteOutputButton)
         muteOutputButton.setOnClickListener {
             controller?.sendCustomCommand(SessionCommand(HouseRuntime.MUTE, Bundle.EMPTY), Bundle.EMPTY)
         }
@@ -298,7 +299,10 @@ class NowPlayingActivity : AppCompatActivity() {
         val mediaController = controller ?: return
         muteOutputButton.visibility = if (isHouse) View.VISIBLE else View.GONE
         if (isHouse) {
-            muteOutputButton.text = if (mediaController.sessionExtras.getBoolean(HouseRuntime.EXTRA_MUTED, true)) "Unmute Output" else "Mute Output"
+            val muted = mediaController.sessionExtras.getBoolean(HouseRuntime.EXTRA_MUTED, true)
+            muteOutputButton.setImageResource(if (muted) R.drawable.ic_output_muted else R.drawable.ic_output_on)
+            muteOutputButton.contentDescription = getString(if (muted) R.string.unmute_output else R.string.mute_output)
+            muteOutputButton.tooltipText = muteOutputButton.contentDescription
             playbackStatus.text = mediaController.sessionExtras.getString(HouseRuntime.EXTRA_STATUS, "HOUSE — connecting")
             return
         }

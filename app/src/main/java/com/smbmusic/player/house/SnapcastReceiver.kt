@@ -11,7 +11,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.concurrent.thread
 
 /** Runs the bundled upstream Snapclient; it owns decoding, timing, and clock correction.
- * The byte relay makes its TCP connection use the selected Android Network, even with a VPN.
+ * The byte relay uses normal Android routing after physical home-LAN qualification.
  * Muting destroys the local process/output; reconnecting always joins current stream time.
  */
 class SnapcastReceiver(private val context: Context, private val changed: () -> Unit) : Closeable {
@@ -36,8 +36,9 @@ class SnapcastReceiver(private val context: Context, private val changed: () -> 
                     var remote: Socket? = null
                     try {
                         local = server.accept().also { sockets.add(it); it.tcpNoDelay = true }
-                        remote = endpoint.network.socketFactory.createSocket().also { sockets.add(it); it.tcpNoDelay = true }
-                        remote.connect(InetSocketAddress(endpoint.network.getAllByName(endpoint.host).first(), 1704), 2000)
+                        check(HouseConnection.isPresent(context, endpoint)) { "Home network unavailable" }
+                        remote = Socket().also { sockets.add(it); it.tcpNoDelay = true }
+                        remote.connect(InetSocketAddress(endpoint.address, 1704), 2000)
                         val inbound = local
                         val outbound = remote
                         thread(name = "house-audio-up", isDaemon = true) {

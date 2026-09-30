@@ -1,12 +1,12 @@
 # Android integration with house-audio-server
 
-**Current source status: v0.4.0 implements the first HOUSE startup/control/audio slice and approved Browser polish. Phone acceptance remains pending.** Live home/away handoff remains the next recovery slice. See [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md) for the implemented boundary and checkpoint. The standalone v0.3.8 player remains the confirmed hardware baseline: search X/height, shared sort, current-track-first sorting, Repeat All, vehicle/Bluetooth behavior, fade, Tailscale startup, metadata, Country Buffer, and SMB tuning. Prolonged-outage hardening still needs its targeted field check. Requirements below remain the full target, not claims that every item is already validated.
+**Current source status: v0.4.1 implements the three corrections from the v0.4.0 phone pass: physical-route qualification with normal packet routing, pre-command conditional auto-unmute, and an output icon inside the lower Media3 controller strip. Phone acceptance remains pending.** Live home/away handoff remains the next recovery slice. See [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md) for the implemented boundary and checkpoint. The standalone v0.3.8 player remains the confirmed hardware baseline: search X/height, shared sort, current-track-first sorting, Repeat All, vehicle/Bluetooth behavior, fade, Tailscale startup, metadata, Country Buffer, and SMB tuning. Prolonged-outage hardening still needs its targeted field check. Requirements below remain the full target, not claims that every item is already validated.
 
 The authoritative product rules are in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md). This document translates those decisions into Android requirements and identifies the corresponding implementation work. Engineering proposals and unresolved details below are not additional user-approved behavior.
 
 Tracking: [Android Issue #1](https://github.com/oolah10293/smb-music-player/issues/1).
 
-Release handoff: [Android v0.4.0 / server v0.8.2](RELEASE_0.4.0.md). The final Android commit is `9c89b24`, including recovery of controls after a successful heartbeat renewal. The APK is delivered and both CI runs passed; phone/S3 acceptance remains pending.
+Current handoff: [Android v0.4.1 correction release](RELEASE_0.4.1.md), paired with already-installed server v0.8.2. The [v0.4.0 record](RELEASE_0.4.0.md) preserves its artifacts and heartbeat fix. Phone/S3 acceptance remains pending.
 
 ## 1. Separate playback authority from phone sound
 
@@ -225,7 +225,7 @@ Retain the unresolved choices in the canonical server document: home/away networ
 
 These gaps do not undo the approved behavior. They must not be filled with silent assumptions. **Two physical ESP32/PCM5102A renderers are now audibly synchronized**, so the Snapcast multi-renderer architecture itself is proven. That does **not** prove Android rendering, Android timing, or seamless phone handoff. Android rendering/timing need hardware acceptance; live handoff still requires implementation and tests. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
 
-**Current Android status:** v0.4.0 implements the initial HOUSE runtime and Browser polish, with phone acceptance pending. The Pi-side basic API, passive-radio behavior, ordinary pause resume, two-S3 audible synchronization, saved default selection, and v0.8.1 restart with an already-present S3 have field evidence. Physical controller transitions and Android synchronization remain unproven. Server v0.8.2 supplies the guarded `/queue/reorder` helper required by Now Playing Sort; it preserves song identity, playback position, transport, and session-policy ownership using MPD queue IDs. The combined checkpoint is [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
+**Current Android status:** v0.4.1 retains the initial HOUSE runtime/Browser polish and implements the first phone-pass corrections, with hardware acceptance pending. The Pi-side basic API, passive-radio behavior, ordinary pause resume, two-S3 audible synchronization, saved default selection, and v0.8.1 restart with an already-present S3 have field evidence. Physical controller transitions and Android synchronization remain unproven. Server v0.8.2 supplies the guarded `/queue/reorder` helper required by Now Playing Sort; it preserves song identity, playback position, transport, and session-policy ownership using MPD queue IDs. The combined checkpoint is [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
 
 
 ### Proven passive-default selector dependency

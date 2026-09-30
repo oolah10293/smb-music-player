@@ -1,5 +1,6 @@
 package com.smbmusic.player.house
 
+import android.content.Context
 import com.smbmusic.player.model.RemoteEntry
 import org.json.JSONArray
 import org.json.JSONObject
@@ -11,13 +12,14 @@ import java.time.Instant
 class HouseApiException(val status: Int, val code: String, message: String) : Exception(message)
 
 /** One attempt per command. Never replay a write after an ambiguous HTTP failure. */
-class HouseApi(@Volatile var endpoint: HouseEndpoint) {
+class HouseApi(private val context: Context, @Volatile var endpoint: HouseEndpoint) {
     fun get(path: String): JSONObject = request(path, null)
     fun post(path: String, body: JSONObject = JSONObject()): JSONObject = request(path, body)
 
     private fun request(path: String, body: JSONObject?): JSONObject {
         val target = endpoint
-        val connection = target.network.openConnection(URL("http://${target.host}:8787$path")) as HttpURLConnection
+        check(HouseConnection.isPresent(context, target)) { "Home network unavailable" }
+        val connection = URL("http://${target.httpHost}:8787$path").openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = 2000
             connection.readTimeout = 2500

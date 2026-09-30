@@ -1,16 +1,23 @@
-# v0.4.0 HOUSE checkpoint
+# v0.4.1 HOUSE correction checkpoint
 
-This is the first Android HOUSE build. Server v0.8.2 is installed on the Pi. Android v0.4.0 has completed the first startup/state portion of the phone checkpoint: after exposing MPD on the home LAN, the app entered HOUSE with Tailscale off and Now Playing adopted the current MPD track. Phone rendering/controller transitions are not yet field-proven.
-
-Test the final `9c89b24` APK, including heartbeat recovery, with server v0.8.2 (`9c98973`). Both CI runs passed. The first phone pass found a Tailscale/network-binding defect plus two mute/UI corrections; see the known-findings section below before continuing the audible checkpoint. [Release record, downloads and checksums](RELEASE_0.4.0.md).
+v0.4.1 implements corrections from the first Android HOUSE test. Server v0.8.2 is already installed and healthy on the Pi. v0.4.0 proved HOUSE entry and MPD-track adoption with Tailscale off after MPD's LAN listener was enabled. Phone rendering/controller transitions remain unproven. See the [v0.4.1 release record](RELEASE_0.4.1.md) for exact build verification and artifacts; the [v0.4.0 record](RELEASE_0.4.0.md) is historical.
 
 ## Install and configure once
 
-1. Update the Pi service to **v0.8.2** for the guarded queue-sort endpoint. MPD must listen on localhost and the configured home-LAN interface/address; localhost-only MPD cannot satisfy the HOUSE identity check. Keep the private deployment address out of public source/docs.
-2. Install the delivered **SMBMusicPlayer-v0.4.0.apk**, or extract `app-debug.apk` from the exact **SMBMusicPlayer-debug** artifact linked in the release record; they are identical. Its matching **SMBMusicPlayer-v0.4.0-source** archive includes the bundled receiver's corresponding source and build files.
+1. The Pi service is already on **v0.8.2**; keep it for the guarded queue-sort endpoint. No server update or ESP32 firmware change is needed for this Android correction. MPD must listen on localhost and the configured home-LAN interface/address; localhost-only MPD cannot satisfy the HOUSE identity check. Keep the private deployment address out of public source/docs.
+2. Install the delivered **SMBMusicPlayer-v0.4.1.apk**, or extract `app-debug.apk` from the exact **SMBMusicPlayer-debug** artifact linked in the release record; they are identical. Its matching **SMBMusicPlayer-v0.4.1-source** archive includes the bundled receiver's corresponding source and build files.
 3. In the existing **SMB** connection panel, keep the saved SMB credentials and enter the Pi's **LAN address** in the optional House server field. Save, then Quit from Now Playing and reopen. Allow notifications so the foreground controller remains visible. Long-press the MP3s/Rap button in HOUSE to reopen connection settings.
 
-The delivered v0.4.0 build probes and carries HOUSE traffic through an explicitly selected non-VPN Android `Network`. Real testing showed that approach stalls when Tailscale is enabled even though the Pi remains reachable through normal Android routing. The required correction is to use the physical non-VPN Wi-Fi/Ethernet network/routes only to qualify and monitor **home presence**, while MPD/HTTP/Snapcast traffic uses normal Android routing. Tailscale must be allowed to remain connected. A failed connection after HOUSE selection stays HOUSE/reconnecting while the qualifying home network is still present; live home/away handoff remains a later slice.
+The v0.4.1 build requires a directly connected route to the configured Pi address on non-VPN Wi-Fi/Ethernet, then checks MPD and house-service identity using normal Android routing. HTTP and Snapcast use normal routing too. The physical network/route is monitored; losing it closes local audio and suspends HOUSE traffic/heartbeats, even when the Pi remains reachable over VPN. This slice stays HOUSE/reconnecting; automatic SMB handoff is still later work. Server-only failures while home remains present are recovery, not departure.
+
+## First: repeat the corrected phone cases
+
+- Launch at home with **Tailscale already on**, then toggle Tailscale off/on while HOUSE is active. Track/position updates, browse and control must keep working. Unmute and check audio recovery too.
+- Remove the qualifying Wi-Fi/Ethernet route while Tailscale can still reach the Pi: local HOUSE audio stops, controls become unavailable and controller heartbeats cease. Rejoin home and verify recovery. No competing SMB playback should start. Cold launch away from home with only VPN reachability must select STANDALONE.
+- With an S3 playing and phone muted, tap a different song and PLAY LIST: the shared queue changes but phone stays muted. Repeat with multiple audible outputs.
+- With MPD paused/stopped, song/PLAY LIST and explicit Play auto-unmute the phone. With MPD playing but zero audible outputs, song/PLAY LIST auto-unmutes; a connected but inaudible renderer must not prevent this. An already-unmuted phone stays unmuted.
+- Browse, browser sort, active queue sort and Next/Previous during playback preserve mute. A newer manual mute during a pending command must win; failed/uncertain writes must not auto-unmute or replay.
+- Confirm the speaker icon is **inside the bottom Media3 strip**, with Shuffle/Repeat/time, and works on the target phone width. Standalone has no output icon. Check Previous/Play/Next and seeking remain visible and usable.
 
 ## One phone/S3 acceptance session
 
@@ -30,15 +37,15 @@ Build and unit checks establish source/package consistency, not audible synchron
 
 ## Known findings from the first phone pass
 
-These are already observed on real hardware and should not be re-diagnosed as unknowns:
+These v0.4.0 observations explain the v0.4.1 corrections; the fixes still require the repeat checks above:
 
 - Server v0.8.2 is installed and healthy.
 - MPD was originally loopback-only. After enabling its LAN listener, the remote MPD port became reachable and Android entered HOUSE with Tailscale off.
 - Now Playing adopted the song already playing on MPD.
 - Turning Tailscale on while HOUSE was active caused app state updates to stop.
 - The phone browser could still read the Pi's `/health` JSON with Tailscale on or off, so the Pi/LAN remained reachable.
-- Therefore the current explicit Android-`Network` binding for HOUSE HTTP/audio is the defect to replace; do not work around it by requiring Tailscale to be turned off.
-- Starting a new playlist currently unmutes the phone. That is now explicitly wrong: selected-track and PLAY LIST starts preserve local mute only when MPD was already playing with another audible output; otherwise the initiating phone auto-unmutes.
-- The current separate Mute/Unmute button is also not the desired UI. It belongs in the lower Media3 controller strip.
+- The v0.4.0 explicit Android-`Network` binding for HOUSE HTTP/audio was the defect addressed in v0.4.1; do not work around it by requiring Tailscale to be turned off.
+- Starting a new playlist in v0.4.0 unconditionally unmuted the phone. The corrected rule is: selected-track and PLAY LIST starts preserve local mute only when MPD was already playing with another audible output; otherwise the initiating phone auto-unmutes.
+- The separate v0.4.0 Mute/Unmute button was not the desired UI. v0.4.1 places its icon inside the lower Media3 controller strip.
 
 After those corrections, repeat the checkpoint with **Tailscale already on before app launch** and again by toggling Tailscale while HOUSE is active. HOUSE control/state and synchronized audio must remain functional while the physical home Wi-Fi/Ethernet network remains present.

@@ -2,6 +2,12 @@
 
 This file separates behavior exercised in real use from source changes that still need targeted phone testing.
 
+## v0.4.1 correction checkpoint
+
+The three first-phone-pass corrections are implemented: physical-route home qualification with normal Android routing, pre-command conditional playlist auto-unmute, and an output icon inside the Media3 bottom strip. Direct-route and mute-policy tests supplement the existing state tests. See [release record](RELEASE_0.4.1.md) for completed build verification and exact artifacts.
+
+**No v0.4.1 physical pass is claimed.** Tailscale-on launch/toggle, route loss/recovery, audible-output mute cases, lower-strip layout, phone/S3 synchronization, background controller lifecycle, and standalone regression are the next [checkpoint](HOUSE_VALIDATION.md). Server v0.8.2 is already installed and healthy; no server/ESP32 update is part of this slice. Automatic home/away handoff remains subsequent work.
+
 ## v0.4.0 HOUSE source checkpoint
 
 Final release artifact: Android `9c89b24` (includes heartbeat recovery), paired with server v0.8.2 `9c98973`. Android CI passed the APK build, 3 state tests and both native receiver/license checks; server CI passed with 90 tests. The delivered APK was recovered from that exact run and its archive digest matched GitHub's digest. This is build/package verification only. [Release record](RELEASE_0.4.0.md).

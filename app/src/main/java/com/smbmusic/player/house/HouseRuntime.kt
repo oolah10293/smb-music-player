@@ -7,6 +7,11 @@ import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.os.Handler
@@ -30,7 +35,7 @@ import java.util.concurrent.atomic.AtomicLong
 /** Service-owned HOUSE control/audio lifetime; Activities are only observers/controllers. */
 @UnstableApi
 class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, private val changed: () -> Unit) {
-    val api = HouseApi(endpoint)
+    val api = HouseApi(context, endpoint)
     @Volatile var state = HouseState()
         private set
     @Volatile var connected = false
@@ -48,9 +53,34 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
     private var leaseId: String? = null // Only accessed by the presence executor.
     private var sequence = 0L
     @Volatile private var registered = false
-    val canControl: Boolean get() = connected && registered && state.ready && !closed.get()
-    @Volatile private var generation = 0L
+    @Volatile private var homePresent = HouseConnection.isPresent(context, endpoint)
+    val canControl: Boolean get() = homePresent && connected && registered && state.ready && !closed.get()
+    private val generation = AtomicLong(0)
     private val attachmentGeneration = AtomicLong(0)
+    private val muteRevision = AtomicLong(0)
+    private val connectivity = context.getSystemService(ConnectivityManager::class.java)
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) = networkChanged()
+        override fun onLost(network: Network) = networkChanged()
+        override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) = networkChanged()
+        override fun onLinkPropertiesChanged(network: Network, links: LinkProperties) = networkChanged()
+    }
+
+    private fun networkChanged() {
+        main.post {
+            if (closed.get()) return@post
+            val present = HouseConnection.isPresent(context, api.endpoint)
+            if (present != homePresent) {
+                homePresent = present
+                generation.incrementAndGet()
+                if (!present) {
+                    connected = false
+                    receiver.close()
+                }
+                outputChanged()
+            }
+        }
+    }
     private var queueAttachment = -1L
     private var queue: List<HouseTrack> = emptyList()
     private var queueVersion = -1
@@ -86,6 +116,10 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         wake.acquire()
         wifi.acquire()
         ContextCompat.registerReceiver(context, noisy, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED)
+        connectivity.registerNetworkCallback(NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET).build(), networkCallback)
         presence.scheduleWithFixedDelay({ renew() }, 0, 5, TimeUnit.SECONDS)
         controls.scheduleWithFixedDelay({ refresh() }, 0, 2, TimeUnit.SECONDS)
     }
@@ -108,6 +142,11 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
 
     private fun renew() {
         if (closed.get()) return
+        if (!HouseConnection.isPresent(context, api.endpoint)) {
+            recoverNetwork()
+            networkChanged()
+            if (!HouseConnection.isPresent(context, api.endpoint)) return
+        }
         try {
             val lease = leaseId
             if (lease == null) {
@@ -136,17 +175,31 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
     }
 
     private fun recoverNetwork() {
+        // A failed server/heartbeat alone is not departure. Do not pin replacement traffic.
+        if (closed.get() || HouseConnection.isPresent(context, api.endpoint)) return
         val replacement = HouseConnection.probe(context) ?: return
-        if (replacement.network != api.endpoint.network) {
+        if (closed.get()) return
+        if (replacement != api.endpoint) {
+            generation.incrementAndGet()
             api.endpoint = replacement
             HouseConnection.current = replacement
-            main.post { receiver.close(); reconcileOutput() }
+            main.post {
+                if (!closed.get()) {
+                    homePresent = HouseConnection.isPresent(context, replacement)
+                    receiver.close()
+                    reconcileOutput()
+                }
+            }
         }
     }
 
     private fun refresh() {
         if (closed.get()) return
+        val endpoint = api.endpoint
+        val epoch = generation.get()
+        if (!HouseConnection.isPresent(context, endpoint)) { networkChanged(); return }
         try {
+            var nextQueue = queue
             var response = api.get("/state")
             val version = response.getJSONObject("mpd").optInt("queueVersion", -1)
             val attachment = attachmentGeneration.get()
@@ -156,13 +209,16 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
                 val rows = api.get("/queue").getJSONArray("queue")
                 val after = api.get("/state")
                 if (after.getJSONObject("mpd").optInt("queueVersion", -1) != version) return // concurrent queue edit; retry read, not a write
-                queue = HouseState.tracks(rows)
-                queueVersion = version
-                queueAttachment = attachment
+                nextQueue = HouseState.tracks(rows)
                 response = after
             }
-            val next = HouseState.parse(response, queue)
+            val next = HouseState.parse(response, nextQueue)
             val folder = response.optJSONObject("sessionPolicy")?.optString("defaultFolder").orEmpty()
+            if (closed.get() || epoch != generation.get() || endpoint != api.endpoint ||
+                !HouseConnection.isPresent(context, endpoint)) return
+            queue = nextQueue
+            queueVersion = version
+            queueAttachment = attachment
             state = next
             defaultFolder = folder
             connected = true
@@ -173,15 +229,17 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
                 }
             }
         } catch (_: Exception) {
+            if (closed.get() || endpoint != api.endpoint || epoch != generation.get()) return
             connected = false
-            generation++
+            generation.incrementAndGet()
             status = "HOUSE — server unavailable; reconnecting"
             announce()
         }
     }
 
     fun setMuted(value: Boolean) {
-        if (closed.get() || (!value && (!connected || !state.ready))) return
+        if (closed.get() || (!value && (!homePresent || !connected || !state.ready))) return
+        muteRevision.incrementAndGet()
         muted = value
         if (muted) {
             receiver.close()
@@ -195,7 +253,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
 
     private fun reconcileOutput() {
         if (closed.get()) return
-        if (muted || !focusAllowed || !state.ready) receiver.close()
+        if (!homePresent || muted || !focusAllowed || !state.ready) receiver.close()
         else if (registered) receiver.start(api.endpoint, rendererId)
         outputChanged()
     }
@@ -204,6 +262,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
     private fun outputChanged() {
         if (closed.get()) return
         status = when {
+            !homePresent -> "HOUSE — home network unavailable; reconnecting"
             !connected -> "HOUSE — server unavailable; reconnecting"
             !state.ready -> "HOUSE — server starting"
             !registered -> "HOUSE — controller reconnecting"
@@ -220,24 +279,40 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         announce()
     }
 
-    fun command(path: String, body: JSONObject = JSONObject()): ListenableFuture<SessionResult> {
+    fun command(path: String, body: JSONObject = JSONObject(),
+                playbackStart: HousePlaybackStart = HousePlaybackStart.NONE): ListenableFuture<SessionResult> {
         val result = SettableFuture.create<SessionResult>()
         if (!canControl) {
             result.set(SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)); return result
         }
         commandError = null
-        val epoch = generation
+        val epoch = generation.get()
+        val outputEpoch = muteRevision.get()
         controls.execute {
-            if (!canControl || epoch != generation) {
+            if (!canControl || epoch != generation.get()) {
                 result.set(SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)); return@execute
             }
             try {
+                // Fresh reads precede the write. The periodic UI snapshot can be two seconds old,
+                // and the post-command transport would always say play regardless of prior listeners.
+                val before = if (muted && playbackStart != HousePlaybackStart.NONE) api.get("/state") else null
+                val transport = before?.getJSONObject("mpd")?.getString("transport").orEmpty()
+                val presence = if (playbackStart == HousePlaybackStart.QUEUE && transport == "play")
+                    api.get("/controllers") else null
+                val unmute = HouseOutputPolicy.shouldUnmute(playbackStart, muted, transport, presence, deviceId)
+                if (!canControl || epoch != generation.get()) {
+                    result.set(SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)); return@execute
+                }
                 api.post(path, body)
                 refresh()
-                result.set(SessionResult(SessionResult.RESULT_SUCCESS))
+                main.post {
+                    // Never override a newer manual mute, a lost command response, or a departed session.
+                    if (unmute && canControl && epoch == generation.get() && outputEpoch == muteRevision.get()) setMuted(false)
+                    result.set(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
             } catch (e: Exception) {
                 // The server may have applied a write whose response was lost. Never retry it.
-                generation++
+                generation.incrementAndGet()
                 commandError = "HOUSE — ${e.message ?: "command failed"}; refresh before retrying"
                 refresh()
                 announce()
@@ -253,9 +328,8 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             val tracks = args.getStringArrayList("tracks").orEmpty()
             if (tracks.isEmpty()) Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE))
             else {
-                setMuted(false)
                 command("/queue/replace", JSONObject().put("tracks", JSONArray(tracks))
-                    .put("startIndex", 0).put("play", true).put("positionSeconds", 0))
+                    .put("startIndex", 0).put("play", true).put("positionSeconds", 0), HousePlaybackStart.QUEUE)
             }
         }
         DEFAULT -> command("/settings", JSONObject().put("passiveDefaultFolder", args.getString("folder")))
@@ -286,6 +360,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         receiver.close()
         audio.abandonAudioFocusRequest(focus)
         runCatching { context.unregisterReceiver(noisy) }
+        runCatching { connectivity.unregisterNetworkCallback(networkCallback) }
         controls.shutdownNow()
         // Serialized after any in-flight attach; that late attach also observes closed.
         presence.execute { detach() }

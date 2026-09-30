@@ -2,6 +2,15 @@
 
 This history is reconstructed from the actual saved source checkpoints. Release notes are condensed, but behavior and rationale are preserved. Public copies remove device/location-specific comments; functional code is otherwise retained.
 
+## 0.4.1 — first HOUSE phone-test corrections (physical acceptance pending)
+
+- Qualify home using non-VPN Wi-Fi/Ethernet and a directly connected route to the configured Pi address, then check MPD/house-service identity. Use normal Android routing for MPD/HTTP/Snapcast so Tailscale can remain on.
+- Monitor physical network/route loss, stop local output and suspend HOUSE requests/heartbeats without accepting VPN-only reachability. Reject stale work across detected network changes. Automatic home/away song handoff remains later work.
+- Decide song/PLAY LIST auto-unmute from fresh pre-command MPD and audible-output state. Preserve a muted phone when another output was already playing; unmute from paused/stopped or otherwise inaudible playback. Ignore the phone's own stale audible report. Unknown presence preserves mute, failed reads abort the write, and failed commands/newer manual mute cannot trigger auto-unmute.
+- Place the HOUSE output speaker icon inside the lower Media3 controller strip with the existing time, Shuffle and Repeat controls; hide it in standalone mode.
+- Add direct-route and mute-policy unit coverage. Retain heartbeat recovery, both bundled Snapclient ABIs, and the existing standalone engine.
+- Server v0.8.2 is already installed; no server or ESP32 firmware update is required. Build evidence/artifacts: [release record](docs/RELEASE_0.4.1.md). Next is the Tailscale-on phone/S3 checkpoint.
+
 ## 0.4.0 — first HOUSE integration (phone acceptance pending)
 
 Released for device testing on 2026-09-29. Final Android build: `9c89b24`; server dependency: v0.8.2 (`9c98973`). Android CI (3 state tests plus APK/native packaging) and server CI (90 tests) passed. The APK was delivered; installation and phone/S3 acceptance remain pending. [Exact builds, downloads and checksums](docs/RELEASE_0.4.0.md).

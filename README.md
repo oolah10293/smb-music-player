@@ -2,13 +2,13 @@
 
 A native Android music player that streams audio directly from SMB shares using Media3/ExoPlayer and jcifs-ng. It is intentionally optimized for unreliable networks: it buffers aggressively when bandwidth is available, preserves the current track and position through SMB outages, and retries instead of treating a network failure as a bad song.
 
-Current source version: **0.4.0** — first Android HOUSE integration plus the approved Browser polish. Phone acceptance is pending; **v0.3.8 remains the confirmed standalone hardware baseline**. See [HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md) for installation and the combined phone/S3 checkpoint.
+Current source version: **0.4.1** — corrections from the first HOUSE phone test: normal-routed traffic with physical-LAN qualification, conditional playlist auto-unmute, and Mute/Unmute inside the Media3 bottom strip. Phone acceptance is pending; **v0.3.8 remains the confirmed standalone hardware baseline**. See [HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md) for installation and the combined phone/S3 checkpoint.
 
-The final APK is delivered, including the heartbeat recovery fix in `9c89b24`. [Release record and downloads](docs/RELEASE_0.4.0.md) identify the exact APK/source artifacts, checksums, successful Android/server CI runs, and pending installation/device checks.
+The correction build retains v0.4.0’s heartbeat recovery fix. [v0.4.1 release record](docs/RELEASE_0.4.1.md) identifies the build and pending physical checks. The [v0.4.0 record](docs/RELEASE_0.4.0.md) preserves the previous exact artifacts.
 
-HOUSE uses the existing Browser and Now Playing screens, with MPD authority through the Pi HTTP service and a bundled synchronized Snapcast receiver for phone sound. Opening HOUSE starts muted. After the first phone test, home detection is being revised so **physical non-VPN Wi-Fi/Ethernet presence determines HOUSE, while normal Android routing carries MPD/HTTP/Snapcast traffic**. This keeps Tailscale from counting as home without trying to bypass the VPN for ordinary HOUSE sockets. STANDALONE retains the existing SMB/Media3 player. Live home/away handoff remains the next recovery slice.
+HOUSE uses the existing Browser and Now Playing screens, with MPD authority through the Pi HTTP service and a bundled synchronized Snapcast receiver for phone sound. Opening HOUSE starts muted. After the first phone test, home detection now separates presence and routing so **physical non-VPN Wi-Fi/Ethernet presence determines HOUSE, while normal Android routing carries MPD/HTTP/Snapcast traffic**. This keeps Tailscale from counting as home without trying to bypass the VPN for ordinary HOUSE sockets. STANDALONE retains the existing SMB/Media3 player. Live home/away handoff remains the next recovery slice.
 
-Server **v0.8.2** adds the queue reorder operation used by Now Playing Sort; install it for this build. The service's latest confirmed hardware baseline is v0.8.1, including fresh Rap startup with an S3 already powered during restart. The optional House server address is entered locally in the existing SMB connection panel; no private deployment address is embedded in source.
+Server **v0.8.2** is installed and healthy on the Pi and supplies the queue reorder operation used by Now Playing Sort. No new server or ESP32 firmware update is required for v0.4.1. The v0.8.1 fresh-Rap restart result with an S3 already powered remains valid historical evidence. The optional House server address is entered locally in the existing SMB connection panel; no private deployment address is embedded in source.
 
 ## What it does
 
@@ -143,7 +143,7 @@ Related projects:
 
 ## Build
 
-Requirements for v0.4.0:
+Requirements for v0.4.1:
 
 - Android Gradle Plugin 9.4.0
 - Gradle 9.6.0

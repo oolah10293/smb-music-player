@@ -4,10 +4,15 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.RouteInfo
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.Socket
 import java.util.UUID
 
-data class HouseEndpoint(val host: String, val network: Network)
+data class HouseEndpoint(val host: String, val network: Network, val address: InetAddress) {
+    val httpHost: String get() = address.hostAddress!!.let { if (it.contains(':')) "[$it]" else it }
+}
 
 /** Process-local selection. A HOUSE outage is never permission to play SMB. */
 object HouseConnection {
@@ -27,31 +32,50 @@ object HouseConnection {
         return ("phone-" + UUID.randomUUID()).also { file.writeText(it) }
     }
 
-    /** Worker thread only. Explicit Network sockets ignore Tailscale/default VPN routing. */
+    /** Physical evidence is independent of whichever network Android uses for packets. */
+    fun isPresent(context: Context, endpoint: HouseEndpoint): Boolean =
+        qualifies(context.getSystemService(ConnectivityManager::class.java), endpoint.network, endpoint.address)
+
+    private fun qualifies(manager: ConnectivityManager, network: Network, address: InetAddress): Boolean {
+        val caps = manager.getNetworkCapabilities(network) ?: return false
+        val links = manager.getLinkProperties(network) ?: return false
+        return HouseNetworkPolicy.qualifies(
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET),
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN),
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN), address,
+            links.routes.map { HouseLanRoute(it.destination.address, it.destination.prefixLength,
+                it.hasGateway(), it.type == RouteInfo.RTN_UNICAST) })
+    }
+
+    /** Worker thread only. Qualify a direct physical route, then verify through normal routing. */
     fun probe(context: Context): HouseEndpoint? {
         val host = host(context)
         if (host.isBlank()) return null
         val manager = context.getSystemService(ConnectivityManager::class.java)
+        val addresses = runCatching { InetAddress.getAllByName(host).toList() }.getOrDefault(emptyList())
         for (network in manager.allNetworks) {
-            val caps = manager.getNetworkCapabilities(network) ?: continue
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
-                !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) ||
-                !(caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))) continue
-            try {
-                network.socketFactory.createSocket().use { socket ->
-                    socket.soTimeout = 1500
-                    val address = network.getAllByName(host).first()
-                    socket.connect(InetSocketAddress(address, 6600), 1500)
-                    val greeting = StringBuilder()
-                    val input = socket.getInputStream()
-                    while (greeting.length < 128) {
-                        val c = input.read()
-                        if (c < 0 || c == 10) break
-                        greeting.append(c.toChar())
+            for (address in addresses) {
+                if (!qualifies(manager, network, address)) continue
+                try {
+                    Socket().use { socket ->
+                        socket.soTimeout = 1500
+                        socket.connect(InetSocketAddress(address, 6600), 1500)
+                        val greeting = StringBuilder()
+                        val input = socket.getInputStream()
+                        while (greeting.length < 128) {
+                            val c = input.read()
+                            if (c < 0 || c == 10) break
+                            greeting.append(c.toChar())
+                        }
+                        if (greeting.startsWith("OK MPD ")) {
+                            val candidate = HouseEndpoint(host, network, address)
+                            // A coincidentally matching subnet alone is not HOUSE identity.
+                            HouseApi(context, candidate).get("/health")
+                            if (isPresent(context, candidate)) return candidate
+                        }
                     }
-                    if (greeting.startsWith("OK MPD ")) return HouseEndpoint(host, network)
-                }
-            } catch (_: Exception) { /* Try the next real LAN, never a VPN. */ }
+                } catch (_: Exception) { /* Try the next real LAN, never a VPN. */ }
+            }
         }
         return null
     }

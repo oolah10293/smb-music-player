@@ -346,7 +346,7 @@ class MainActivity : AppCompatActivity() {
 
         executor.execute {
             try {
-                val result = if (isHouse) HouseApi(HouseConnection.current!!).browse(url) else smb.list(url)
+                val result = if (isHouse) HouseApi(this, HouseConnection.current!!).browse(url) else smb.list(url)
                 runOnUiThread {
                     if (currentUrl != url || requestGeneration != browseRequestGeneration) return@runOnUiThread
                     cancelBrowseRetry()
