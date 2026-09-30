@@ -245,3 +245,14 @@ Do **not** equate buffer depth with packet/chunk size. Also do not accept "wait 
 Exact production buffer depth is intentionally **not locked yet**. Start with several seconds in field testing and balance continuity against radio power-on/rejoin and audible command latency. Verify Snapcast's real discontinuity/flush behavior before claiming aggressive stale-buffer invalidation is solved.
 
 The current S3 dropout correlation with heavier LAN/Internet traffic is motivation for this experiment, not proof of cause.
+
+
+### Return-home reacquisition and HOUSE Quit cleanup
+
+New v0.4.1 field findings:
+
+- HOUSE Quit can leave stale phone-local track/Now Playing state. Correct behavior is to detach/stop the phone renderer and clear local HOUSE presentation/cache **without** sending MPD Stop/Clear.
+- When the phone regains a qualifying home Wi-Fi/Ethernet route, HOUSE can eventually recover but may first sit at `Socket closed / Retrying in 15s`. Route gain must trigger an immediate real identity/control probe and reset/override the ordinary retry delay.
+- A network-change callback is only a reason to probe immediately; the real Pi identity/service check still decides whether HOUSE is available.
+
+These corrections belong with the next Android recovery/state-machine slice alongside automatic HOUSE→STANDALONE same-song continuation.
