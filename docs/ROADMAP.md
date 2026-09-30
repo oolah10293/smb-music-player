@@ -199,7 +199,7 @@ The initial phone checkpoint produced useful corrections before the synchronizat
 - With that fixed and Tailscale off, v0.4.0 entered HOUSE and showed the current MPD track.
 - Turning Tailscale on stopped HOUSE updates even though the same Pi HTTP JSON remained reachable in the phone browser. The v0.4.0 explicit Android-`Network` transport binding is therefore a known field defect.
 - Revised design: qualify HOUSE using the presence/routes of a real non-VPN Wi-Fi/Ethernet network, watch that physical network for departure, but carry normal HOUSE MPD/HTTP/Snapcast traffic through normal Android routing so Tailscale may remain connected.
-- Starting/replacing a playlist must preserve local phone mute. Tapping a song or PLAY LIST no longer implies local unmute.
+- Starting/replacing a playlist uses the pre-command audible-house state. If MPD was already playing with another audible output, preserve the muted phone. If nothing was audibly playing—including `audibleCount == 0` while MPD is technically playing—auto-unmute the initiating phone.
 - The HOUSE Mute/Unmute control must be moved into the lower Media3 control strip alongside transport, Shuffle/Repeat, and track time.
 
 ### Immediate Android correction slice
@@ -207,7 +207,7 @@ The initial phone checkpoint produced useful corrections before the synchronizat
 Before resuming the phone/S3 audible checkpoint:
 
 1. separate physical-home qualification from HOUSE packet routing so Tailscale-on-at-home remains HOUSE;
-2. preserve mute state across selected-track / PLAY LIST queue starts;
+2. implement conditional auto-unmute for selected-track / PLAY LIST starts using pre-command MPD/audible-output state;
 3. move Mute/Unmute into the lower Media3 controller strip;
 4. rerun silent opening and then the phone/S3 synchronization/controller-lifecycle checkpoint.
 
