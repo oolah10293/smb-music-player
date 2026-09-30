@@ -39,24 +39,27 @@ The v0.4.0 backend boundary lets the same UI target either session. HOUSE contro
 
 ## 2. Automatic home-LAN detection and reconnection
 
-Use the simplest direct test of the actual condition we care about: **can this phone reach the house MPD instance through a real non-VPN Wi-Fi/Ethernet network?**
+The first v0.4.0 phone test changed one important implementation detail: **physical home-LAN presence and HOUSE packet routing are separate concerns.**
 
-HOUSE detection is:
+The qualifying network remains a real non-VPN Wi-Fi/Ethernet Android `Network`, but ordinary HOUSE sockets must not be pinned to that `Network`. In the tested environment, explicit `Network.openConnection` / `Network.socketFactory` traffic stopped updating when Tailscale was enabled even though the Pi remained reachable through normal Android routing.
+
+Revised HOUSE detection is:
 
 1. Find an available Wi-Fi or Ethernet Android `Network` that is not a VPN transport.
-2. Through that specific network, open a short TCP connection to the app's locally configured/reserved house LAN address on MPD port `6600`.
-3. Require MPD's normal greeting, which begins `OK MPD `. A subsequent `ping` / `OK` may be used as an additional trivial liveness check.
-4. A valid MPD response over that bound non-VPN LAN path selects HOUSE.
+2. Inspect that physical network's `LinkProperties` / routes. The locally configured house LAN address must fall on a **directly connected route of that physical network**. This is the key physical-home evidence; a Tailscale route by itself does not qualify.
+3. Using normal Android routing, verify the expected Pi identity at that LAN address, such as the MPD `OK MPD ` greeting and/or the expected `house-audio-server` identity.
+4. Only the combination of a qualifying physical route plus the expected Pi identity selects HOUSE.
+5. Continue watching the qualifying physical `Network`. Losing that network/route is the departure signal, subject to the later grace policy.
 
-This is an **identity/reachability probe only**. It is not the HOUSE control path. Normal HOUSE browsing, queue changes, transport commands, presence, and session policy still go through the shared `house-audio-server` control layer.
+Once HOUSE is selected, MPD/HTTP/Snapcast traffic uses **normal Android routing**. Do not pin those sockets to the physical `Network`; Tailscale may remain connected. The physical network is authoritative for **presence and departure detection**, not for forcing packet egress.
 
-Do not add mDNS/DNS-SD, SSID matching, GPS, a separate discovery service, or a custom handshake unless a later real-world problem proves they are needed. Tailscale/VPN-only reachability must never select HOUSE because the probe is deliberately bound to a non-VPN LAN network rather than the system's arbitrary route to the Pi.
+This preserves the core rule: **Tailscale/VPN-only reachability never selects HOUSE.** Away from home, a VPN route to the Pi cannot substitute for the missing directly connected physical-LAN route. An unrelated Wi-Fi using a similar private subnet still has to pass the expected Pi identity check.
 
 The house LAN address is deployment configuration, not a source-code constant. Keep the current address in local app configuration rather than committing it into Android source or public examples.
 
-Tailscale may already be connected when SMB Player opens. HOUSE detection must therefore run against an explicitly selected non-VPN Wi-Fi/Ethernet Android `Network`, not the default route. Existing VPN state is ignored for the HOUSE decision. If HOUSE is not established, the app then follows the existing STANDALONE/Tailscale startup behavior.
+The Pi must also expose MPD on both localhost and its configured home-LAN listener. The first field test found MPD bound to localhost only, which made every remote HOUSE probe impossible until the LAN listener was added. Do not publish the private deployment address.
 
-A temporary home-server, Wi-Fi, MPD-probe, or audio failure must not silently start an independent local playlist. Remain in HOUSE recovery while the phone is still plausibly on the home LAN. On confirmed departure, transition to STANDALONE under the handoff rules below. The departure grace period and ambiguous-network policy are still open, not a hard-coded timeout in this requirements record.
+A temporary home-server, Wi-Fi, MPD, HTTP, or audio failure must not silently start an independent local playlist. Remain in HOUSE recovery while the qualifying physical home network is still present. On confirmed loss of that physical network, transition to STANDALONE under the handoff rules below. The departure grace period and ambiguous-network policy are still open, not a hard-coded timeout in this requirements record.
 
 Show the active control target and distinguish control-server failure from audio-receiver failure where possible. Suggested status wording includes `HOUSE - reconnecting`, `House server unavailable`, and `Audio reconnecting`. Start retrying when failure is detected, not only after an audio buffer empties. Recovery joins the current house position, not an old backlog.
 
@@ -85,9 +88,9 @@ Keep the controller connected while muted and report its output state separately
 
 Keep Android media-output routing, local volume, and interruptions separate from intentional house transport commands. A call, headphone disconnection, audio-focus change, or local renderer failure must not masquerade as the user pressing house Pause. The server still applies its presence/output policy to the actual remaining nodes.
 
-The initial HOUSE output rule is now settled: **entering HOUSE starts the phone renderer muted.** The phone automatically unmutes only when that phone initiates playback by tapping a song, tapping PLAY LIST, or pressing Play while MPD is paused/stopped. Merely opening the app, browsing, sorting, or using Next/Previous while music is already playing does not auto-unmute.
+The initial HOUSE output rule is now settled: **entering HOUSE starts the phone renderer muted. Starting or replacing a playlist must preserve the current local mute state.** Tapping a song or tapping PLAY LIST may start/change MPD playback, but a muted phone stays muted. The existing explicit Play action while MPD is paused/stopped may still auto-unmute. Merely opening the app, browsing, sorting, or using Next/Previous while music is already playing does not auto-unmute.
 
-Place the HOUSE-only **Mute Output / Unmute Output** control in the lower Now Playing transport/control strip so the main Now Playing layout remains otherwise unchanged.
+Place the HOUSE-only **Mute Output / Unmute Output** control in the **lower Media3 Now Playing control strip beside the existing transport/Shuffle/Repeat/time controls** so the main Now Playing layout remains otherwise unchanged. A separate standalone mute button above that strip is not the desired UI.
 
 ### Passive-node default playlist selector
 
@@ -154,7 +157,7 @@ The passive-renderer side has now advanced beyond the basic primitives: fresh-id
 
 Server v0.8.0 implements controller leases, output reporting, device/renderer association, muted-controller pause/resume, and stale lifecycle-report rejection in source/tests (Pi validation pending). Persisted passive-default selection is field-proven in v0.7.0. General transport-command deduplication remains separate work; v0.8.2 guards queue reordering by revision and IDs. Clients must not replay uncertain Next/queue writes.
 
-The Android app should **not use MPD's native control port as its HOUSE control API**. The one deliberate exception is the short LAN-presence probe described above, which reads MPD's `OK MPD ...` greeting to prove that the expected service is reachable over a bound non-VPN LAN path. Android, Windows, and the browser controller should otherwise target the same house-audio-server contract so the Pi can enforce one-session lifecycle, presence/output rules, fresh-session default shuffle, and HOUSE/STANDALONE behavior consistently.
+The Android app should **not use MPD's native control port as its HOUSE control API**. MPD remains useful only as a tiny service-identity check after the app has already established that the configured LAN address lies on a directly connected non-VPN physical network. Android, Windows, and the browser controller should otherwise target the same house-audio-server contract so the Pi can enforce one-session lifecycle, presence/output rules, fresh-session default shuffle, and HOUSE/STANDALONE behavior consistently.
 
 The Android client should now target the real v0.2.0 HTTP API documented in [house-audio-server/docs/API.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/API.md) for the basic browse/queue/transport operations rather than invent parallel endpoints. A push-state feed is still optional; initial integration can poll authoritative state. The Snapcast audio connection remains distinct from the custom control service.
 
@@ -275,3 +278,23 @@ Before allowing playback writes, the server now stops MPD, clears the old queue,
 Android should read `startup.ready` in `GET /health` (also `sessionPolicy.startup` in `GET /session` or `GET /state`). While false, show startup/reconnecting and treat old queue/state reads as provisional. MPD-changing POSTs return 503 `startup_pending` without applying the request. Settings and controller lifecycle calls remain available. Reattach with a new lease and the current local mute intent, refresh state when ready, and do not upload an old private/house queue or replay stale skip commands. A controller-only restart remains idle; a passive S3 may already have started a fresh configured default when the phone refreshes.
 
 85 server tests and GitHub CI passed for v0.8.1, the confirmed Pi deployment. Its restart path with one already-present passive S3 is field-proven; physical controller transitions remain field checks. Restart with all radios off is a separate confirmation. Android v0.4.0 now uses this readiness/reattachment contract and includes the approved Browser polish; the standalone engine is preserved.
+
+
+## 11. v0.4.0 first-phone findings and corrective requirements
+
+Real-phone testing with server v0.8.2 established the following:
+
+- v0.8.2 is installed and healthy on the Pi.
+- MPD was initially bound only to loopback. After adding a LAN listener, the remote MPD port became reachable and Android v0.4.0 successfully selected HOUSE with Tailscale off.
+- Now Playing then adopted the track already playing on MPD, proving the initial HOUSE control/state path works.
+- Enabling Tailscale while HOUSE was active caused the app to stop updating.
+- At the same time, the phone browser could still read `house-audio-server` JSON through the Pi's LAN address with Tailscale either on or off.
+
+That evidence points to v0.4.0's explicit Android-`Network` transport binding rather than loss of LAN reachability. The next correction must implement §2's separation of **physical network qualification** from **normal-routed HOUSE traffic**.
+
+The same field pass corrected two phone-output requirements:
+
+1. Starting a new playlist or selected track does **not** imply local phone sound. Queue replacement/selection preserves the phone's existing mute state.
+2. The HOUSE mute/unmute control belongs in the lower Media3 control strip with transport, Shuffle/Repeat, and track time. The separate v0.4.0 mute button is a UI miss to correct.
+
+These findings are product/acceptance updates, not proof of phone/S3 synchronization. That audible checkpoint still follows the networking/UI correction.
