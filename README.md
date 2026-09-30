@@ -108,6 +108,16 @@ Keep the same folder-first Browser and Now Playing interface. The Raspberry Pi o
 
 Playback authority and phone sound are separate. **HOUSE output starts muted by default. Playlist-start auto-unmute depends on the pre-command audible-house state.** If MPD is already playing and at least one other house output is audible, a muted phone stays muted while its song/PLAY LIST selection changes the shared queue. If nothing is audibly playing—MPD paused/stopped, or `audibleCount == 0` even while MPD is technically still playing—the initiating muted phone auto-unmutes. Explicit Play from paused/stopped also auto-unmutes. Browsing, sorting, attaching to existing playback, and Next/Previous during already-audible playback do not auto-unmute.
 
+Bluetooth audio-route events are also treated as **phone-local output intent**, not as ordinary MPD transport commands:
+
+- when a Bluetooth audio device disconnects, mute the phone renderer;
+- if another house output remains audible, MPD and those outputs continue uninterrupted;
+- if the phone was the only audible output, the server's existing muted-controller rule auto-pauses and retains the exact queue/song/position **while the phone controller remains connected**;
+- if that last muted phone later disconnects/expires as a controller, the existing last-controller rule ends the retained session;
+- a Bluetooth disconnect itself never sends MPD Pause/Stop;
+- when Bluetooth connects while house music is already playing elsewhere, auto-unmute the phone and join the current HOUSE stream, even if the phone had been manually muted;
+- if Bluetooth connects while HOUSE is idle/paused, connection alone does not start music; when the user subsequently starts music from that phone, Bluetooth presence is strong output intent and the phone must be unmuted for that deliberate start.
+
 
 - **HOUSE:** automatically discover and verify the house service directly on the home LAN. Display its current playlist/track and send `PLAY LIST`, selected-track, transport, queue-sort, Shuffle, and Repeat commands to the Pi. An unmuted phone receives the synchronized house stream; **Mute output / Unmute output** affects only this phone and belongs in the lower Now Playing Media3 control strip beside the existing transport/Shuffle/Repeat/time controls, not as a separate standalone button.
 - **STANDALONE:** preserve existing SMB/Tailscale → ExoPlayer playback, buffering, and recovery. Automatic same-song continuation after leaving HOUSE is approved but not implemented in v0.4.0; that later slice must continue only a phone that was audibly playing, leaving muted/paused/stopped phones silent.
@@ -256,3 +266,15 @@ Two UI/behavior corrections are also locked from this field pass:
 - the HOUSE **Mute Output / Unmute Output** control belongs in the lower Now Playing Media3 control strip with the existing Shuffle/Repeat/time controls, not as a separate standalone button.
 
 These are follow-up requirements to the delivered v0.4.0 build, not claims that the current APK already satisfies them.
+
+
+### v0.4.1 first physical results
+
+The correction build now has partial real-phone acceptance:
+
+- **PASS:** HOUSE works with Tailscale connected.
+- **PASS:** the HOUSE output/mute icon is correct in appearance and location inside the lower Media3 strip.
+- **PASS:** with an S3 already audibly playing, changing song/PLAY LIST from a muted phone changes the shared S3 playback while the phone stays muted.
+- **FAIL / open:** phone/S3 audible synchronization is not yet acceptable; the phone was observed roughly **1 second behind** the S3.
+
+The Bluetooth route policy above is newly approved product behavior and is **not yet claimed implemented** by v0.4.1.
