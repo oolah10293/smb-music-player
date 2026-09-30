@@ -58,7 +58,7 @@ The first real-phone pass established:
 - After that server configuration fix, Android v0.4.0 entered HOUSE with Tailscale off and Now Playing displayed the track already playing on MPD.
 - Turning Tailscale on caused HOUSE app updates to stop, while the phone browser could still read the Pi's HTTP health JSON with Tailscale on or off.
 - The corrective design is to use a real non-VPN Wi-Fi/Ethernet network and its directly connected routes for **physical-home qualification/departure detection**, while normal Android routing carries MPD/HTTP/Snapcast traffic. Tailscale may remain connected; VPN reachability alone still does not qualify as home.
-- Playlist selection must not change local phone mute. A muted phone stays muted when a song or PLAY LIST starts/replaces the house queue.
+- Playlist selection changes local phone mute only when needed to make an otherwise inaudible start audible: if another output was already audibly playing, keep the phone muted; if nothing was audibly playing, auto-unmute the initiating phone.
 - Mute/Unmute belongs in the lower Media3 control strip, not as a separate standalone button.
 
 These items define the follow-up correction to v0.4.0. The phone/S3 synchronization result remains unproven until that correction is built and tested.
