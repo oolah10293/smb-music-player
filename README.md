@@ -2,13 +2,7 @@
 
 A native Android music player that streams audio directly from SMB shares using Media3/ExoPlayer and jcifs-ng. It is intentionally optimized for unreliable networks: it buffers aggressively when bandwidth is available, preserves the current track and position through SMB outages, and retries instead of treating a network failure as a bad song.
 
-Current source version: **0.4.2** — v0.4.2 implements service-owned HOUSE Quit cleanup, event-triggered identity/control reacquisition, Bluetooth local-output policy, and route-specific sync adjustment. Physical testing is now partial: Bluetooth connect/unmute and disconnect/mute pass; **+400 ms is audibly correct for the currently tested phone/output path and must remain adjustable until other devices are measured**. Automatic home/away transitions still fail in both directions, pre-connected Bluetooth is not honored correctly on HOUSE reattachment, and the build crashes on launch on a Galaxy S8. **v0.3.8 remains the confirmed standalone hardware baseline**. See [HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md).
-
-[v0.4.2 release record](docs/RELEASE_0.4.2.md). The [v0.4.1 record](docs/RELEASE_0.4.1.md) preserves the previous exact artifacts; v0.4.1 field results below remain historical evidence.
-
-HOUSE uses the existing Browser and Now Playing screens, with MPD authority through the Pi HTTP service and a bundled synchronized Snapcast receiver for phone sound. HOUSE normally starts muted, **except that an already-connected Bluetooth output must be honored on attachment when an existing HOUSE session is already playing**. After the first phone test, home detection now separates presence and routing so **physical non-VPN Wi-Fi/Ethernet presence determines HOUSE, while normal Android routing carries MPD/HTTP/Snapcast traffic**. This keeps Tailscale from counting as home without trying to bypass the VPN for ordinary HOUSE sockets. STANDALONE retains the existing SMB/Media3 player. Live home/away handoff remains the next recovery slice.
-
-Server **v0.8.2** is installed and healthy on the Pi and supplies the queue reorder operation used by Now Playing Sort. No server API or ESP32 firmware update is required for v0.4.2. An optional [shared-buffer trial](https://github.com/oolah10293/house-audio-server/blob/main/docs/HOUSE_BUFFER_TRIAL.md) is prepared but not applied. The v0.8.1 fresh-Rap restart result with an S3 already powered remains valid historical evidence. The optional House server address is entered locally in the existing SMB connection panel; no private deployment address is embedded in source.
+Current source version: **0.4.2**. See [docs/RELEASE_0.4.2.md](docs/RELEASE_0.4.2.md) for the exact build/artifacts and [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md) for the current real-device pass/fail state. **v0.3.8 remains the confirmed standalone hardware baseline.**
 
 ## What it does
 
@@ -151,15 +145,7 @@ For the product-level reasons behind the app, see [docs/PROJECT_CONTEXT.md](docs
 
 ## Planned / possible future work
 
-- Dedicated field validation of v0.3.8 prolonged-outage recovery hardening.
-- Complete the v0.4.0 phone/S3 acceptance checkpoint for HOUSE control/audio and Browser polish.
-- Implement live home/away handoff after settling the documented remaining recovery choices, then complete standalone/vehicle regression acceptance.
-- `.m3u` / `.m3u8` playlist-file support.
-- Smart Shuffle / listening-history database.
-- Metadata-assisted filename cleanup as a separate library-maintenance tool.
-- Recursive or metadata-indexed search if ever needed.
-- Album-art fallback/cache improvements.
-- A richer Android Auto browse tree.
+Current priorities and later ideas are maintained only in [docs/ROADMAP.md](docs/ROADMAP.md) so this README does not become a second roadmap.
 
 The current philosophy is to keep the player simple and preserve proven playback behavior rather than add features that destabilize the transport stack.
 
