@@ -92,6 +92,19 @@ The initial HOUSE output rule is now settled: **entering HOUSE starts the phone 
 
 Place the HOUSE-only **Mute Output / Unmute Output** control in the **lower Media3 Now Playing control strip beside the existing transport/Shuffle/Repeat/time controls** so the main Now Playing layout remains otherwise unchanged. A separate standalone mute button above that strip is not the desired UI.
 
+### Bluetooth route policy
+
+Bluetooth connection state is a **local phone-output signal**, not a global playback command.
+
+- Bluetooth audio disconnect -> mark the phone output muted/unavailable. Do **not** send MPD Pause/Stop.
+- If another house output is still audible, shared playback continues uninterrupted.
+- If the phone was the only audible output, the existing server muted-controller rule auto-pauses and retains the exact queue/song/position while the phone remains connected as a controller.
+- If that muted phone later detaches/expires as the final controller, the existing last-controller rule ends the retained session.
+- Bluetooth audio connect while house music is already playing elsewhere -> auto-unmute the phone and join the current HOUSE stream, even if the user had manually muted the phone earlier.
+- Bluetooth connect while HOUSE is idle/paused does not itself issue Play. If the user then starts music from that phone, Bluetooth presence overrides prior local mute and the phone becomes audible for that deliberate start.
+
+This policy reflects the intended use: the phone speaker is usually not the desired destination; connecting Bluetooth normally indicates intent to hear HOUSE audio through that attached device.
+
 ### Bluetooth output automation
 
 Bluetooth connection state is a local phone-output signal, not a HOUSE transport command.
@@ -309,3 +322,15 @@ The same field pass corrected two phone-output requirements:
 2. The HOUSE mute/unmute control belongs in the lower Media3 control strip with transport, Shuffle/Repeat, and track time. The separate v0.4.0 mute button is a UI miss to correct.
 
 These findings are product/acceptance updates, not proof of phone/S3 synchronization. That audible checkpoint still follows the networking/UI correction.
+
+
+## 12. v0.4.1 first physical acceptance results
+
+The first v0.4.1 phone pass has produced a mixed checkpoint:
+
+- **PASS:** HOUSE operation with Tailscale connected.
+- **PASS:** lower-strip output icon appearance/location.
+- **PASS:** muted-phone song/PLAY LIST change while an S3 is already audible; shared playback changes on the S3 and the phone remains muted.
+- **FAIL / open:** phone/S3 synchronization; the phone was roughly **1 second behind** the S3.
+
+Do not diagnose or compensate the one-second offset in requirements text yet; it is simply an observed failed acceptance result. The Bluetooth route policy above is a subsequent approved behavior requirement and is not yet a v0.4.1 implementation claim.
