@@ -36,7 +36,7 @@ The user proposed using the version before HOUSE, checking later upgrades, and p
 
 - Standalone implementation: [`a3aeeff`](https://github.com/oolah10293/smb-music-player/commit/a3aeeff417bcace357b91ac07874a5cfb1a33663).
 - Immediate pre-HOUSE checkpoint: [`3bb2655`](https://github.com/oolah10293/smb-music-player/commit/3bb2655c2f2b280df4625a336822c66df82715ca). The comparison from the v0.3.8 implementation to this checkpoint changes documentation and source-archive CI only; Android runtime source is unchanged.
-- First HOUSE implementation: [`f0171da`](https://github.com/oolah10293/smb-music-player/commit/f0171da7c07c0d1b538e77af686a30854f099b34), v0.4.0. Latest combined implementation reviewed: [`d56881f8`](https://github.com/oolah10293/smb-music-player/commit/d56881f8a87b3aa88d6e679b89b5d0f17ff5502f), v0.4.3. Later commits through this review are documentation only.
+- First HOUSE implementation: [`f0171da`](https://github.com/oolah10293/smb-music-player/commit/f0171da7c07c0d1b538e77af686a30854f099b34), v0.4.0. Latest combined implementation reviewed: [`d56881f8`](https://github.com/oolah10293/smb-music-player/commit/d56881f8a87b3aa88d6e679b89b5d0f17ff5502f), v0.4.3. Later commits through that inventory checkpoint were documentation only; the v0.5.0 standalone extraction follows this inventory.
 
 Use the baseline to recover a standalone service/browser startup path, then selectively port the later improvements. Do not revert the whole repository or discard current requirements/history. Extract HOUSE from the latest implementation so its subsequent fixes survive.
 
@@ -72,4 +72,4 @@ The manual mute override and album-art mini-log are **queued work**, not upgrade
 - Current physical results: [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md)
 - Historical validation: [VALIDATION_STATE.md](VALIDATION_STATE.md)
 - Normative HOUSE architecture: [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md)
-- Current release record: [RELEASE_0.4.3.md](RELEASE_0.4.3.md)
+- Current standalone release record: [RELEASE_0.5.0.md](RELEASE_0.5.0.md)

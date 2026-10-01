@@ -10,7 +10,7 @@ The authoritative product rules are in [house-audio-server/docs/SESSION_BEHAVIOR
 
 Tracking: [Android Issue #1](https://github.com/oolah10293/smb-music-player/issues/1).
 
-Current implementation/build references are in [RELEASE_0.4.3.md](RELEASE_0.4.3.md); current physical acceptance is in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
+Current standalone implementation/build references are in [RELEASE_0.5.0.md](RELEASE_0.5.0.md), with device checks in [TESTING.md](TESTING.md). Historical combined-app physical acceptance remains in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
 
 ## 1. Separate playback authority from phone sound
 
@@ -146,7 +146,7 @@ The Pi, not every app independently, applies these agreed rules:
 
 Every genuinely fresh passive-node session starts the configured default folder (`MP3s` or `Rap`) with Shuffle and Repeat All and a newly randomized order. The selected folder setting persists; shuffled order/progress does not survive a completed session. Chance repeats of the first song are allowed, with no forced-difference rule. Returning before the final track ends preserves the existing session unchanged. After a completed drain, MPD's possible `pause @ 0.0` on the next old-queue track is only an artifact: the next passive start must load a fresh default queue, not resume the old controller selection. Ordinary paused sessions remain resumable. Android attachment by itself must not reshape the queue or impose passive defaults on manually selected queues. Independent SMB playback does not participate in or suppress passive HOUSE startup. All HOUSE renderers still share one authoritative MPD session.
 
-**HOUSE Quit must detach this phone, not send global Stop/Clear.** The current standalone Quit implementation stops and clears its local player; that behavior must remain standalone-only. Other rooms continue under the server's rules. If this phone was the final node, the server handles the final-track stop; the app does not implement its own competing shutdown logic.
+**HOUSE Quit must detach this phone, not send global Stop/Clear.** Standalone Quit releases its local player immediately and retains the saved queue with stopped intent; it cannot restart automatically. Other rooms continue under the server's rules. If this phone was the final node, the server handles the final-track stop; the app does not implement its own competing shutdown logic.
 
 HOUSE Quit must also clear **phone-local HOUSE presentation/cache state**: cached track/metadata/position/queue and stale HOUSE availability must not survive Quit as if they were current authoritative playback. On a later launch the app must freshly qualify HOUSE and fetch current server state before presenting a HOUSE track. If MPD is genuinely still playing the same song, that song may legitimately appear again only after the fresh server adoption.
 
@@ -162,7 +162,7 @@ The 2026-10-01 decision removes both directions of Android handoff entirely:
 - The apps do not need a HOUSE-to-SMB root mapping. HOUSE browses library-relative paths through its server API; SMB Music browses its own configured share.
 - The HOUSE app reconnects to the current server session when its own connection recovers. SMB Music retains and recovers its own session. Neither recovery depends on the other app.
 
-The v0.4.3 mapping, heard-position handoff, transfer journal, temporary controller, and reservation/commit workflow describe the shipped combined implementation, not requirements to carry into either independent app. Server v0.9.0 handoff endpoints remain deployed implementation history; the new apps do not use them. No runtime removal or migration is claimed by this documentation update.
+The v0.4.3 mapping, heard-position handoff, transfer journal, temporary controller, and reservation/commit workflow describe the shipped combined implementation, not requirements to carry into either independent app. Server v0.9.0 handoff endpoints remain deployed implementation history; the new apps do not use them. SMB Music v0.5.0 removes this Android runtime machinery. House Music extraction and any server cleanup remain separate pending work.
 
 ## 7. Required house-service contract
 

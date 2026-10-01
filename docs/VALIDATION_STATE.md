@@ -8,7 +8,7 @@ The standalone implementation restores the v0.3.8 playback/recovery core and pre
 
 ## Independent-app direction — 2026-10-01
 
-After the v0.4.3 field failures, the user chose completely separate SMB Music and HOUSE Android apps, with no automatic/manual handoff, shared queue/song/position or SMB-triggered HOUSE reset. This is a product decision, not a delivered release. Keep the combined-build evidence below; current requirements and pending implementation live in [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md) and [ROADMAP.md](ROADMAP.md).
+After the v0.4.3 field failures, the user chose completely separate SMB Music and HOUSE Android apps, with no automatic/manual handoff, shared queue/song/position or SMB-triggered HOUSE reset. At decision time this described the product direction; the later v0.5.0 standalone implementation is recorded above. Keep the combined-build evidence below; current requirements and pending implementation live in [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md) and [ROADMAP.md](ROADMAP.md).
 
 ## v0.4.3 source checkpoint
 

@@ -2,10 +2,10 @@ SMB Music v0.5.0 — standalone build/install
 
 1. Clone or download this repository to a local folder.
 2. Open its root in Android Studio with Java 17.
-3. Install Android SDK 36 and Build Tools 36.0.0, then sync Gradle.
-   No NDK, CMake or Snapclient preparation is needed.
-4. If gradle-wrapper.jar is missing, run SETUP_GRADLE_WRAPPER.bat
+3. If gradle-wrapper.jar is missing, run SETUP_GRADLE_WRAPPER.bat
    or ./gradlew; the wrapper download is checksum-verified.
+4. Install Android SDK 36 and Build Tools 36.0.0, then sync Gradle.
+   No NDK, CMake or Snapclient preparation is needed.
 5. Connect an Android device with USB debugging and run the app.
 
 applicationId: com.smbmusic.player
