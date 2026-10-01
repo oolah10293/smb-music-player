@@ -11,6 +11,8 @@ Server v0.8.2 remains the deployed server baseline.
 - **PASS:** with an S3 already audible, changing song/PLAY LIST from a muted phone changes shared playback while the phone stays muted.
 - **PASS:** Bluetooth audio connect automatically unmutes the HOUSE phone output.
 - **PASS:** Bluetooth audio disconnect automatically mutes the HOUSE phone output.
+- **PASS, reported sequence:** while two nodes played and the phone was muted with no Bluetooth audio, Pause on the phone paused playback and Resume restarted both nodes.
+- **FAIL, same sequence:** Resume also incorrectly unmuted the phone despite no Bluetooth audio being connected. Shared transport propagation worked; local phone renderer eligibility was violated. Root cause is not yet verified.
 - **PASS, route-specific:** **+400 ms** timing correction audibly aligns the currently tested phone/output route with the S3. Keep the adjustment available until other devices/routes are measured.
 - **PASS:** physical home-LAN departure is detected even when cellular/Tailscale can still reach the Pi.
 - **FAIL:** HOUSE -> STANDALONE same-song continuation still does not occur after departure; the app remains HOUSE-reconnecting instead of continuing through SMB/Tailscale.
@@ -47,15 +49,21 @@ Server v0.8.2 remains the deployed server baseline.
    - Passive S3 return or phone unmute resumes a server-owned automatic pause.
    - Explicit Pause/Stop remains authoritative.
 
-5. **Queue/control preservation**
+5. **Transport and phone renderer eligibility**
+   - Reproduce the reported regression: two nodes playing, phone muted, no Bluetooth audio; Pause then Resume on the phone.
+   - Both nodes must resume; the phone must remain muted throughout.
+   - Repeat via on-screen and media-session/notification controls, selected-track/PLAY LIST, queue changes, and HOUSE reattachment. No path may bypass Bluetooth eligibility or fall back to the phone speaker.
+   - An explicit local mute survives transport commands while Bluetooth remains connected; route connect/attachment follows the separate approved output rules.
+
+6. **Queue/control preservation**
    - Now Playing sort preserves current song, exact position, transport, Shuffle/Repeat and session-policy state.
-   - Seek/Next/Previous/PLAY LIST and selected-track behavior obey the existing pre-command audible-output rules.
+   - Seek/Next/Previous/PLAY LIST and selected-track behavior change the shared session without independently unmuting the phone. Use the Bluetooth eligibility rule in [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md), which supersedes pre-command auto-unmute.
 
-6. **Standalone regression**
+7. **Standalone regression**
    - Preserve v0.3.8 Country Buffer/recovery, Android Auto/Garmin, metadata, fade, search X, portrait layout, scroll restoration, Repeat All and SMB tuning.
-   - Add the approved standalone Bluetooth-output behavior: disconnect pauses/silences and retains exact local queue/song/position; reconnect resumes; already-connected Bluetooth is evaluated on app/mode entry; explicit Stop/Quit wins; no retained session means no Bluetooth-triggered start.
+   - Add the approved standalone Bluetooth-output behavior: connect starts/resumes an available retained SMB session; disconnect pauses/silences and retains exact local queue/song/position; reconnect resumes; already-connected Bluetooth is evaluated on app/mode entry; explicit Stop/Quit wins; no retained session means no Bluetooth-triggered start.
 
-7. **Device compatibility**
+8. **Device compatibility**
    - Capture the Galaxy S8 crash/stack trace before changing compatibility code.
 
 ## Install/config notes

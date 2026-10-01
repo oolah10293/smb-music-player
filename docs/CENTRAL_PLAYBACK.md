@@ -4,6 +4,8 @@ This document is the **normative Android HOUSE/STANDALONE behavior and architect
 
 The authoritative product rules are in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md). This document translates those decisions into Android requirements and identifies the corresponding implementation work. Engineering proposals and unresolved details below are not additional user-approved behavior.
 
+**2026-09-30 clarification:** HOUSE phone renderer eligibility requires Bluetooth audio. Transport commands never grant eligibility or independently unmute the phone. This supersedes the earlier pre-command audible-state auto-unmute policy. Existing server pause/retention rules remain in force; these are approved requirements, not claims of implementation or device acceptance.
+
 Tracking: [Android Issue #1](https://github.com/oolah10293/smb-music-player/issues/1).
 
 Current implementation/build references are intentionally kept out of this behavior contract. See [RELEASE_0.4.2.md](RELEASE_0.4.2.md) and [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
@@ -14,7 +16,7 @@ There are two independent decisions:
 
 | State | Playback controls and Now Playing | Phone sound |
 | --- | --- | --- |
-| HOUSE, output unmuted | Control/display the Pi's one MPD session | Receive the synchronized Snapcast stream |
+| HOUSE, Bluetooth audio eligible and output unmuted | Control/display the Pi's one MPD session | Receive the synchronized Snapcast stream when the receiver is ready and MPD is playing |
 | HOUSE, output muted | Control/display that same MPD session | Silent controller; no independent song |
 | STANDALONE | Control/display the existing local Media3/ExoPlayer session | Existing SMB/Tailscale playback when playing |
 
@@ -86,36 +88,42 @@ The browser controller is also part of the agreed system. It and the Android/Win
 
 Show **Mute output** in HOUSE mode; change it to **Unmute output** when muted. This controls this phone's renderer only, not MPD volume, global mute, or an unconditional MPD Pause.
 
-Keep the controller connected while muted and report its output state separately. Preserve the mute choice across reconnections. While other rooms are playing, unmuting joins the current house position. When the server has automatically paused a retained session because only a muted controller remains, unmuting can resume that retained session under the server rule.
+Keep the controller connected while muted and report its output state separately. Preserve the mute choice across ordinary network reconnections, subject to the Bluetooth-route rules below. A local Unmute request requires a connected Bluetooth audio output; it cannot enable the handset speaker. While other rooms are playing, an eligible output unmuting joins the current house position. When the server has automatically paused a retained session because only a muted controller remains, eligible output return can resume that retained session.
 
 Keep Android media-output routing, local volume, and interruptions separate from intentional house transport commands. A call, headphone disconnection, audio-focus change, or local renderer failure must not masquerade as the user pressing house Pause. The server still applies its presence/output policy to the actual remaining nodes.
 
-The initial HOUSE output rule is now settled: **entering HOUSE normally starts the phone renderer muted, except when an already-connected Bluetooth output is present and the authoritative HOUSE session is already playing; that existing route is current output intent and the phone should join unmuted.** Playlist-start auto-unmute otherwise depends on the pre-command audible-house state. If MPD is already playing and at least one other house output is audible, a muted phone stays muted while its song/PLAY LIST selection changes the shared queue. If nothing is audibly playing—MPD paused/stopped, or `audibleCount == 0` even while MPD is technically still playing—the initiating muted phone auto-unmutes. Explicit Play from paused/stopped also auto-unmutes. Merely opening the app, browsing, sorting, or using Next/Previous during already-audible playback does not auto-unmute.
+**No Bluetooth audio output means the HOUSE phone renderer is ineligible and muted.** Bluetooth audio connected means eligible; actual sound also requires a ready receiver, unmuted output, and Playing transport. Eligibility and transport are separate state. Play/Resume, selected-track/PLAY LIST, queue changes, app reopening, node joins/leaves, and network recovery must all use that same eligibility rule. None may enable phone-speaker playback or unmute merely because MPD was paused/stopped or `audibleCount == 0`.
+
+Pause/Resume preserves the local renderer decision unless route eligibility changes. In particular, a phone without Bluetooth that pauses two audible S3 nodes must remain muted when Resume restarts those nodes. An explicit manual mute also survives transport commands; the route-connect behavior below remains a separate output event. Apply the rule to on-screen, notification, lock-screen, and media-session command paths.
 
 Place the HOUSE-only **Mute Output / Unmute Output** control in the **lower Media3 Now Playing control strip beside the existing transport/Shuffle/Repeat/time controls** so the main Now Playing layout remains otherwise unchanged. A separate standalone mute button above that strip is not the desired UI.
 
 ### Bluetooth route policy
 
-Bluetooth route state is **phone-local output intent**, not a global MPD transport command.
+Bluetooth **audio** route state determines phone renderer eligibility. A paired device or an input-only watch is not a qualifying connected media output. The built-in speaker is not a HOUSE fallback.
 
 - Bluetooth audio disconnect -> mute/unavailable phone output; never directly send MPD Pause/Stop.
 - If another HOUSE output remains audible, shared playback continues.
 - If the phone becomes the only remaining muted controller, the server's existing policy auto-pauses and retains the exact HOUSE queue/song/position.
 - Bluetooth audio connect while HOUSE is already playing -> auto-unmute the phone and join the current synchronized stream, overriding a prior manual phone mute.
 - HOUSE attach/reopen must evaluate the **current** output route. If Bluetooth is already connected and HOUSE is already playing, join unmuted immediately; do not wait for a new connection callback.
-- Bluetooth connect or pre-existing Bluetooth alone must not start fresh idle or a deliberate Pause/Stop. If the user subsequently starts music, the connected Bluetooth route is strong output intent and the phone should be audible.
+- Bluetooth connect or pre-existing Bluetooth alone must not start fresh idle or a deliberate Pause/Stop. If the user subsequently starts music, the already-eligible, ready, unmuted output can render; Play is not an unmute command.
+- Bluetooth reconnect can resume a retained session automatically paused by the server because the muted phone was the only remaining node. The client reports output state; it does not turn every route callback into global Play/Pause.
 
 ### STANDALONE Bluetooth parity
 
-STANDALONE/SMB should use the same human-facing output intent while retaining local playback authority:
+In STANDALONE/SMB, Bluetooth also triggers the lifecycle of the phone-owned session:
 
+- Bluetooth audio connect makes the output eligible and starts/resumes an available retained SMB session at its saved position.
 - Bluetooth disconnect pauses/silences local playback and retains the exact standalone queue/song/position.
 - Bluetooth reconnect resumes that retained standalone session.
 - App start or transition into STANDALONE must evaluate an already-connected Bluetooth route instead of requiring a new callback.
-- Explicit Stop/Quit remains authoritative.
+- Explicit Stop/Quit wins; a route event or stale callback must not resurrect playback that was explicitly ended.
 - With no retained standalone session, Bluetooth connection alone starts nothing.
 
 This behavior does not replace automatic return-home ownership: once the qualifying home LAN and Pi identity are restored, the app must transition back to HOUSE and adopt the authoritative house session.
+
+Mode entry must also preserve the handoff rules in §6: muted/paused/stopped HOUSE departure stays silent. Already-connected Bluetooth is not permission to start an unrelated retained SMB queue during that transition.
 
 ### Passive-node default playlist selector
 
@@ -223,7 +231,8 @@ These remain **hardware acceptance checks**, not claims of field proof. Initial 
 - [ ] Joining active playback displays the real house playlist, track, position, shuffle/repeat, and changes from other controllers.
 - [ ] Folder/filtered `PLAY LIST`, selected-track start, transport, and explicit queue sort match existing semantics through the server API.
 - [ ] Phone HOUSE audio uses a real synchronized receiver; no independent ExoPlayer copy plays alongside it.
-- [ ] HOUSE-only Mute/Unmute affects this phone, survives reconnect, and preserves the server's muted-controller pause/resume behavior.
+- [ ] HOUSE output requires Bluetooth audio on every command/attachment path. Pause/Resume and queue changes preserve local mute; a phone without Bluetooth stays muted while S3 playback resumes. Local Unmute cannot bypass eligibility.
+- [ ] HOUSE-only Mute/Unmute affects this phone, survives ordinary network reconnect under the route rules, and preserves the server's muted-controller pause/resume behavior.
 - [ ] HOUSE Quit/controller departure preserves other listeners and their queue; final-node and reconnect-before-track-end behavior follow the Pi rules.
 - [ ] Return before drain completion preserves the active queue. After completed drain, the next passive arrival uses the configured default with fresh randomness and permits chance repeats. No saved rotation/bookmark from the completed session is required.
 - [ ] Home audio/control outages recover independently as appropriate and rejoin the current stream without resetting MPD.
@@ -247,7 +256,7 @@ Register the stable app-device id and stable Snapcast renderer id **before conne
 
 Heartbeat every five seconds and treat fifteen seconds without renewal as expiry. Report `outputMuted` separately from `outputReady`. Ready means the local receiver/output path can render even if MPD is paused. The server requires both an audible associated renderer and unmuted/ready controller state before counting the phone as audible.
 
-New HOUSE attachment normally starts muted. **Exception:** if Bluetooth is already connected and HOUSE is already playing, evaluate that current route and join unmuted. Existing Bluetooth alone must not start fresh idle or deliberate Pause/Stop.
+On HOUSE attachment, evaluate current Bluetooth audio eligibility before allowing local sound: no Bluetooth means muted. If Bluetooth is already connected and HOUSE is already playing, join unmuted without waiting for a new route callback. Existing Bluetooth alone must not start fresh idle or deliberate Pause/Stop. Report effective mute/readiness truthfully; transport commands never override eligibility.
 
 Keep the heartbeat alive through the foreground/background service lifecycle. HOUSE Quit stops the phone receiver/heartbeat and detaches the controller; it never sends MPD Stop/Clear merely because the app is closing.
 

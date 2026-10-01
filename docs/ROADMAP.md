@@ -11,9 +11,10 @@ This file contains **open work and future features only**. Completed implementat
    - Preserve muted/paused/stopped intent and avoid overwriting the HOUSE queue on return.
 
 2. **Finish Bluetooth output-intent handling**
+   - Enforce Bluetooth audio eligibility on every HOUSE output path. Play/Resume and queue changes must never independently unmute the phone; fix the reported two-node Pause/Resume case where the phone sounds without Bluetooth.
    - On HOUSE attach/reopen, honor Bluetooth that is already connected when HOUSE is already playing.
    - Keep route timing adjustable; current measured values belong in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md), not the roadmap.
-   - Add STANDALONE parity: disconnect retains/pauses the exact local session; reconnect resumes; existing Bluetooth is recognized on app/mode entry; explicit Stop/Quit wins.
+   - Add STANDALONE lifecycle triggers: connect starts/resumes an available retained SMB session; disconnect retains/pauses the exact queue/track/position; reconnect resumes; existing Bluetooth is recognized on app/mode entry; explicit Stop/Quit wins; no retained session means no automatic playlist.
 
 3. **Galaxy S8 compatibility**
    - Capture the actual launch crash/stack trace and fix the v0.4.2 startup failure.
