@@ -2,7 +2,24 @@
 
 This is the **single current Android HOUSE field-status/checklist document**. Normative behavior lives in [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md), version history in [VALIDATION_STATE.md](VALIDATION_STATE.md), and build/artifact verification in [RELEASE_0.4.3.md](RELEASE_0.4.3.md).
 
-**2026-10-01: v0.4.3 source changes are implemented; physical acceptance is pending.** No old PASS or FAIL below is a v0.4.3 result. Server **v0.8.2 remains the confirmed deployed baseline**; coordinated return-home testing requires installing **server v0.9.0** first. Source commits/builds do not establish Pi deployment.
+**2026-10-01: v0.4.3 has a partial physical pass, but both live handoff directions failed.** Server **v0.9.0 is confirmed installed** by the user's health output: service OK, startup ready, MPD and Snapserver reachable. Build success does not establish handoff acceptance.
+
+## Current physical results — v0.4.3, 2026-10-01
+
+- **PASS:** the user reports three S3 nodes and two phones running with good synchronization; Galaxy S8 is working. The two phone timing settings are **410 ms** and **385 ms**; the report does not map them to particular devices or output routes.
+- **FAIL, leaving home:** the user reports failed continuation. At 14:28 on cellular with VPN active, Now Playing shows **Waiting for SMB — retry in 12s**, `02.02.99`, and 00:01 / 00:00. The app reached standalone SMB recovery; the screenshot does not establish why the file read failed or whether it selected the correct departure track.
+- **FAIL, returning home:** at 14:56 with Wi-Fi and VPN active, Now Playing shows **Return home paused — transfer incomplete**, `Get That Money`, and 2:18 / 4:44. A transfer was attempted but did not complete automatically. The screenshot cannot distinguish a reserved, expired, or cancelled server receipt.
+- **FAIL, manual Unmute:** a third phone using its headphone jack cannot unmute without Bluetooth. The manual override is queued in [ROADMAP.md](ROADMAP.md); implementation remains explicitly deferred. Keep Bluetooth automation.
+- **UNCONFIRMED, excess mobile data:** the 14:57 Settings screenshot for Oct 1–Nov 1 attributes **72.19 MB to SMB Music**, **2.23 GB to Mobile Services**, and **14.33 MB to Tailscale**. It does not establish listening duration, a trip-specific delta, or unique bytes across app/VPN counters. Do not attribute Mobile Services' gigabytes to the player.
+- The user reports that the release feels regressed overall despite the compatibility and synchronization gains. Review transition ownership before adding more recovery branches or issuing another build.
+
+## Read-only code review after those failures
+
+- `PlaybackService.finishHandoff()` maps `reserved`, `expired`, and `cancelled` to the same incomplete message and marks them terminal, stopping automatic reconciliation. An exception during prepare/attach/commit can lead to this state while hiding its original cause. This explains the persistent paused state, not the initiating failure.
+- `SmbClient.probeFile()` reduces authentication, path, connection, and read failures to one boolean; the departure screenshot cannot identify which occurred. A stale SMB connection across network changes is a hypothesis, not a finding.
+- Return transfer pauses the standalone player but stops its loader only after successful HOUSE adoption. A prepared paused player can continue buffering; failed transfers therefore risk unnecessary reads. Repeated recovery can also discard and reread buffered data. Neither establishes measured waste in this trip.
+- v0.4.3 did not enlarge the standalone Country Buffer: 120–600 seconds, a 32 MiB allocation target with time priority, and 64 KiB SMB read-ahead. The allocation target is not a hard download cap. Retry probes request one file byte plus protocol overhead, not an entire song.
+- Proposed next direction: one service-owned transition coordinator, explicit operation phases, actual closure of the outgoing reader, and a small trace retaining original errors and byte counts. Keep the proven audio engines, Bluetooth automation, sync adjustment, and server authority. Do not resume SMB while a delayed HOUSE commit could still take effect; resolve or confirm cancellation first. No playback code changed during this review.
 
 ## Last physical baseline — v0.4.2, 2026-09-30
 
@@ -18,13 +35,13 @@ This is the **single current Android HOUSE field-status/checklist document**. No
 - **FAIL:** live return could leave the phone playing privately through SMB. Closing/reopening could then qualify HOUSE and adopt its state.
 - **FAIL:** already-connected Bluetooth could attach muted on HOUSE reopen.
 - **Observed competing sessions:** while the phone remained on SMB after returning, a subsequently powered S3 started another HOUSE queue. The required correction is to transfer the playing phone session into idle HOUSE first, so the S3 joins it. Stopping the phone later to adopt that second default is not a successful handoff.
-- **FAIL:** Galaxy S8 v0.4.2 crashed on launch. No crash trace establishes the cause. v0.4.3 guards newer public Android route APIs, but S8 acceptance remains pending; Issue #3 tracks it.
+- **FAIL:** Galaxy S8 v0.4.2 crashed on launch. No crash trace establishes the cause; Issue #3 tracked it. v0.4.3 guards newer public Android route APIs and now has the reported operation pass above.
 - **PENDING:** dedicated HOUSE Quit/reopen cleanup validation.
 
-## v0.4.3 acceptance checklist — all pending
+## v0.4.3 acceptance checklist — handoff failures recorded above; detailed cases otherwise pending
 
 1. **Prepare the paired system and mapping**
-   - Install server v0.9.0 and the exact v0.4.3 APK recorded in the release document.
+   - Server v0.9.0 installation is confirmed; v0.4.3 is the reported phone build. Preserve the exact APK/build identity from the release document for any targeted reproduction.
    - In Browser, hold **SMB / MP3s / Rap** to open Connections. Set **HOUSE music root on SMB** to the folder corresponding to MPD's music root. If HOUSE lists `MP3s/song.mp3`, that SMB folder must contain `MP3s`.
    - Check spaces, punctuation, Unicode, nested folders, and duplicate filenames in separate folders. A missing root, different share/host, or out-of-root queue entry must leave transfer paused with a visible explanation, without silently dropping tracks.
 
@@ -71,8 +88,8 @@ This is the **single current Android HOUSE field-status/checklist document**. No
    - Preserve the v0.3.8 Country Buffer/recovery, Android Auto/Garmin, metadata, fade, search X, portrait layout, scroll restoration, Repeat All and SMB tuning. Use [TESTING.md](TESTING.md).
 
 8. **Galaxy S8**
-   - Install and launch v0.4.3; test home detection with Tailscale on/off and live mode changes.
-   - If it crashes, capture the actual stack trace. API lint/source guards are not a hardware pass or proof of the earlier crash's root cause.
+   - Basic operation is now a reported physical pass. This does not establish every home/away case on the S8 or prove the earlier crash's cause.
+   - Attribute future transition results to the actual tested device; the current report does not identify which phone performed the failed handoffs.
 
 ## Install/config notes
 

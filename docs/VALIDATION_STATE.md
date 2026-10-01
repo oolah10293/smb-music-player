@@ -4,7 +4,7 @@ This file separates behavior exercised in real use from source changes that stil
 
 ## v0.4.3 source checkpoint
 
-Live service-owned home/away switching, coordinated idle-HOUSE return transfer, Bluetooth output eligibility, retained standalone Bluetooth lifecycle, and guarded Android route APIs are implemented. Build verification belongs in [RELEASE_0.4.3.md](RELEASE_0.4.3.md). Physical acceptance has not been established for this iteration; [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md) holds the live checklist and results.
+Live service-owned home/away switching, coordinated idle-HOUSE return transfer, Bluetooth output eligibility, retained standalone Bluetooth lifecycle, and guarded Android route APIs are implemented. Build verification belongs in [RELEASE_0.4.3.md](RELEASE_0.4.3.md). On 2026-10-01, field feedback partially accepted S8 operation and synchronization across three S3 nodes and two phones, but **both handoff directions failed** with server v0.9.0 installed. Manual Unmute without Bluetooth also failed and is queued, explicitly deferred. Excess mobile data remains unconfirmed. [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md) holds the current evidence, review findings, and remaining checklist.
 
 ## v0.4.2 revision checkpoint
 
