@@ -193,6 +193,8 @@ Credentials stay local and out of Git/logs. Keep existing encrypted SMB storage 
 
 This is pending implementation, not a claim that two APKs already exist. Produce separately installable apps with independent app identities, settings, sessions, notifications and playback services. Preserve the familiar folder-first Browser/Now Playing behavior in each app.
 
+Use v0.3.8 as the standalone source reference, selectively retain the later non-HOUSE improvements, and extract HOUSE from the latest combined implementation. The exact pre-HOUSE checkpoint and reviewed change inventory are maintained once in [ROADMAP.md](ROADMAP.md#split-references-and-carry-forward-inventory--reviewed-2026-10-01).
+
 SMB Music keeps the proven ExoPlayer/SMB transport, Country Buffer, outage recovery, encrypted credentials, retained session, Bluetooth/vehicle controls and Quit behavior. Its service has no HOUSE discovery, controller lease, Snapcast receiver, mapping or handoff responsibilities.
 
 The HOUSE app keeps `HousePlayer`/`HouseRuntime`, the control API, native Snapcast receiver, synchronization correction, S8-compatible Android API handling and HOUSE-local Bluetooth/mute behavior. Its service has no SMB decoder, credential store, private queue recovery or transfer journal. HOUSE Quit detaches only this app's controller/renderer; it never issues MPD Stop/Clear just to close the app.
