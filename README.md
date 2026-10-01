@@ -4,6 +4,8 @@ A native Android music player that streams audio directly from SMB shares using 
 
 Current source version: **0.4.3**. See [docs/RELEASE_0.4.3.md](docs/RELEASE_0.4.3.md) for build/artifact verification and [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md) for the current real-device pass/fail state. **v0.3.8 remains the confirmed standalone hardware baseline.**
 
+**Next direction, confirmed 2026-10-01:** split SMB Music and HOUSE into completely independent Android apps. No automatic/manual handoff, shared playback state, or SMB-triggered HOUSE queue reset. The source/released APK is still the combined v0.4.3 implementation; the split is pending. See [the current contract](docs/CENTRAL_PLAYBACK.md) and [roadmap](docs/ROADMAP.md).
+
 ## What it does
 
 - Browses SMB folders directly from Android.
@@ -94,15 +96,15 @@ Confirmed:
 
 The v0.3.8 prolonged-outage recovery hardening still needs its dedicated field test.
 
-## Whole-house audio integration
+## Shipped combined HOUSE integration (v0.4.3; split pending)
 
 HOUSE uses the existing Browser/Now Playing UI while the Raspberry Pi remains the authoritative playback host: MPD owns the house session, `house-audio-server` supplies control/session policy, and Snapserver distributes synchronized audio. STANDALONE continues to use the proven SMB/Tailscale -> Media3/ExoPlayer path.
 
-v0.4.3 adds live home/away switching. Returning with playing SMB audio transfers that queue/song/position into an idle HOUSE session; a later S3 joins it. An already-active HOUSE session remains authoritative. This coordinated return requires **house-audio-server v0.9.0**. Departure carries the current estimated heard track into SMB, without copying the whole HOUSE queue. HOUSE phone output requires Bluetooth audio; transport commands do not unmute it.
+The shipped v0.4.3 combined app added live home/away switching, which failed physical acceptance and is superseded as a product requirement by the independent-app decision. Its existing implementation attempts to transfer a playing SMB queue/song/position into idle HOUSE on return so a later S3 joins it. An already-active HOUSE session remains authoritative. This coordinated return requires **house-audio-server v0.9.0**. Departure attempts to carry the current estimated heard track into SMB, without copying the whole HOUSE queue. Shipped HOUSE phone output requires Bluetooth audio; transport commands do not unmute it.
 
-Set **HOUSE music root on SMB** in Connections to the SMB folder corresponding to the Pi's music-library root. Hold the Browser's **SMB / MP3s / Rap** button to open Connections. For example, if HOUSE lists `MP3s/song.mp3`, the configured root must contain that `MP3s` folder. This mapping is separate from the folder you currently browse, and is required for transfers. Missing or incompatible mapping leaves the transfer paused with an explanation.
+For the shipped combined app only, **HOUSE music root on SMB** in Connections must point to the SMB folder corresponding to the Pi's music-library root. Hold the Browser's **SMB / MP3s / Rap** button to open Connections. For example, if HOUSE lists `MP3s/song.mp3`, the configured root must contain that `MP3s` folder. This mapping is separate from the folder you currently browse, and is required for transfers. Missing or incompatible mapping leaves the transfer paused with an explanation.
 
-These changes still require physical acceptance. Current device results are maintained only in [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md).
+The split apps will not need this cross-library mapping or transfer workflow. Current device results for the shipped combined app are maintained only in [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md).
 
 To avoid duplicating state across documents:
 

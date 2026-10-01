@@ -4,6 +4,17 @@ This is the **single current Android HOUSE field-status/checklist document**. No
 
 **2026-10-01: v0.4.3 has a partial physical pass, but both live handoff directions failed.** Server **v0.9.0 is confirmed installed** by the user's health output: service OK, startup ready, MPD and Snapserver reachable. Build success does not establish handoff acceptance.
 
+**Later decision, 2026-10-01:** the user chose completely independent SMB Music and HOUSE apps with no handoff or shared session. The observations below remain valid evidence for the shipped combined v0.4.3 app. Its transfer checklist is historical and is no longer a gate for the split; no new build has been delivered. Current product direction is in [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md).
+
+## Remaining useful checks on the installed v0.4.3 build
+
+The user will report these later; do not mark them passed without field evidence:
+
+- Already-connected Bluetooth: reopen HOUSE during active playback and join without reconnecting Bluetooth.
+- Muted-phone Pause/Resume: S3s resume while the phone stays muted.
+- Standalone Bluetooth disconnect/reconnect: pause and retain its own session, then resume it.
+- HOUSE Quit/reopen: phone audio and notification clear, other nodes continue, and reopening fetches current server state.
+
 ## Current physical results — v0.4.3, 2026-10-01
 
 - **PASS:** the user reports three S3 nodes and two phones running with good synchronization; Galaxy S8 is working. The two phone timing settings are **410 ms** and **385 ms**; the report does not map them to particular devices or output routes.
@@ -19,7 +30,7 @@ This is the **single current Android HOUSE field-status/checklist document**. No
 - `SmbClient.probeFile()` reduces authentication, path, connection, and read failures to one boolean; the departure screenshot cannot identify which occurred. A stale SMB connection across network changes is a hypothesis, not a finding.
 - Return transfer pauses the standalone player but stops its loader only after successful HOUSE adoption. A prepared paused player can continue buffering; failed transfers therefore risk unnecessary reads. Repeated recovery can also discard and reread buffered data. Neither establishes measured waste in this trip.
 - v0.4.3 did not enlarge the standalone Country Buffer: 120–600 seconds, a 32 MiB allocation target with time priority, and 64 KiB SMB read-ahead. The allocation target is not a hard download cap. Retry probes request one file byte plus protocol overhead, not an entire song.
-- Proposed next direction: one service-owned transition coordinator, explicit operation phases, actual closure of the outgoing reader, and a small trace retaining original errors and byte counts. Keep the proven audio engines, Bluetooth automation, sync adjustment, and server authority. Do not resume SMB while a delayed HOUSE commit could still take effect; resolve or confirm cancellation first. No playback code changed during this review.
+- Superseded proposal (before the independent-app decision): one service-owned transition coordinator, explicit operation phases, actual closure of the outgoing reader, and a small trace retaining original errors and byte counts. Keep the proven audio engines, Bluetooth automation, sync adjustment, and server authority. Do not resume SMB while a delayed HOUSE commit could still take effect; resolve or confirm cancellation first. No playback code changed during this review.
 
 ## Last physical baseline — v0.4.2, 2026-09-30
 
@@ -34,11 +45,11 @@ This is the **single current Android HOUSE field-status/checklist document**. No
 - **FAIL:** departure did not continue the same song over SMB; the app remained HOUSE-reconnecting.
 - **FAIL:** live return could leave the phone playing privately through SMB. Closing/reopening could then qualify HOUSE and adopt its state.
 - **FAIL:** already-connected Bluetooth could attach muted on HOUSE reopen.
-- **Observed competing sessions:** while the phone remained on SMB after returning, a subsequently powered S3 started another HOUSE queue. The required correction is to transfer the playing phone session into idle HOUSE first, so the S3 joins it. Stopping the phone later to adopt that second default is not a successful handoff.
+- **Observed competing sessions:** while the phone remained on SMB after returning, a subsequently powered S3 started another HOUSE queue. The correction required at that time was to transfer the playing phone session into idle HOUSE first, so the S3 joined it. That handoff requirement is now superseded by the independent-app decision.
 - **FAIL:** Galaxy S8 v0.4.2 crashed on launch. No crash trace establishes the cause; Issue #3 tracked it. v0.4.3 guards newer public Android route APIs and now has the reported operation pass above.
 - **PENDING:** dedicated HOUSE Quit/reopen cleanup validation.
 
-## v0.4.3 acceptance checklist — handoff failures recorded above; detailed cases otherwise pending
+## Historical combined v0.4.3 checklist — superseded as a split-app release gate
 
 1. **Prepare the paired system and mapping**
    - Server v0.9.0 installation is confirmed; v0.4.3 is the reported phone build. Preserve the exact APK/build identity from the release document for any targeted reproduction.
@@ -91,7 +102,7 @@ This is the **single current Android HOUSE field-status/checklist document**. No
    - Basic operation is now a reported physical pass. This does not establish every home/away case on the S8 or prove the earlier crash's cause.
    - Attribute future transition results to the actual tested device; the current report does not identify which phone performed the failed handoffs.
 
-## Install/config notes
+## Installed combined v0.4.3 configuration notes
 
 The current CI debug-signing scheme can require uninstall/reinstall between builds; stable upgrade signing remains open. Preserve local SMB credentials, HOUSE address, music-root mapping and timing correction before uninstalling.
 

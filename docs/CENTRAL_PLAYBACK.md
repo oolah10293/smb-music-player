@@ -1,12 +1,12 @@
-# Android integration with house-audio-server
+# Independent Android SMB and HOUSE apps
 
-This document is the **normative Android HOUSE/STANDALONE behavior and architecture contract**. Current source/build identity belongs in the release record; current real-device pass/fail status belongs in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md); historical validation belongs in [VALIDATION_STATE.md](VALIDATION_STATE.md).
+This document is the **normative behavior and architecture contract for the two independent Android apps**. Current source/build identity belongs in the release record; current real-device pass/fail status belongs in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md); historical validation belongs in [VALIDATION_STATE.md](VALIDATION_STATE.md).
 
 The authoritative product rules are in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md). This document translates those decisions into Android requirements and identifies the corresponding implementation work. Engineering proposals and unresolved details below are not additional user-approved behavior.
 
 **2026-09-30 clarification:** HOUSE phone renderer eligibility requires Bluetooth audio. Transport commands never grant eligibility or independently unmute the phone. This supersedes the earlier pre-command audible-state auto-unmute policy. Existing server pause/retention rules remain in force. Implementation and physical acceptance are tracked separately.
 
-**Return-home clarification, 2026-09-30:** when the phone is actively playing SMB and HOUSE is idle, transfer that ongoing session to the Pi and make it the authoritative HOUSE session. A later S3 joins it; it must never start a second/default session because the phone was left on SMB. The former prohibition/open question about transferring active playback into idle HOUSE is superseded by §6 below.
+**Superseding decision, 2026-10-01:** the user wants two completely independent Android apps, with no connection between them. SMB Music owns its standalone session; the HOUSE app controls/renders the Pi session. Remove automatic home/away switching and all automatic or manual session transfers from the planned product. Neither app shares a queue/song/position, resets the other session, launches the other app, or implements special cross-app stop/start coordination. Listening through SMB has no effect on HOUSE, including its next passive-node queue. This replaces the 2026-09-30 handoff requirement and the later proposed transition-coordinator redesign. The shipped v0.4.3 combined app and server v0.9.0 are unchanged by this documentation decision; splitting the apps remains implementation work.
 
 Tracking: [Android Issue #1](https://github.com/oolah10293/smb-music-player/issues/1).
 
@@ -14,31 +14,21 @@ Current implementation/build references are in [RELEASE_0.4.3.md](RELEASE_0.4.3.
 
 ## 1. Separate playback authority from phone sound
 
-There are two independent decisions:
+There are two separate applications, each with its own session and lifecycle:
 
 | State | Playback controls and Now Playing | Phone sound |
 | --- | --- | --- |
 | HOUSE, Bluetooth audio eligible and output unmuted | Control/display the Pi's one MPD session | Receive the synchronized Snapcast stream when the receiver is ready and MPD is playing |
 | HOUSE, output muted | Control/display that same MPD session | Silent controller; no independent song |
-| STANDALONE | Control/display the existing local Media3/ExoPlayer session | Existing SMB/Tailscale playback when playing |
+| SMB Music app | Control/display its own local Media3/ExoPlayer session | Existing SMB/Tailscale playback when playing |
 
 The phone is a **controlling node**, even when it also renders audio. It must not register as a passive radio just because its output is unmuted.
 
-```mermaid
-flowchart TD
-    UI[Browser and media controls] --> Service[PlaybackService]
-    Service --> Local[SMB through ExoPlayer]
-    Service --> House[HousePlayer and HouseRuntime]
-    House --> Pi[House server and MPD]
-    Pi --> Snap[Snapserver]
-    Snap --> Receiver[Phone Snapcast receiver]
-    Local --> Output[Phone audio output]
-    Receiver --> Output
-```
+SMB Music uses its own Browser/Now Playing, foreground service, Media3/ExoPlayer, saved queue and encrypted SMB settings. The HOUSE app uses its own Browser/Now Playing, controller service and Snapcast receiver. Users choose which app to open. Ordinary Android audio-focus handling remains local platform behavior; do not add app-specific coordination between them.
 
-The v0.4.0 backend boundary lets the same UI target either session. HOUSE control and HOUSE audio are separate connections and responsibilities. MPD remains the queue/transport authority; the phone is not a music relay. A remote-control API alone does not implement synchronized phone playback, and playing an independent SMB copy at approximately the same seek position is not a substitute for a Snapcast receiver.
+HOUSE control and HOUSE audio remain separate connections and responsibilities. MPD owns the house queue and transport; the phone is not a music relay. The HOUSE app must not use SMB/ExoPlayer as a fallback source for its synchronized output.
 
-## 2. Automatic home-LAN detection and reconnection
+## 2. HOUSE app home-LAN qualification and reconnection
 
 The first v0.4.0 phone test changed one important implementation detail: **physical home-LAN presence and HOUSE packet routing are separate concerns.**
 
@@ -49,18 +39,18 @@ Revised HOUSE detection is:
 1. Find an available Wi-Fi or Ethernet Android `Network` that is not a VPN transport.
 2. Inspect that physical network's `LinkProperties` / routes. The locally configured house LAN address must fall on a **directly connected route of that physical network**. This is the key physical-home evidence; a Tailscale route by itself does not qualify.
 3. Using normal Android routing, verify the expected Pi identity at that LAN address, such as the MPD `OK MPD ` greeting and/or the expected `house-audio-server` identity.
-4. Only the combination of a qualifying physical route plus the expected Pi identity selects HOUSE.
-5. Continue watching the qualifying physical `Network`. Losing that network/route is the departure signal, subject to the later grace policy.
+4. Only the combination of a qualifying physical route plus the expected Pi identity qualifies a connection in the HOUSE app. It does not select or switch applications.
+5. Continue watching the qualifying physical `Network`. Losing that network/route makes HOUSE unavailable; never open or start SMB Music.
 
-Once HOUSE is selected, MPD/HTTP/Snapcast traffic uses **normal Android routing**. Do not pin those sockets to the physical `Network`; Tailscale may remain connected. The physical network is authoritative for **presence and departure detection**, not for forcing packet egress.
+Once HOUSE is selected, MPD/HTTP/Snapcast traffic uses **normal Android routing**. Do not pin those sockets to the physical `Network`; Tailscale may remain connected. The physical network establishes **HOUSE availability**, not packet egress or selection of another app.
 
-This preserves the core rule: **Tailscale/VPN-only reachability never selects HOUSE.** Away from home, a VPN route to the Pi cannot substitute for the missing directly connected physical-LAN route. An unrelated Wi-Fi using a similar private subnet still has to pass the expected Pi identity check.
+This preserves the core rule: **Tailscale/VPN-only reachability never qualifies HOUSE.** Away from home, a VPN route to the Pi cannot substitute for the missing directly connected physical-LAN route. An unrelated Wi-Fi using a similar private subnet still has to pass the expected Pi identity check.
 
 The house LAN address is deployment configuration, not a source-code constant. Keep the current address in local app configuration rather than committing it into Android source or public examples.
 
 The Pi must also expose MPD on both localhost and its configured home-LAN listener. The first field test found MPD bound to localhost only, which made every remote HOUSE probe impossible until the LAN listener was added. Do not publish the private deployment address.
 
-A temporary home-server, Wi-Fi, MPD, HTTP, or audio failure must not silently start an independent local playlist. Remain in HOUSE recovery while the qualifying physical home network is still present. On confirmed loss of that physical network, transition to STANDALONE under the handoff rules below. The departure grace period and ambiguous-network policy are still open, not a hard-coded timeout in this requirements record.
+A home-server, Wi-Fi, MPD, HTTP, or audio failure leaves the HOUSE app unavailable/reconnecting. Loss or return of the home network never switches apps, opens an SMB file, copies a track, or changes SMB Music. SMB Music handles its own Wi-Fi/cellular outages through its existing SMB recovery, regardless of HOUSE availability.
 
 Show the active control target and distinguish control-server failure from audio-receiver failure where possible. Suggested status wording includes `HOUSE - reconnecting`, `House server unavailable`, and `Audio reconnecting`. Start retrying when failure is detected, not only after an audio buffer empties. Recovery joins the current house position, not an old backlog.
 
@@ -73,7 +63,7 @@ Preserve **folders are playlists**, Browser/Now Playing separation, browser scro
 Required HOUSE behavior:
 
 - Fetch the current house track, queue, position/duration, transport, shuffle, and repeat state on attachment. Show the existing playlist even when another controller selected it.
-- Merely opening the app or browsing does not issue Play, replace the house queue, or upload a stale former standalone queue. The active return-home session transfer in §6 is a distinct continuation of already-playing SMB audio.
+- Merely opening the HOUSE app or browsing does not issue Play or replace the house queue. SMB Music has no connection to HOUSE and never uploads its session.
 - Preserve `PLAY LIST`: with blank search, submit the current folder's audio tracks in the selected order; with active search, submit only matching tracks. Preserve the current multi-term AND filename/folder search semantics.
 - Selecting a track retains the normal current-list behavior and starts at that selected item. Send library-relative track identities and the selected start item/index, not phone-specific SMB URLs or Linux absolute paths as the public control contract.
 - Play/Pause, Previous/Next, Seek, Shuffle, and Repeat operate on MPD through the house service. Queue-sort actions are deliberate server queue changes; merely sorting a browser view is not.
@@ -84,6 +74,8 @@ Required HOUSE behavior:
 The browser controller is also part of the agreed system. It and the Android/Windows clients should use one Pi-side control contract, not unrelated playback backends on the server.
 
 ## 4. HOUSE-only Mute output button
+
+**Queued correction, 2026-10-01:** the user wants manual Mute/Unmute to work on the current Android output, including a headphone jack, without requiring Bluetooth. Bluetooth automation stays. Implementation is explicitly deferred in [ROADMAP.md](ROADMAP.md); the Bluetooth-only Unmute restriction described below is shipped v0.4.3 behavior, not the final manual-button requirement.
 
 Show **Mute output** in HOUSE mode; change it to **Unmute output** when muted. This controls this phone's renderer only, not MPD volume, global mute, or an unconditional MPD Pause.
 
@@ -116,22 +108,20 @@ In STANDALONE/SMB, Bluetooth also triggers the lifecycle of the phone-owned sess
 - Bluetooth audio connect makes the output eligible and starts/resumes an available retained SMB session at its saved position.
 - Bluetooth disconnect pauses/silences local playback and retains the exact standalone queue/song/position.
 - Bluetooth reconnect resumes that retained standalone session.
-- App start or transition into STANDALONE must evaluate an already-connected Bluetooth route instead of requiring a new callback.
+- SMB Music app start must evaluate an already-connected Bluetooth route instead of requiring a new callback.
 - Explicit Stop/Quit wins; a route event or stale callback must not resurrect playback that was explicitly ended.
 - With no retained standalone session, Bluetooth connection alone starts nothing.
 
-This behavior does not replace automatic return-home ownership: once the qualifying home LAN and Pi identity are restored, the app must transition back to HOUSE. Transfer currently playing SMB into idle HOUSE, or adopt a HOUSE session that was already active before the return, under §6.
-
-Mode entry must also preserve the handoff rules in §6: muted/paused/stopped HOUSE departure stays silent. Already-connected Bluetooth is not permission to start an unrelated retained SMB queue during that transition.
+These are SMB Music's own Bluetooth rules. They never depend on HOUSE state, transfer its queue, reset HOUSE, or trigger a switch to the HOUSE app. The HOUSE app independently handles its own output and connection lifecycle.
 
 ### Passive-node default playlist selector
 
 HOUSE Browser needs a compact selector for the Pi's passive-radio default folder.
 
-Reuse the Browser button position that is **SMB** in STANDALONE:
+Keep the familiar Browser button position in each separate app:
 
-- STANDALONE: button remains SMB/settings;
-- HOUSE: button displays `MP3s` or `Rap` and toggles the Pi's persisted passive-node default.
+- SMB Music: button remains SMB/settings.
+- HOUSE app: button displays `MP3s` or `Rap` and toggles the Pi's persisted passive-node default. It has no effect on SMB Music.
 
 The setting is server-owned because it affects S3 startup even when the phone is absent. Changing it must not replace, restart, or otherwise disturb the current house queue. It applies only when the house later enters a genuinely fresh passive-renderer auto-start session.
 
@@ -145,8 +135,8 @@ The Pi, not every app independently, applies these agreed rules:
 
 | Situation | Required result |
 | --- | --- |
-| Fresh idle; a phone/PC/browser merely connects first | Wait for explicit Play/selection, even with output unmuted. A passive node auto-starts the configured default if no live phone-session transfer is taking place. |
-| Phone returns while actively playing SMB; HOUSE is idle | Transfer the live phone session to the Pi as HOUSE. A later S3 joins that queue/track/position instead of starting a separate default. |
+| Fresh idle; a phone/PC/browser merely connects first | Wait for explicit Play/selection, even with output unmuted. A passive node auto-starts the configured default under the ordinary server rules. |
+| SMB Music is playing, stops, or changes network | No HOUSE queue reset, transfer, playback command, controller registration or reservation. A passive node follows the normal HOUSE rules independently. |
 | Existing music; a phone joins | Adopt/display the existing queue and track; join sound only if unmuted. Do not restart or replace the queue. |
 | Controller changes the queue, then leaves while other nodes remain | The new house queue remains in effect. |
 | All nodes disconnect during playback | Finish the current track, then stop despite Repeat All. |
@@ -154,7 +144,7 @@ The Pi, not every app independently, applies these agreed rules:
 | Only a muted phone remains after the last audible node leaves | Pause MPD and retain the queue, track, and exact position. |
 | An audible node returns or the muted phone unmutes after that automatic pause | Resume the retained session, not a new default queue. A passive radio powering on is explicitly allowed to resume an existing paused session; controller attachment alone is not. |
 
-Every genuinely fresh passive-node session starts the configured default folder (`MP3s` or `Rap`) with Shuffle and Repeat All and a newly randomized order. The selected folder setting persists; shuffled order/progress does not survive a completed session. Chance repeats of the first song are allowed, with no forced-difference rule. Returning before the final track ends preserves the existing session unchanged. After a completed drain, MPD's possible `pause @ 0.0` on the next old-queue track is only an artifact: the next passive start must load a fresh default queue, not resume the old controller selection. Ordinary paused sessions remain resumable. Android attachment by itself must not reshape the queue or impose passive defaults on manually selected queues. A live SMB transfer creates the HOUSE continuation before passive auto-start can choose a competing default.
+Every genuinely fresh passive-node session starts the configured default folder (`MP3s` or `Rap`) with Shuffle and Repeat All and a newly randomized order. The selected folder setting persists; shuffled order/progress does not survive a completed session. Chance repeats of the first song are allowed, with no forced-difference rule. Returning before the final track ends preserves the existing session unchanged. After a completed drain, MPD's possible `pause @ 0.0` on the next old-queue track is only an artifact: the next passive start must load a fresh default queue, not resume the old controller selection. Ordinary paused sessions remain resumable. Android attachment by itself must not reshape the queue or impose passive defaults on manually selected queues. Independent SMB playback does not participate in or suppress passive HOUSE startup. All HOUSE renderers still share one authoritative MPD session.
 
 **HOUSE Quit must detach this phone, not send global Stop/Clear.** The current standalone Quit implementation stops and clears its local player; that behavior must remain standalone-only. Other rooms continue under the server's rules. If this phone was the final node, the server handles the final-track stop; the app does not implement its own competing shutdown logic.
 
@@ -162,41 +152,17 @@ HOUSE Quit must also clear **phone-local HOUSE presentation/cache state**: cache
 
 The 2026-09-29 choices settle these edges: background/screen-off apps remain controllers while sending five-second heartbeats, with fifteen-second expiry; Quit detaches immediately. The last controller leaving an automatically paused session ends it without advancing the song. A still-audible renderer can survive control-lease expiry as an output, counted once for that device. A stale established socket alone is not presence.
 
-## 6. Automatic continuation when leaving home
+## 6. No handoff or shared session
 
-Confirmed behavior: an unmuted phone that was hearing playing house music automatically continues the **same song** through its existing SMB/Tailscale player after leaving the home LAN.
+The 2026-10-01 decision removes both directions of Android handoff entirely:
 
-Cache the library-relative track identity and last heard position while still connected. Do not wait until the Pi is unreachable to ask which file to open. Map that identity to the user's locally stored SMB library-root configuration; title/artist matching is not reliable identity.
+- Leaving home does not copy HOUSE music into SMB Music or launch/resume that app.
+- Returning home does not upload the SMB queue, reset HOUSE, or start/stop either app on behalf of the other.
+- There is no manual “send to HOUSE” action, shared session snapshot, shared playback position, cross-app control channel, or background queue synchronization.
+- The apps do not need a HOUSE-to-SMB root mapping. HOUSE browses library-relative paths through its server API; SMB Music browses its own configured share.
+- The HOUSE app reconnects to the current server session when its own connection recovers. SMB Music retains and recovers its own session. Neither recovery depends on the other app.
 
-The handoff must preserve what the phone was actually hearing. The raw MPD position may be ahead of a buffered renderer. The client estimates the heard track/position from fresh MPD observations on a monotonic clock, recent track-boundary history, Snapclient buffer/server latency, and the effective local timing correction. Unknown timing or an unobserved successor must not invent a track. This remains an estimate: MPD/FIFO lead, HTTP sampling, and unreported Bluetooth/device latency require physical measurement. It is not a sample-accurate handoff.
-
-| Before departure | Standalone result |
-| --- | --- |
-| Output unmuted and actually playing house music | Open the same file, seek to the retained heard position, buffer, and resume automatically. |
-| Output muted | Remain silent; a network change must not start sound. |
-| Paused or stopped | Remain paused/stopped; being unmuted is not permission to start. |
-
-Do not send Stop, Seek, or a queue replacement to MPD as part of leaving. Remaining home listeners continue; the Pi applies its ordinary node-disconnection policy independently.
-
-The handoff must use the existing SMB buffering/retry path and suppress stale asynchronous callbacks from a superseded mode. Avoid simultaneous standalone and house audio. Automatic continuation is required; gapless switching is **not** proven or promised. Copying the entire house queue into the away player, rather than just the current track, remains undecided.
-
-### Returning home: make the playing phone session HOUSE
-
-When the phone is actively playing SMB and HOUSE is idle, automatically transfer that live session to the Pi as soon as physical home-LAN presence and Pi identity are verified. Preserve the current playlist/queue order, track, playback position, and Shuffle/Repeat settings. MPD becomes the authority for that same ongoing playback; stop private SMB playback as the handoff takes effect and render the synchronized HOUSE stream only if Bluetooth eligibility permits.
-
-Do not leave the phone playing privately until an S3 starts a different queue, then call adoption of that second queue a successful return. The phone's session should already have become HOUSE. An S3 powered on after return joins that session at its current track/position, without starting the passive default or restarting/reshuffling the transferred queue.
-
-If HOUSE was already active before the phone returned, retain the existing rule: adopt that authoritative session without overwriting it. Mere attachment, Bluetooth connection, and paused/stopped phone playback do not create Playing intent or revive stale queues. Existing Bluetooth eligibility, explicit Pause/Stop/Quit, and server pause/retention rules still apply.
-
-Coordinate phone handoff and server passive auto-start so an S3 appearing during transfer cannot create a competing default. Preserve the handoff snapshot until the outcome is known, prevent stale standalone callbacks from restarting private playback, and reconcile server state after an uncertain acknowledgement instead of blindly replaying a queue replacement. This settles the return-to-idle behavior; it does not settle whole-queue HOUSE -> away copying or promise gapless switching.
-
-### Transfer coordination and library mapping
-
-The v0.9.0 server handoff contract reserves idle HOUSE before the phone attaches its temporary muted/not-ready controller. The phone pauses private playback, retains its queue/index/position/Shuffle, and sends `prepare` with a unique transfer identity. A reservation blocks passive-default auto-start while the phone attaches and commits the mapped library-relative queue. Standalone Repeat All is fixed, so the transferred repeat value is `true`. A successful commit becomes the authoritative HOUSE session; normal runtime attachment then reports actual Bluetooth/mute/receiver readiness. The server can retain an automatic pause until an eligible renderer is ready.
-
-An existing HOUSE session returns `adopt_existing` and is not overwritten. Repeated requests use the same transfer identity; after an uncertain commit response, read `status` rather than replaying a queue replacement. A failed, expired, cancelled, or unknown outcome stays paused and visible. The foreground notification’s **Stop transfer** action cancels the pending transfer; Quit cancels/detaches local participation without stopping an already-committed shared session. Full schemas and reservation/failure semantics belong in the server [API.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/API.md).
-
-**HOUSE music root on SMB** is an explicit local Connections setting. It identifies the SMB folder corresponding to MPD's music root, not whichever folder happens to be open in Browser. Hold the Browser's **SMB / MP3s / Rap** button to open Connections. Map library-relative paths under that root; do not infer identity from titles, guess the share root, or silently drop unmappable queue entries. A missing/incompatible mapping leaves transfer paused with an actionable status. Credentials remain in their existing encrypted store.
+The v0.4.3 mapping, heard-position handoff, transfer journal, temporary controller, and reservation/commit workflow describe the shipped combined implementation, not requirements to carry into either independent app. Server v0.9.0 handoff endpoints remain deployed implementation history; the new apps do not use them. No runtime removal or migration is claimed by this documentation update.
 
 ## 7. Required house-service contract
 
@@ -208,14 +174,14 @@ The passive-renderer side has now advanced beyond the basic primitives: fresh-id
 
 Server v0.8.0 implements controller leases, output reporting, device/renderer association, muted-controller pause/resume, and stale lifecycle-report rejection in source/tests (Pi validation pending). Persisted passive-default selection is field-proven in v0.7.0. General transport-command deduplication remains separate work; v0.8.2 guards queue reordering by revision and IDs. Clients must not replay uncertain Next/queue writes.
 
-The Android app should **not use MPD's native control port as its HOUSE control API**. MPD remains useful only as a tiny service-identity check after the app has already established that the configured LAN address lies on a directly connected non-VPN physical network. Android, Windows, and the browser controller should otherwise target the same house-audio-server contract so the Pi can enforce one-session lifecycle, presence/output rules, fresh-session default shuffle, and HOUSE/STANDALONE behavior consistently.
+The Android app should **not use MPD's native control port as its HOUSE control API**. MPD remains useful only as a tiny service-identity check after the app has already established that the configured LAN address lies on a directly connected non-VPN physical network. Android, Windows, and the browser controller should otherwise target the same house-audio-server contract so the Pi can enforce one-session lifecycle, presence/output rules, fresh-session default shuffle, consistently. SMB Music does not call this service.
 
-The Android client targets the HTTP API documented in [house-audio-server/docs/API.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/API.md) for browse/queue/transport operations and requires v0.9.0 for coordinated return-home transfers. A push-state feed is still optional; the client polls authoritative state. The Snapcast audio connection remains distinct from the control service.
+The Android client targets the HTTP API documented in [house-audio-server/docs/API.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/API.md) for browse/queue/transport operations without any SMB-session transfer calls. Server v0.9.0 remains the confirmed deployed version. A push-state feed is still optional; the client polls authoritative state. The Snapcast audio connection remains distinct from the control service.
 
 The Android client needs:
 
 - **Identity/capabilities:** control-service identity, protocol version, supported commands, and stream connection information. HOUSE presence itself is established separately by the direct MPD LAN probe.
-- **Library browsing:** relative folder/track identities, names, type, modified time for sort, and available metadata/artwork. A small browse-source abstraction can keep the existing UI while using the house service at home and SMB away.
+- **Library browsing:** relative folder/track identities, names, type, modified time for sort, and available metadata/artwork. The HOUSE app uses these endpoints; SMB Music independently retains its SMB browser.
 - **Session snapshot and updates:** session/queue identity, queue entries and current entry, transport, shuffle/repeat, position/duration and timing context, pending-stop/automatic-pause reason, plus a revision or equivalent stale-state check.
 - **Commands:** replace/play the selected ordered list with a start item, deliberate transport commands, queue reordering, shuffle/repeat, and per-device output-state changes. Read/attach operations must not mutate playback.
 - **Presence:** stable app-device identity, controller role, associated renderer identity, mute/output state, connection lifecycle, and a defined heartbeat/expiry policy.
@@ -223,45 +189,40 @@ The Android client needs:
 
 Credentials stay local and out of Git/logs. Keep existing encrypted SMB storage separate from any house-service trust/token configuration. Do not embed private network addresses or user-specific filesystem roots in Android source or public examples.
 
-## 8. Integration points in the existing app
+## 8. Split the shipped combined app
 
-The service owns the playback boundary and live home/away handoff at these integration points. Source implementation does not establish physical acceptance.
+This is pending implementation, not a claim that two APKs already exist. Produce separately installable apps with independent app identities, settings, sessions, notifications and playback services. Preserve the familiar folder-first Browser/Now Playing behavior in each app.
 
-| Existing code | Required adaptation |
-| --- | --- |
-| [MainActivity.kt](../app/src/main/java/com/smbmusic/player/MainActivity.kt): `browse`, `playCurrentFolder`, `sortedTracks` | Preserve browsing/search/sort semantics; route ordered queue selection through the active backend rather than always preparing/playing the local MediaController. |
-| [NowPlayingActivity.kt](../app/src/main/java/com/smbmusic/player/NowPlayingActivity.kt): controller binding, `sortCurrentQueue`, metadata/status | Display authoritative house state and queue, add output mute/target status, and route explicit sort/transport operations correctly. |
-| `NowPlayingActivity.kt`: `quitCleanly` | HOUSE detaches/stops only the phone renderer and presence, without MPD Stop/Clear. STANDALONE retains its existing Stop/Clear behavior. |
-| [PlaybackService.kt](../app/src/main/java/com/smbmusic/player/PlaybackService.kt) | Preserve the existing ExoPlayer/SMB path for standalone. Add the mode/backend boundary, handoff coordination, and separate house receiver lifecycle without allowing local recovery callbacks to start a competing song in HOUSE. |
-| Media3 session / notification / Bluetooth control integration | Use the selected authority consistently, not just the on-screen buttons. Keep deliberate house commands separate from local audio interruptions; preserve existing standalone and vehicle behavior. |
-| Existing SMB, credential, and UI components | Reuse their standalone behavior; do not rewrite transport or rename/reorganize the user's music to support HOUSE. |
+SMB Music keeps the proven ExoPlayer/SMB transport, Country Buffer, outage recovery, encrypted credentials, retained session, Bluetooth/vehicle controls and Quit behavior. Its service has no HOUSE discovery, controller lease, Snapcast receiver, mapping or handoff responsibilities.
 
-The implementation boundary is `HousePlayer`, a Media3 `SimpleBasePlayer` adapter backed by the service-owned `HouseRuntime`. One `MediaLibrarySession` switches its player when authority changes, keeping Activities and external controls attached to the service. The service retains one standalone ExoPlayer, paused/stopped while HOUSE owns playback. `HouseApi` and the separate `SnapcastReceiver` implement control and synchronized output; the latter runs pinned upstream Snapclient through a byte relay using normal Android routing. Local SMB recovery and fade callbacks must not restart ExoPlayer after a mode change.
+The HOUSE app keeps `HousePlayer`/`HouseRuntime`, the control API, native Snapcast receiver, synchronization correction, S8-compatible Android API handling and HOUSE-local Bluetooth/mute behavior. Its service has no SMB decoder, credential store, private queue recovery or transfer journal. HOUSE Quit detaches only this app's controller/renderer; it never issues MPD Stop/Clear just to close the app.
+
+Do not preserve the combined service's player-switching boundary as a hidden coordinator or recreate it through communication between apps. Packaging/source organization and installation migration are implementation details; they must preserve app independence. The manual mute-button correction remains queued and explicitly deferred in [ROADMAP.md](ROADMAP.md); splitting apps does not remove Bluetooth automation.
 
 ## 9. Acceptance checklist
 
 These are acceptance requirements. Their current pass/fail status is maintained only in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md); source implementation alone is not field proof.
 
-- [ ] A qualifying directly connected non-VPN Wi-Fi/Ethernet route plus a successful Pi identity probe using normal Android routing selects HOUSE. Tailscale/VPN-only reachability does not. Brief outages do not silently start standalone music.
-- [ ] Fresh-idle controller attachment alone makes no playback/queue mutation. Active standalone transfer is a separate operation; passive-node default start remains server-owned and coordinated with that transfer.
+- [ ] The HOUSE app requires a qualifying directly connected non-VPN Wi-Fi/Ethernet route plus a successful Pi identity probe using normal Android routing. Loss/recovery never launches or controls SMB Music.
+- [ ] Fresh-idle HOUSE controller attachment alone makes no playback/queue mutation. Passive-node default start remains server-owned and independent of SMB Music.
 - [ ] Joining active playback displays the real house playlist, track, position, shuffle/repeat, and changes from other controllers.
 - [ ] Folder/filtered `PLAY LIST`, selected-track start, transport, and explicit queue sort match existing semantics through the server API.
 - [ ] Phone HOUSE audio uses a real synchronized receiver; no independent ExoPlayer copy plays alongside it.
-- [ ] HOUSE output requires Bluetooth audio on every command/attachment path. Pause/Resume and queue changes preserve local mute; a phone without Bluetooth stays muted while S3 playback resumes. Local Unmute cannot bypass eligibility.
+- [ ] Pause/Resume and queue changes preserve local mute; a muted phone stays muted while S3 playback resumes. Automatic output follows the Bluetooth rules. Shipped v0.4.3 also gates manual Unmute on Bluetooth; that restriction is interim and subject to the explicitly deferred manual-override correction in §4.
 - [ ] HOUSE-only Mute/Unmute affects this phone, survives ordinary network reconnect under the route rules, and preserves the server's muted-controller pause/resume behavior.
 - [ ] HOUSE Quit/controller departure preserves other listeners and their queue; final-node and reconnect-before-track-end behavior follow the Pi rules.
 - [ ] Return before drain completion preserves the active queue. After completed drain, the next passive arrival uses the configured default with fresh randomness and permits chance repeats. No saved rotation/bookmark from the completed session is required.
 - [ ] Home audio/control outages recover independently as appropriate and rejoin the current stream without resetting MPD.
-- [ ] Unmuted playing departure continues the same track at the last heard position over SMB/Tailscale; muted/paused/stopped departure stays silent.
-- [ ] Returning while SMB is playing and HOUSE is idle transfers the current phone queue/track/position/settings into HOUSE. A later S3, including one arriving during the handoff, joins that session and never starts a competing passive default.
-- [ ] Returning to a HOUSE session already active before arrival adopts it without replacing its queue. Merely attaching or returning with paused/stopped playback does not invent Playing intent.
+- [ ] SMB Music playback, pause, Quit, app launch and network changes never read/write HOUSE session state or reset its queue. HOUSE app actions never copy, launch, reset or coordinate the SMB session.
+- [ ] Both apps install separately and retain their own settings/session state; no handoff controls or shared playback state remain.
+- [ ] HOUSE reconnection adopts its current server session without replaying a stale queue or inventing Playing intent.
 - [ ] Standalone regression tests pass: Country Buffer, read-ahead, retry/resume, filename fallback, search/sort, browser scroll, lock-screen/Bluetooth/Android Auto behavior, and Quit.
 
 ## 10. Open details and scope
 
-Retain the unresolved choices in the canonical server document: home/away network grace periods and whole-queue HOUSE -> away continuation. Active SMB return to idle HOUSE is settled in §6; the coordinated mechanism now requires physical validation. Service restart is settled as a fresh-session boundary, implemented in server v0.8.1. Controller background presence, five-second heartbeats/fifteen-second expiry, and ending the session when the last controller leaves an automatic pause were confirmed on 2026-09-29. Explicit SMB-root mapping and estimated heard-position tracking are implemented; their behavior across real track boundaries, routes and outages still requires validation. The home/away probe itself needs no custom discovery protocol.
+Automatic departure/return, whole-queue copying, cross-library mapping and a replacement handoff coordinator are no longer open product questions: the user removed the connection between the apps. Preserve the established server lifecycle, presence/expiry, synchronization and output rules. Check app separation, each app's recovery, and retained working behavior in the next implementation; do not carry forward handoff acceptance gates.
 
-These gaps do not undo the approved behavior. They must not be filled with silent assumptions. **Two physical ESP32/PCM5102A renderers are audibly synchronized**, so the Snapcast multi-renderer architecture itself is proven. That does **not** establish acceptance for this Android iteration or prove seamless phone handoff. AI DJ, Philco display, and room-management expansion are separate work, not prerequisites for this client integration.
+These product decisions do not prove the split works on hardware. Current source remains the combined v0.4.3 build; field results and frozen release records retain its actual failures. AI DJ, Philco display, and room-management expansion are separate work.
 
 Implementation and field evidence are tracked outside this contract. Use [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md) for Android acceptance and the server [API.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/API.md) for the deployed control contract.
 
