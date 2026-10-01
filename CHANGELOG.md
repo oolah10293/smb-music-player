@@ -2,6 +2,15 @@
 
 This history is reconstructed from the actual saved source checkpoints. Release notes are condensed, but behavior and rationale are preserved. Public copies remove device/location-specific comments; functional code is otherwise retained.
 
+## 0.5.0 — standalone SMB Music
+
+- Separate SMB Music completely from the planned House Music app. Remove HOUSE probing, player switching, session transfers, mapping settings, custom controls and the native Snapcast receiver/build.
+- Restore the v0.3.8 standalone recovery/playback core while retaining the later Browser polish and standalone saved-session/Bluetooth behavior.
+- Preserve Country Buffer, 64 KiB SMB read-ahead, same-track recovery, Repeat All, search/sort, metadata, explicit Play fade and external media controls.
+- Keep explicit Stop/Quit authoritative and clean up the service immediately on Quit. Retained Bluetooth behavior still needs phone acceptance.
+- Keep API-26/NewApi compatibility lint and add an APK isolation check. No server or ESP32 update is required.
+- Preserve the combined source on `house-music-pre-split` for the future House Music app. Exact release verification: [RELEASE_0.5.0.md](docs/RELEASE_0.5.0.md).
+
 ## 0.4.3 — live home/away session handoff
 
 - Keep one Media3 session while switching live between HOUSE and standalone SMB.

@@ -1,6 +1,6 @@
 # Regression testing
 
-Current HOUSE device acceptance is tracked only in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md). This file is the reusable standalone/regression suite; older field results do not automatically validate a new build.
+SMB Music v0.5.0 is standalone. Historical combined-app device acceptance is in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md). This file is the reusable standalone/regression suite; older field results do not automatically validate a new build.
 
 The project accumulated several fixes where a seemingly harmless UI or performance change could regress proven playback behavior. Run these checks after meaningful playback, SMB, queue, Media3, or Browser changes.
 
@@ -23,10 +23,16 @@ The project accumulated several fixes where a seemingly harmless UI or performan
 - Explicit Stop and Quit prevent route callbacks or process restart from resurrecting playback.
 - With no retained queue, Bluetooth connect creates no playlist.
 - A watch/input-only Bluetooth connection is not an audio output.
-- Repeat during SMB recovery and screen-off playback. A paused/stopped HOUSE departure remains silent even if Bluetooth was already connected.
+- Repeat during SMB recovery and screen-off playback; reconnect must not bypass recovery buffering or explicit Stop/Quit.
 - Save/reload a queue containing spaces, punctuation and Unicode in its paths; credentials remain in the encrypted credential store.
 
-Live HOUSE transfer and mapping acceptance is maintained in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
+## Standalone separation
+
+- Launch on home Wi-Fi with the Pi/S3s playing: SMB Music opens its own SMB browser/session and does not change the house queue.
+- Switch Wi-Fi/cellular with Tailscale available: the same SMB engine continues or recovers, with no HOUSE transfer status.
+- There are no HOUSE address/root settings, mute/sync controls or bundled Snapcast receiver.
+- Browser opens immediately without waiting for a HOUSE probe.
+- API-26 compatibility lint and standalone APK exclusion checks pass in CI.
 
 ## SMB outage recovery
 
@@ -138,8 +144,8 @@ Given the sorted list `A B C D E F`:
 
 Standalone regression:
 - Quit stops standalone playback.
-- Queue clears.
+- The live player/queue is released. A retained queue stays stopped until an explicit Play.
 - Foreground playback notification disappears.
-- Service stops when the UI disconnects.
+- Quit releases service resources immediately and closes the app screens.
 
 HOUSE Quit behavior/acceptance is maintained in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md), not duplicated here.

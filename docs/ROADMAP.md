@@ -4,11 +4,11 @@ This file contains **open work and future features only**. Completed implementat
 
 ## Current Android priorities
 
-1. **Split into completely independent SMB Music and HOUSE Android apps**
+1. **Validate standalone SMB Music v0.5.0; extract the separate House Music app**
    - **User decision, 2026-10-01:** no connection between the apps. This supersedes automatic LAN/cellular/LAN handoff, the proposed coordinator redesign, and the briefly discussed manual transfer. The normative boundary is [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md).
    - SMB Music owns only its standalone SMB/ExoPlayer session. The HOUSE app controls/renders only the Pi's shared MPD/Snapcast session. No shared queue/song/position, SMB-triggered HOUSE reset, automatic or manual transfer, app-specific launch/stop coordination, or background synchronization.
    - Use the last pre-HOUSE standalone source as the SMB reference, inventory subsequent improvements, and extract the current HOUSE player into its own app. Produce separate installable apps and remove the combined mode-switching machinery from their playback paths. The verified references and carry-forward inventory are below.
-   - Current shipping code remains combined Android v0.4.3 with server v0.9.0. No new APK or runtime change follows from this plan update. Preserve existing deployment and historical failed-handoff evidence; do not require successful handoffs as a gate for the independent apps.
+   - SMB Music v0.5.0 now implements the standalone side; verify build/artifact status in [RELEASE_0.5.0.md](RELEASE_0.5.0.md). The separate app name is **House Music** and its extraction remains pending. Source for its working components is preserved on `house-music-pre-split`. Server v0.9.0 is unchanged. Preserve historical failed-handoff evidence without treating handoffs as a new release gate.
    - Validate that playing/pausing/quitting SMB Music or changing Wi-Fi/cellular never touches HOUSE. HOUSE launch/reconnection adopts current server state without importing SMB music or controlling that app. Each app must recover its own connection independently.
    - Address reader shutdown and measure SMB data use within the standalone app. The screenshot's 72.19 MB app counter does not establish excess use; Mobile Services' 2.23 GB is separately attributed.
    - **Approved diagnostic space retained:** the Now Playing album-art area may show a bounded, readable, timestamped mini-log during diagnosis. Show each app's own connection, audio-reader lifecycle, actual errors and retries; label measured SMB payload bytes accurately. Preserve surrounding controls and omit credentials. Transfer/mode-switch events are obsolete with the split; the log must not create a connection between apps.

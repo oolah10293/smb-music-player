@@ -27,11 +27,6 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import androidx.media3.session.SessionCommand
-import com.smbmusic.player.house.HouseApi
-import com.smbmusic.player.house.HouseConnection
-import com.smbmusic.player.house.HouseLibraryMapping
-import com.smbmusic.player.house.HouseRuntime
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.common.util.concurrent.ListenableFuture
@@ -55,10 +50,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var addressEdit: EditText
     private lateinit var userEdit: EditText
     private lateinit var passwordEdit: EditText
-    private lateinit var houseAddressEdit: EditText
-    private lateinit var houseMusicRootEdit: EditText
-    private var displayedHouseMode: Boolean? = null
-    private val isHouse: Boolean get() = HouseConnection.current != null
     private lateinit var connectionStatus: TextView
     private lateinit var pathText: TextView
     private lateinit var browserStatus: TextView
@@ -73,9 +64,6 @@ class MainActivity : AppCompatActivity() {
     private var controller: MediaController? = null
 
     private val browserHandler = Handler(Looper.getMainLooper())
-    private var browseRetryPending = false
-    private var lastHouseConnectionRevision = -1L
-    private var wasHouseConnected = false
     private var browseRetryIndex = 0
     private var browseRequestGeneration = 0
     private var browseRetryEnabled = true
@@ -110,17 +98,9 @@ class MainActivity : AppCompatActivity() {
             pendingListUrl = savedInstanceState.getString(STATE_URL)
         }
 
-        browserStatus.text = "Checking home connection…"
-        val selectionEpoch = HouseConnection.epoch
-        executor.execute {
-            val selected = if (HouseConnection.resolved) HouseConnection.current else runCatching { HouseConnection.probe(this) }.getOrNull()
-            runOnUiThread {
-                if (isFinishing || isDestroyed || !HouseConnection.publish(selectionEpoch, selected)) return@runOnUiThread
-                if (!isHouse) requestTailscaleConnect()
-                setupController()
-                restoreSavedConnection()
-            }
-        }
+        requestTailscaleConnect()
+        setupController()
+        restoreSavedConnection()
         if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 30)
         }
@@ -143,8 +123,6 @@ class MainActivity : AppCompatActivity() {
         addressEdit = findViewById(R.id.addressEdit)
         userEdit = findViewById(R.id.userEdit)
         passwordEdit = findViewById(R.id.passwordEdit)
-        houseAddressEdit = findViewById(R.id.houseAddressEdit)
-        houseMusicRootEdit = findViewById(R.id.houseMusicRootEdit)
         connectionStatus = findViewById(R.id.connectionStatus)
         pathText = findViewById(R.id.pathText)
         browserStatus = findViewById(R.id.browserStatus)
@@ -156,15 +134,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupController() {
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
-        if (isHouse) ContextCompat.startForegroundService(this, Intent(this, PlaybackService::class.java))
-        controllerFuture = MediaController.Builder(this, token).setListener(object : MediaController.Listener {
-            override fun onExtrasChanged(controller: MediaController, extras: Bundle) { showHouseDefault(extras) }
-        }).buildAsync()
+        controllerFuture = MediaController.Builder(this, token).buildAsync()
         controllerFuture.addListener(
             {
+                if (isFinishing || isDestroyed) return@addListener
                 try {
                     controller = controllerFuture.get().also {
-                        showHouseDefault(it.sessionExtras)
+                        it.repeatMode = Player.REPEAT_MODE_ALL
                     }
                 } catch (e: Exception) {
                     browserStatus.text = "Playback service failed: ${friendlyError(e)}"
@@ -183,30 +159,16 @@ class MainActivity : AppCompatActivity() {
         recycler.adapter = adapter
 
         findViewById<Button>(R.id.upButton).setOnClickListener {
-            if (isHouse) {
-                if (currentUrl.isNotBlank()) browse(currentUrl.substringBeforeLast('/', ""))
-            } else if (currentUrl.isNotBlank() && rootUrl.isNotBlank()) {
+            if (currentUrl.isNotBlank() && rootUrl.isNotBlank()) {
                 SmbUrl.parent(currentUrl, rootUrl)?.let { browse(it) }
             }
         }
 
         findViewById<Button>(R.id.settingsButton).setOnClickListener {
-            if (isHouse) {
-                val current = controller?.sessionExtras?.getString(HouseRuntime.EXTRA_DEFAULT)
-                if (current in listOf("MP3s", "Rap")) controller?.sendCustomCommand(
-                    SessionCommand(HouseRuntime.DEFAULT, Bundle.EMPTY), Bundle().apply {
-                        putString("folder", if (current == "MP3s") "Rap" else "MP3s")
-                    })
-                return@setOnClickListener
-            }
             browseRetryEnabled = false
             browseRequestGeneration++
             cancelBrowseRetry()
             connectionPanel.visibility = View.VISIBLE
-        }
-        findViewById<Button>(R.id.settingsButton).setOnLongClickListener {
-            connectionPanel.visibility = View.VISIBLE
-            true
         }
 
         findViewById<Button>(R.id.playFolderButton).setOnClickListener {
@@ -252,10 +214,12 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val count = smb.test(credentials)
                     runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
                         connectionStatus.text = "Connected. $count item(s) visible at root."
                     }
                 } catch (e: Exception) {
                     runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
                         connectionStatus.text = "Test failed: ${friendlyError(e)}"
                     }
                 }
@@ -263,25 +227,16 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.saveButton).setOnClickListener {
-            val host = houseAddressEdit.text.toString().trim()
-            val hostChanged = host != HouseConnection.host(this)
-            try { HouseConnection.saveHost(this, host) } catch (e: Exception) {
-                connectionStatus.text = e.message; return@setOnClickListener
-            }
             val credentials = enteredCredentials() ?: return@setOnClickListener
             try {
                 val normalized = SmbUrl.normalize(credentials.address)
-                HouseLibraryMapping.saveRoot(this, houseMusicRootEdit.text.toString())
                 store.save(credentials.copy(address = normalized))
                 smb.invalidate()
-                if (!isHouse) {
-                    rootUrl = normalized
-                    currentUrl = rootUrl
-                }
+                rootUrl = normalized
+                currentUrl = rootUrl
                 connectionPanel.visibility = View.GONE
                 browserPanel.visibility = View.VISIBLE
                 browse(currentUrl)
-                if (hostChanged) android.widget.Toast.makeText(this, "Saved. Quit and reopen to apply the house address.", android.widget.Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 connectionStatus.text = "Bad address: ${friendlyError(e)}"
             }
@@ -293,19 +248,6 @@ class MainActivity : AppCompatActivity() {
         addressEdit.setText(SmbUrl.display(credentials.address).trimEnd('/'))
         userEdit.setText(credentials.username)
         passwordEdit.setText(credentials.password)
-        houseAddressEdit.setText(HouseConnection.host(this))
-        houseMusicRootEdit.setText(SmbUrl.display(HouseLibraryMapping.root(this)).trimEnd('/'))
-
-        if (isHouse) {
-            rootUrl = ""
-            currentUrl = pendingListUrl?.takeUnless { it.startsWith("smb:") }
-                ?: HouseConnection.preferences(this).getString("last_folder", "").orEmpty()
-            connectionPanel.visibility = View.GONE
-            browserPanel.visibility = View.VISIBLE
-            findViewById<Button>(R.id.settingsButton).text = "…"
-            browse(currentUrl)
-            return
-        }
 
         if (credentials.address.isNotBlank()) {
             try {
@@ -338,9 +280,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun browse(url: String, resetRetry: Boolean = true) {
         if (isFinishing || isDestroyed) return
-        browseRetryPending = false
-        val endpoint = HouseConnection.current
-        val selectionEpoch = HouseConnection.epoch
         if (resetRetry) {
             browseRetryEnabled = true
             browseRetryIndex = 0
@@ -349,23 +288,21 @@ class MainActivity : AppCompatActivity() {
         }
 
         currentUrl = url
-        pathText.text = if (isHouse) url.substringAfterLast('/').ifBlank { "Music" }
-            else SmbUrl.display(url).trimEnd('/').substringAfterLast('/')
-        browserStatus.text = if (resetRetry) "Loading…" else if (endpoint != null) "Retrying HOUSE…" else "Retrying SMB…"
+        pathText.text = SmbUrl.display(url).trimEnd('/').substringAfterLast('/')
+        browserStatus.text = if (resetRetry) "Loading…" else "Retrying SMB…"
         val requestGeneration = ++browseRequestGeneration
 
         executor.execute {
             try {
-                val result = if (endpoint != null) HouseApi(this, endpoint).browse(url) else smb.list(url)
+                val result = smb.list(url)
                 runOnUiThread {
-                    if (isFinishing || isDestroyed || selectionEpoch != HouseConnection.epoch ||
+                    if (isFinishing || isDestroyed ||
                         currentUrl != url || requestGeneration != browseRequestGeneration) return@runOnUiThread
                     cancelBrowseRetry()
                     browseRetryIndex = 0
                     tailscaleRecoveryRequested = false
                     entries = result
-                    if (isHouse) HouseConnection.preferences(this).edit().putString("last_folder", url).apply()
-                    else store.saveLastFolder(url)
+                    store.saveLastFolder(url)
                     showSortedEntries()
 
                     if (pendingListUrl == url && pendingListState != null) {
@@ -376,7 +313,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    if (isFinishing || isDestroyed || selectionEpoch != HouseConnection.epoch ||
+                    if (isFinishing || isDestroyed ||
                         currentUrl != url || requestGeneration != browseRequestGeneration) return@runOnUiThread
                     entries = emptyList()
                     adapter.submit(emptyList())
@@ -394,15 +331,14 @@ class MainActivity : AppCompatActivity() {
         // several retries, make one additional connect request sequence. This deliberately
         // does not force-disconnect Tailscale: a missing server/share should not tear down an
         // otherwise healthy VPN, and the existing SMB retry loop remains authoritative.
-        if (!isHouse && !tailscaleRecoveryRequested && browseRetryIndex >= TAILSCALE_RECOVERY_AFTER_RETRIES) {
+        if (!tailscaleRecoveryRequested && browseRetryIndex >= TAILSCALE_RECOVERY_AFTER_RETRIES) {
             tailscaleRecoveryRequested = true
             requestTailscaleConnect()
         }
         val delay = BROWSE_RETRY_SCHEDULE_MS[minOf(browseRetryIndex, BROWSE_RETRY_SCHEDULE_MS.lastIndex)]
         browseRetryIndex++
-        browseRetryPending = true
         val seconds = delay / 1000
-        browserStatus.text = "${if (isHouse) "HOUSE" else "SMB"} unavailable: ${friendlyError(error)}\nRetrying in ${seconds}s…"
+        browserStatus.text = "SMB unavailable: ${friendlyError(error)}\nRetrying in ${seconds}s…"
         browserHandler.postAtTime(
             { if (currentUrl == url) browse(url, resetRetry = false) },
             BROWSE_RETRY_TOKEN,
@@ -411,7 +347,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun cancelBrowseRetry() {
-        browseRetryPending = false
         browserHandler.removeCallbacksAndMessages(BROWSE_RETRY_TOKEN)
     }
 
@@ -449,7 +384,9 @@ class MainActivity : AppCompatActivity() {
         syncSortModeFromStore()
         // Browse should never throw the keyboard up merely because the Activity was opened or
         // brought back from Now Playing. Tapping the search typing area still focuses it normally.
-        if (::searchEdit.isInitialized) searchEdit.post { hideSearchKeyboard() }
+        if (::searchEdit.isInitialized) searchEdit.post {
+            if (!isFinishing && !isDestroyed) hideSearchKeyboard()
+        }
     }
 
     private fun syncSortModeFromStore() {
@@ -528,17 +465,6 @@ class MainActivity : AppCompatActivity() {
             ?: 0
         val tracks = rotateFrom(sortedTracks, selectedIndex)
 
-        if (isHouse) {
-            val future = mediaController.sendCustomCommand(SessionCommand(HouseRuntime.PLAY_LIST, Bundle.EMPTY), Bundle().apply {
-                putStringArrayList("tracks", ArrayList(tracks.map { it.url }))
-            })
-            future.addListener({
-                if (runCatching { future.get().resultCode == 0 }.getOrDefault(false)) openNowPlaying()
-                else browserStatus.text = "HOUSE command failed — refresh before trying again."
-            }, ContextCompat.getMainExecutor(this))
-            return
-        }
-
         val mediaItems = tracks.map { entry ->
             val extras = Bundle().apply {
                 putString(EXTRA_FILENAME, entry.name)
@@ -584,35 +510,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun openNowPlaying() {
         startActivity(Intent(this, NowPlayingActivity::class.java))
-    }
-
-    private fun showHouseDefault(extras: Bundle) {
-        val houseMode = extras.getBoolean(HouseRuntime.EXTRA_HOUSE)
-        if (displayedHouseMode != null && displayedHouseMode != houseMode) {
-            browseRequestGeneration++
-            cancelBrowseRetry()
-            pendingListState = null
-            pendingListUrl = null
-            entries = emptyList()
-            adapter.submit(emptyList())
-            restoreSavedConnection()
-        }
-        displayedHouseMode = houseMode
-        if (extras.getBoolean(HouseRuntime.EXTRA_HOUSE)) {
-            findViewById<Button>(R.id.settingsButton).text = extras.getString(HouseRuntime.EXTRA_DEFAULT).orEmpty().ifBlank { "…" }
-            val connected = extras.getBoolean(HouseRuntime.EXTRA_CONNECTED)
-            val revision = extras.getLong(HouseRuntime.EXTRA_CONNECTION_REVISION)
-            val recovered = connected && (!wasHouseConnected || revision != lastHouseConnectionRevision)
-            wasHouseConnected = connected
-            lastHouseConnectionRevision = revision
-            if (recovered && browseRetryPending) browse(currentUrl)
-        } else {
-            wasHouseConnected = false
-            lastHouseConnectionRevision = -1L
-            findViewById<Button>(R.id.settingsButton).text = "SMB"
-            extras.getString(PlaybackService.SESSION_EXTRA_TRANSITION_STATUS)?.takeIf { it.isNotBlank() }
-                ?.let { browserStatus.text = it }
-        }
     }
 
     private fun friendlyError(t: Throwable): String {

@@ -17,9 +17,7 @@ The public repository is intentionally sanitized. It does not contain:
 
 ## Network scope
 
-The app connects to the SMB location supplied by the user. The optional House LAN address is also entered locally, without a hardcoded endpoint. HOUSE probes MPD on port 6600, uses the control service on 8787 and Snapcast audio on 1704, all bound to the selected non-VPN Wi-Fi/Ethernet Network. The current LAN service is cleartext and has no pairing/authentication; that remains an open service design item. SMB credentials are not sent to the house API. The project has no analytics or telemetry dependency in the current source tree.
-
-The phone generates a random stable controller ID in its no-backup storage, with an associated Snapcast renderer ID. The Pi stores their association so a phone renderer cannot become a passive auto-start radio after a reconnect. Clearing app data/reinstalling generates a new identity.
+SMB Music v0.5.0 connects only to the SMB location supplied by the user and can request the locally installed Tailscale app to connect. It contains no HOUSE API/probe, controller identity, Snapcast receiver, queue transfer or telemetry dependency. The app keeps its own saved session in private no-backup storage, separate from encrypted credentials. House Music is a separate pending app.
 
 ## Development hygiene
 

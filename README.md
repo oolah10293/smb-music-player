@@ -1,10 +1,10 @@
-# SMB Music Player
+# SMB Music
 
 A native Android music player that streams audio directly from SMB shares using Media3/ExoPlayer and jcifs-ng. It is intentionally optimized for unreliable networks: it buffers aggressively when bandwidth is available, preserves the current track and position through SMB outages, and retries instead of treating a network failure as a bad song.
 
-Current source version: **0.4.3**. See [docs/RELEASE_0.4.3.md](docs/RELEASE_0.4.3.md) for build/artifact verification and [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md) for the current real-device pass/fail state. **v0.3.8 remains the confirmed standalone hardware baseline.**
+Current source version: **0.5.0 — standalone SMB Music**. This app has no HOUSE discovery, controller, queue transfer or Snapcast receiver. Build/artifact verification belongs in [docs/RELEASE_0.5.0.md](docs/RELEASE_0.5.0.md); physical regression checks are in [docs/TESTING.md](docs/TESTING.md). **v0.3.8 remains the last confirmed standalone hardware baseline; v0.5.0 still needs device acceptance.**
 
-**Next direction, confirmed 2026-10-01:** split SMB Music and HOUSE into completely independent Android apps. No automatic/manual handoff, shared playback state, or SMB-triggered HOUSE queue reset. The source/released APK is still the combined v0.4.3 implementation; the split is pending. See [the current contract](docs/CENTRAL_PLAYBACK.md) and [roadmap](docs/ROADMAP.md).
+The separately planned app is named **House Music**. It will control/render the Pi session independently. Its combined v0.4.3 source is preserved on [house-music-pre-split](https://github.com/oolah10293/smb-music-player/tree/house-music-pre-split). Installing or playing SMB Music never resets the house queue. No Pi or S3 update is required for this standalone release.
 
 ## What it does
 
@@ -23,6 +23,8 @@ Current source version: **0.4.3**. See [docs/RELEASE_0.4.3.md](docs/RELEASE_0.4.
 - Displays embedded title/artist/album metadata with filename fallback.
 - Stores the SMB password locally with Android Keystore AES/GCM encryption.
 - Requests the Tailscale VPN connection at startup while still using real SMB access as the reachability test.
+- Retains its own queue, position and Shuffle setting; Bluetooth disconnect pauses, reconnect can resume, and explicit Stop/Quit prevents automatic restart.
+- Keeps the later Browser button alignment/swaps and current-folder-only path label.
 
 ## Search field behavior
 
@@ -43,7 +45,7 @@ Current settings:
 
 - minimum playback buffer: **120 seconds**
 - maximum playback buffer: **600 seconds**
-- target buffer size: **32 MiB**
+- target buffer size: **32 MiB** (allocation target, not a download cap)
 - normal initial start threshold: **3 seconds**
 - outage-recovery resume threshold: **about 20 seconds**
 
@@ -96,35 +98,21 @@ Confirmed:
 
 The v0.3.8 prolonged-outage recovery hardening still needs its dedicated field test.
 
-## Shipped combined HOUSE integration (v0.4.3; split pending)
+## Independent House Music project
 
-HOUSE uses the existing Browser/Now Playing UI while the Raspberry Pi remains the authoritative playback host: MPD owns the house session, `house-audio-server` supplies control/session policy, and Snapserver distributes synchronized audio. STANDALONE continues to use the proven SMB/Tailscale -> Media3/ExoPlayer path.
+SMB Music is standalone from v0.5.0. The two-app product contract remains in [CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md); [ROADMAP.md](docs/ROADMAP.md) records the preserved source checkpoint and later work. House Music is not delivered by this release.
 
-The shipped v0.4.3 combined app added live home/away switching, which failed physical acceptance and is superseded as a product requirement by the independent-app decision. Its existing implementation attempts to transfer a playing SMB queue/song/position into idle HOUSE on return so a later S3 joins it. An already-active HOUSE session remains authoritative. This coordinated return requires **house-audio-server v0.9.0**. Departure attempts to carry the current estimated heard track into SMB, without copying the whole HOUSE queue. Shipped HOUSE phone output requires Bluetooth audio; transport commands do not unmute it.
-
-For the shipped combined app only, **HOUSE music root on SMB** in Connections must point to the SMB folder corresponding to the Pi's music-library root. Hold the Browser's **SMB / MP3s / Rap** button to open Connections. For example, if HOUSE lists `MP3s/song.mp3`, the configured root must contain that `MP3s` folder. This mapping is separate from the folder you currently browse, and is required for transfers. Missing or incompatible mapping leaves the transfer paused with an explanation.
-
-The split apps will not need this cross-library mapping or transfer workflow. Current device results for the shipped combined app are maintained only in [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md).
-
-To avoid duplicating state across documents:
-
-- [docs/CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md) is the **normative Android HOUSE behavior/architecture**.
-- [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md) is the **current physical-test checklist and live field results**.
-- [docs/VALIDATION_STATE.md](docs/VALIDATION_STATE.md) is the **historical validation summary**.
-- [docs/RELEASE_0.4.3.md](docs/RELEASE_0.4.3.md) records the **v0.4.3 build/artifacts**; earlier release files retain their historical records.
-- [docs/ROADMAP.md](docs/ROADMAP.md) contains **open work and future features only**.
-- The authoritative cross-project session rules live in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md).
+Historical combined-app field results remain in [HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md), with version history in [VALIDATION_STATE.md](docs/VALIDATION_STATE.md). Frozen v0.4.x release records describe the older combined APKs. Do not apply their HOUSE configuration or handoff requirements to SMB Music v0.5.0.
 
 ## Build
 
-Requirements for v0.4.3:
+Requirements for v0.5.0:
 
 - Android Gradle Plugin 9.4.0
 - Gradle 9.6.0
 - compileSdk / targetSdk 36
 - minSdk 26
 - Java 17 and Python 3
-- Android NDK 28.2.13676358 and CMake 3.22.1
 - Media3 1.11.0
 - jcifs-ng 2.1.10
 
@@ -135,7 +123,7 @@ Typical setup:
 1. Clone the repository to a local folder.
 2. Run `SETUP_GRADLE_WRAPPER.bat` once if `gradle/wrapper/gradle-wrapper.jar` is absent.
 3. Open the project in Android Studio.
-4. Install the SDK/NDK/CMake versions above, run `python3 native/prepare.py`, then let Gradle sync.
+4. Install Android SDK 36 and Build Tools 36.0.0, then let Gradle sync. No native build is needed.
 5. Connect an Android device with USB debugging enabled.
 6. Run the `app` configuration.
 
@@ -161,4 +149,4 @@ No SMB credentials, private network addresses, personal paths, or user-specific 
 
 ## License
 
-No license has been selected for the original app code. The isolated bundled Snapclient and its dependencies retain their own licenses; see [native/README.md](native/README.md). CI distributes corresponding receiver source and build files alongside the APK, and license texts are included in APK assets.
+No license has been selected for the original app code. SMB Music v0.5.0 no longer bundles Snapclient/FLAC/Boost; older combined builds and the preserved House Music source retain their own license/source obligations. Existing Android/SMB dependencies retain their respective licenses.

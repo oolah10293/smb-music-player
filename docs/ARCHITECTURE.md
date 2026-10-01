@@ -1,24 +1,16 @@
 # Architecture
 
-## Playback backend boundary
+## Standalone playback service
 
-`PlaybackService` owns the selected playback authority behind the same Activities, notification, and Media3 controller surface:
+SMB Music v0.5.0 owns one ExoPlayer and one MediaLibrarySession. Both Activities, notification and external media controls target that same standalone session. It has no HOUSE authority selection or player switching.
 
-- **STANDALONE:** ExoPlayer / `SmbDataSource` / jcifs-ng owns local playback.
-- **HOUSE:** `HouseRuntime` / `HousePlayer` adapts the Pi-owned session into the app while the bundled Snapcast receiver supplies synchronized phone audio when enabled.
-
-HOUSE qualification uses the physical non-VPN LAN as presence evidence, while ordinary HOUSE control/audio traffic follows normal Android routing. Product rules and transition behavior are intentionally not duplicated here; see [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md). Current physical acceptance belongs in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
-
-## High-level flow
-
-The Activities bind one `MediaController` to the service's `MediaLibrarySession`. The service switches that session between its retained ExoPlayer and `HousePlayer`. SMB bytes reach ExoPlayer through `SmbDataSource` and jcifs-ng. HOUSE control reaches MPD through `HouseRuntime`/`HouseApi`; a separate bundled Snapcast receiver supplies synchronized audio.
+SMB bytes reach ExoPlayer through `SmbDataSource` and jcifs-ng. The recovery and buffering core comes from the verified pre-HOUSE v0.3.8 source; later standalone UI and retained-session/Bluetooth behavior are preserved. House Music remains a separate pending app; its source is preserved on `house-music-pre-split`.
 
 ## Main components
 
 ### `MainActivity`
 
 - Restores/saves SMB connection details.
-- Stores the explicit HOUSE-library-to-SMB root mapping and refreshes Browser when the service changes mode.
 - Requests Tailscale connection at startup and after repeated SMB browse failures, while treating actual SMB access as the reachability authority.
 - Tests connection and browses the current SMB directory.
 - Retries failed folder loads.
@@ -45,16 +37,12 @@ The Activities bind one `MediaController` to the service's `MediaLibrarySession`
 - Re-sorts the active queue with one queue replacement while preserving the current item, exact position, play/pause state, and Shuffle setting.
 - Rotates the current item to queue item zero after an explicit active-queue sort.
 - Reads recovery phase/progress from Media3 session extras.
-- Displays transfer status and adapts HOUSE controls when the session changes player.
-- Requests service-owned Quit cleanup for the selected authority.
+- Requests immediate service-owned Quit cleanup for this standalone player.
 
 ### `PlaybackService`
 
-- Owns one ExoPlayer and one `MediaLibrarySession`; changes the session's player without requiring Activity or controller reconnection.
-- Monitors physical home presence and verifies Pi identity before changing authority. A server failure while the physical home route remains present stays in HOUSE recovery.
-- Coordinates return-home reservation/commit/status with the server, retaining an unresolved transfer identity across process restart and rejecting stale callbacks.
+- Owns one ExoPlayer and one `MediaLibrarySession`.
 - Retains standalone queue/index/position/Shuffle and explicit Stop intent; handles Bluetooth connect/disconnect around that retained session.
-- Uses the current estimated heard HOUSE track for departure, with explicit path mapping and no full HOUSE queue copy.
 - Applies the Country Buffer load-control policy.
 - Uses media/music audio attributes with audio-focus handling.
 - Holds network wake mode while actively playing/buffering.
@@ -93,11 +81,8 @@ The Activities bind one `MediaController` to the service's `MediaLibrarySession`
 - `RemoteEntry`: browser model for directory/audio entries.
 - `SmbUrl`: SMB URL normalization, display, and parent traversal.
 - `FileAdapter`: RecyclerView adapter for browser entries.
-- `HouseOutputPolicy`: Bluetooth eligibility and local mute, independent of transport commands.
-- `HouseHeardPosition`: bounded recent MPD observations and Snapclient timing for approximate heard-track/position checkpoints.
-- `HouseLibraryPaths` / `HouseLibraryMapping`: validated relative-path conversion under a user-configured SMB music root.
-- `PlaybackTransitionPolicy`: pure decisions for departure continuation, Bluetooth resume and handoff adoption.
-- `StandaloneSessionStore`: app-private retained queue/state and pending handoff identity; no SMB password duplication.
+- `StandaloneSessionStore`: app-private retained queue/state; no handoff journal or SMB password duplication.
+- `StandalonePlaybackIntent`: standalone Stop/Quit and Bluetooth intent, independent of network routing.
 
 ## Queue semantics
 
@@ -118,4 +103,4 @@ The same rotation is applied after an explicit active-queue sort using the curre
 
 ## Behavior ownership
 
-This file describes code structure. HOUSE/STANDALONE product behavior, output intent, home/away transitions, and server-session semantics are defined in [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md) and the server's [SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md). Do not copy live validation results into this architecture document.
+This file describes the standalone implementation. The independent-app product boundary is defined in [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md). Physical checks belong in [TESTING.md](TESTING.md); historical combined-app results remain in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).

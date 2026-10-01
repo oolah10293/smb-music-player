@@ -16,7 +16,6 @@ data class StandaloneSnapshot(val items: List<MediaItem>, val index: Int, val po
 @UnstableApi
 class StandaloneSessionStore(context: Context) {
     private val file = java.io.File(context.noBackupFilesDir, "standalone-session.json")
-    private val journal = java.io.File(context.noBackupFilesDir, "house-handoff.json")
 
     fun load(): StandaloneSnapshot? = runCatching {
         val json = JSONObject(file.readText())
@@ -53,18 +52,6 @@ class StandaloneSessionStore(context: Context) {
             .put("positionMs", snapshot.positionMs).put("shuffle", snapshot.shuffle)
             .put("explicitlyStopped", snapshot.explicitlyStopped))
     }
-
-    @Synchronized fun handoffId(): String? = runCatching { JSONObject(journal.readText()).getString("handoffId") }.getOrNull()
-    @Synchronized fun handoffStopRequested(): Boolean = runCatching { JSONObject(journal.readText()).optBoolean("stopRequested") }.getOrDefault(false)
-    @Synchronized fun handoffStopSent(): Boolean = runCatching { JSONObject(journal.readText()).optBoolean("stopSent") }.getOrDefault(false)
-    @Synchronized fun saveHandoff(id: String, stopRequested: Boolean = false) =
-        write(journal, JSONObject().put("handoffId", id).put("stopRequested", stopRequested))
-    @Synchronized fun markStopSent(id: String): Boolean {
-        if (handoffId() != id || handoffStopSent()) return false
-        write(journal, JSONObject().put("handoffId", id).put("stopRequested", true).put("stopSent", true))
-        return true
-    }
-    @Synchronized fun clearHandoff() { journal.delete() }
 
     private fun write(destination: java.io.File, value: JSONObject) {
         val temp = java.io.File(destination.parentFile, destination.name + ".tmp")

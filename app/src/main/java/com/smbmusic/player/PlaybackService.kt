@@ -2,18 +2,16 @@ package com.smbmusic.player
 
 import android.content.Context
 import android.content.Intent
-import android.media.AudioDeviceCallback
-import android.media.AudioDeviceInfo
-import android.media.AudioManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.pm.ServiceInfo
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.LinkProperties
-import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -30,38 +28,25 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import androidx.media3.session.SessionCommand
-import androidx.media3.session.SessionResult
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaStyleNotificationHelper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import com.google.common.util.concurrent.ListenableFuture
-import com.google.common.util.concurrent.Futures
-import com.smbmusic.player.house.HouseConnection
-import com.smbmusic.player.house.HouseRuntime
-import com.smbmusic.player.house.HouseApi
-import com.smbmusic.player.house.HouseEndpoint
-import com.smbmusic.player.house.HouseLibraryMapping
-import com.smbmusic.player.house.HouseLibraryPaths
-import com.smbmusic.player.house.PlaybackTransitionPolicy
 import com.smbmusic.player.smb.SmbClient
 import com.smbmusic.player.smb.SmbDataSource
 import com.smbmusic.player.storage.CredentialStore
 import com.smbmusic.player.storage.StandaloneSessionStore
 import com.smbmusic.player.storage.StandaloneSnapshot
-import org.json.JSONObject
-import org.json.JSONArray
-import java.util.UUID
-import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
 @UnstableApi
 class PlaybackService : MediaLibraryService() {
-    private var house: HouseRuntime? = null
     private var released = false
-    private var selectionEpoch = 0L
+    private val playbackIntent = StandalonePlaybackIntent()
+    private lateinit var retained: StandaloneSessionStore
+    private lateinit var audio: AudioManager
     private lateinit var player: ExoPlayer
     private lateinit var session: MediaLibrarySession
     private lateinit var smb: SmbClient
@@ -99,366 +84,74 @@ class PlaybackService : MediaLibraryService() {
 
     private val retryScheduleMs = longArrayOf(1_000, 2_000, 5_000, 10_000, 15_000)
 
-    // All Player access and mode decisions run on the main looper. Workers only receive
-    // immutable snapshots and use this generation to reject stale network results/writes.
-    private val modeGeneration = AtomicLong(0)
-    private val transitions = Executors.newSingleThreadExecutor()
-    private lateinit var retained: StandaloneSessionStore
-    private lateinit var audio: AudioManager
-    private var bluetoothConnected = false
-    private var explicitlyStopped = false
-    private var houseProbeInFlight = false
-    private var modeProbeAgainRequested = false
-    private var lastHouseProbeAt = -5_000L
-    private var lastPersistAt = 0L
-    private var transitionStatus: String? = null
-    private var pendingHandoffId: String? = null
-    private var pendingEndpoint: HouseEndpoint? = null
-    private var pendingStopRequested = false
-    private var handoffWorking = false
-    private var handoffTerminal = false
-    private val temporaryLeases = java.util.concurrent.ConcurrentHashMap<String, String>()
-
-    private fun bluetoothOutputs(): Set<Int> = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-        .filter { it.isSink && it.type in setOf(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
-            AudioDeviceInfo.TYPE_BLE_HEADSET, AudioDeviceInfo.TYPE_BLE_SPEAKER,
-            AudioDeviceInfo.TYPE_BLE_BROADCAST, AudioDeviceInfo.TYPE_HEARING_AID) }
-        .map { it.id }.toSet()
     private val audioDevices = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) = bluetoothChanged()
         override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) = bluetoothChanged()
     }
 
+    private fun bluetoothAvailable(): Boolean = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        .any { it.isSink && it.type in BLUETOOTH_OUTPUT_TYPES }
+
     private fun bluetoothChanged() {
         if (released) return
-        val previous = bluetoothConnected
-        bluetoothConnected = bluetoothOutputs().isNotEmpty()
-        if (house != null || previous == bluetoothConnected) return
-        if (!bluetoothConnected) {
-            player.pause()
-            if (recovering) pauseRecovery()
-            saveStandalone()
-            if (keepStandaloneReady()) updateStandaloneStandbyNotification()
-        } else if (canBluetoothResume()) resumeStandalone()
+        when (playbackIntent.bluetoothChanged(bluetoothAvailable(), player.mediaItemCount > 0)) {
+            StandalonePlaybackIntent.BluetoothAction.PAUSE -> {
+                player.pause()
+                if (recovering) pauseRecovery()
+                saveStandalone()
+                updateStandbyNotification()
+            }
+            StandalonePlaybackIntent.BluetoothAction.RESUME -> resumeStandalone()
+            StandalonePlaybackIntent.BluetoothAction.NONE -> Unit
+        }
     }
 
-    private fun canBluetoothResume(): Boolean = PlaybackTransitionPolicy.bluetoothResume(
-        bluetoothConnected, player.mediaItemCount > 0, explicitlyStopped, pendingHandoffId != null)
-
     private fun resumeStandalone() {
-        if (released || house != null || pendingHandoffId != null || explicitlyStopped) return
+        if (released || !playbackIntent.canResume(player.mediaItemCount > 0)) return
+        // Android 15+ requires a foreground app or foreground service before audio focus.
+        // Establish the same mediaPlayback service before an automatic Bluetooth resume.
+        if (!updateStandbyNotification("Resuming playback")) return
         if (recovering) {
             resumeShouldPlay = true
             recoveryPaused = false
             requestImmediateRecoveryProbe()
         } else {
-            if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) player.prepare()
+            if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
+                player.prepare()
+            }
             player.play()
         }
     }
 
-    private fun standaloneSnapshot(): StandaloneSnapshot = StandaloneSnapshot(
-        (0 until player.mediaItemCount).map { player.getMediaItemAt(it) },
-        player.currentMediaItemIndex.coerceAtLeast(0),
-        (if (recovering) resumePositionMs else player.currentPosition).coerceAtLeast(0),
-        player.shuffleModeEnabled, explicitlyStopped)
-
     private fun saveStandalone() {
-        if (!::retained.isInitialized || !::player.isInitialized || released) return
-        runCatching { retained.save(standaloneSnapshot()) }
-        lastPersistAt = SystemClock.uptimeMillis()
+        if (released || !::retained.isInitialized || !::player.isInitialized) return
+        runCatching {
+            retained.save(StandaloneSnapshot(
+                (0 until player.mediaItemCount).map { player.getMediaItemAt(it) },
+                (if (recovering) resumeMediaIndex else player.currentMediaItemIndex).coerceAtLeast(0),
+                (if (recovering) resumePositionMs else player.currentPosition).coerceAtLeast(0),
+                player.shuffleModeEnabled, playbackIntent.explicitlyStopped))
+        }
     }
 
-    private fun transitionMessage(message: String?) {
-        transitionStatus = message
-        lastPublishedRecoverySignature = ""
-        publishRecoveryStatus(if (recoveryPaused) RECOVERY_PHASE_PAUSED else RECOVERY_PHASE_IDLE)
-        if (pendingHandoffId != null && ::session.isInitialized && !released) updateTransitionNotification()
-    }
-
-    private fun scheduleModeMonitor() {
+    private fun schedulePersistence() {
         handler.postAtTime({
-            if (!released) { monitorMode(); scheduleModeMonitor() }
-        }, MODE_TOKEN, SystemClock.uptimeMillis() + 2_000)
-    }
-
-    private fun monitorMode() {
-        if (released) return
-        val runtime = house
-        if (runtime != null) {
-            // Failed /state, /health, Snapcast, or heartbeat requests are never proof of
-            // leaving home. Only loss of the qualified physical route changes mode.
-            if (!HouseConnection.isPresent(this, runtime.api.endpoint)) leaveHouse(runtime)
-            return
-        }
-        if (SystemClock.uptimeMillis() - lastPersistAt >= 5_000 && pendingHandoffId == null) saveStandalone()
-        if (handoffWorking || handoffTerminal || houseProbeInFlight ||
-            SystemClock.uptimeMillis() - lastHouseProbeAt < 5_000) return
-        val generation = modeGeneration.get()
-        houseProbeInFlight = true
-        lastHouseProbeAt = SystemClock.uptimeMillis()
-        executor.execute {
-            val endpoint = runCatching { HouseConnection.probe(this) }.getOrNull()
-            handler.post {
-                houseProbeInFlight = false
-                if (!released && house == null && generation == modeGeneration.get() && endpoint != null &&
-                    HouseConnection.isPresent(this, endpoint)) houseFound(endpoint)
-                if (!released && modeProbeAgainRequested) {
-                    modeProbeAgainRequested = false
-                    lastHouseProbeAt = -5_000L
-                    monitorMode()
-                }
+            if (!released) {
+                if (player.playWhenReady || recovering) saveStandalone()
+                schedulePersistence()
             }
-        }
-    }
-
-    private fun enterHouse(endpoint: HouseEndpoint) {
-        if (released || !HouseConnection.isPresent(this, endpoint)) return
-        modeGeneration.incrementAndGet()
-        cancelRecovery()
-        cancelFade(resetToFull = true)
-        player.pause()
-        // A later cold start in HOUSE must not resurrect an old private queue.
-        explicitlyStopped = true
-        saveStandalone()
-        player.stop()
-        lateinit var runtime: HouseRuntime
-        runtime = HouseRuntime(this, endpoint) {
-            if (!released && house === runtime) {
-                session.setSessionExtras(runtime.extras())
-                updateHouseNotification()
-            }
-        }
-        house = runtime
-        HouseConnection.publish(selectionEpoch, endpoint)
-        session.setPlayer(runtime.player)
-        session.setSessionExtras(runtime.extras())
-        updateHouseNotification()
-        runtime.start()
-    }
-
-    private fun leaveHouse(runtime: HouseRuntime) {
-        val departure = runtime.departureSnapshot()
-        val metadata = runtime.state.tracks.firstOrNull { it.file == departure?.file }
-        val wasStopped = runtime.state.transport == "stop"
-        modeGeneration.incrementAndGet()
-        cancelRecovery()
-        cancelFade(resetToFull = true)
-        runtime.close()
-        house = null
-        HouseConnection.publish(selectionEpoch, null)
-        player.pause()
-        player.clearMediaItems()
-        val url = departure?.let { HouseLibraryPaths.smb(HouseLibraryMapping.root(this), it.file) }
-        explicitlyStopped = wasStopped
-        if (departure != null && url != null) {
-            val item = MediaItem.Builder().setMediaId(url).setUri(url)
-                .setMediaMetadata(androidx.media3.common.MediaMetadata.Builder()
-                    .setTitle(metadata?.title?.takeIf { it.isNotBlank() } ?: departure.file.substringAfterLast('/'))
-                    .setArtist(metadata?.artist).setAlbumTitle(metadata?.album).build()).build()
-            // The approved departure carries the heard track, not an unapproved copy of
-            // the entire HOUSE queue into a new private playlist.
-            player.setMediaItem(item, departure.positionMs)
-        }
-        session.setPlayer(player)
-        runtime.player.release()
-        lastPublishedRecoverySignature = ""
-        transitionMessage(if (departure != null && url == null)
-            "SMB — set HOUSE music root on SMB to continue this song away from home" else null)
-        if (departure != null && url != null && PlaybackTransitionPolicy.continueDeparture(
-                departure.shouldPlay, bluetoothConnected, explicitlyStopped)) resumeStandalone()
-        saveStandalone()
-        // Media3 recreates the standalone playback notification when ExoPlayer starts.
-        getSystemService(NotificationManager::class.java).cancel(2401)
-        if (keepStandaloneReady()) updateStandaloneStandbyNotification()
-        else if (!player.playWhenReady) stopForeground(STOP_FOREGROUND_REMOVE)
-    }
-
-    private fun houseFound(endpoint: HouseEndpoint) {
-        if (released || house != null || !HouseConnection.isPresent(this, endpoint)) return
-        val unresolved = pendingHandoffId
-        if (unresolved != null) {
-            pendingEndpoint = endpoint
-            resolveHandoff(endpoint, unresolved)
-            return
-        }
-        val playing = player.playWhenReady || (recovering && resumeShouldPlay && !recoveryPaused)
-        if (!playing || explicitlyStopped || player.mediaItemCount == 0) {
-            enterHouse(endpoint)
-            return
-        }
-        // Freeze the heard position before reserving/committing. From this point a failed
-        // transfer is silent and reviewable, never simultaneous private and HOUSE music.
-        val snapshot = standaloneSnapshot()
-        player.pause()
-        cancelRecovery()
-        saveStandalone()
-        val musicRoot = HouseLibraryMapping.root(this)
-        val tracks = snapshot.items.map { item -> HouseLibraryPaths.relative(musicRoot,
-            item.localConfiguration?.uri?.toString() ?: item.mediaId) }
-        val id = UUID.randomUUID().toString()
-        pendingHandoffId = id
-        pendingEndpoint = endpoint
-        handoffTerminal = false
-        if (runCatching { retained.saveHandoff(id) }.isFailure) {
-            handoffTerminal = true
-            transitionMessage("Return home paused — could not retain transfer state; use Stop transfer")
-            return
-        }
-        if (tracks.any { it == null }) {
-            // No request was sent. Keep a durable unresolved marker so a restart cannot
-            // accidentally adopt a default queue after silently abandoning this session.
-            handoffTerminal = true
-            transitionMessage("Return home paused — set HOUSE music root on SMB; use Stop transfer in the notification")
-            return
-        }
-        val generation = modeGeneration.incrementAndGet()
-        handoffWorking = true
-        transitionMessage("Returning home — transferring current playlist")
-        transitions.execute {
-            val api = HouseApi(this, endpoint)
-            val identity = handoffIdentity(id)
-            var response: JSONObject? = null
-            var failure: String? = null
-            try {
-                checkTransition(generation, endpoint)
-                response = api.post("/session/handoff/prepare", identity)
-                if (handoffStatus(response) == "reserved") {
-                    checkTransition(generation, endpoint)
-                    val lease = api.post("/controllers/attach", JSONObject()
-                        .put("controllerId", HouseConnection.deviceId(this))
-                        .put("rendererId", HouseConnection.deviceId(this) + "-audio")
-                        .put("outputMuted", true).put("outputReady", false)).getString("leaseId")
-                    temporaryLeases[id] = lease
-                    checkTransition(generation, endpoint)
-                    response = api.post("/session/handoff/commit", handoffIdentity(id)
-                        .put("tracks", JSONArray(tracks)).put("startIndex", snapshot.index)
-                        .put("positionSeconds", snapshot.positionMs / 1000.0)
-                        .put("shuffle", snapshot.shuffle).put("repeat", true))
-                }
-            } catch (error: Exception) {
-                failure = error.message
-                // A timeout may follow a completed commit. Read its receipt, never replay
-                // queue replacement or invent a new ID from a stale saved snapshot.
-                response = runCatching { api.post("/session/handoff/status", identity) }.getOrNull()
-            }
-            handler.post { finishHandoff(endpoint, id, generation, response, failure) }
-        }
-    }
-
-    private fun checkTransition(generation: Long, endpoint: HouseEndpoint) {
-        check(!released && modeGeneration.get() == generation && HouseConnection.isPresent(this, endpoint)) {
-            "Playback transfer cancelled or home network lost"
-        }
-    }
-
-    private fun handoffIdentity(id: String) = JSONObject()
-        .put("controllerId", HouseConnection.deviceId(this)).put("handoffId", id)
-    private fun handoffStatus(response: JSONObject?): String = response?.optJSONObject("handoff")?.optString("status").orEmpty()
-
-    private fun resolveHandoff(endpoint: HouseEndpoint, id: String) {
-        if (handoffWorking || handoffTerminal) return
-        if (pendingStopRequested) { cancelHandoff(stopTransferredSession = true); return }
-        handoffWorking = true
-        val generation = modeGeneration.get()
-        transitions.execute {
-            var failure: String? = null
-            val response = try { HouseApi(this, endpoint).post("/session/handoff/status", handoffIdentity(id)) }
-                catch (error: Exception) { failure = error.message; null }
-            handler.post { finishHandoff(endpoint, id, generation, response, failure) }
-        }
-    }
-
-    private fun finishHandoff(endpoint: HouseEndpoint, id: String, generation: Long,
-                              response: JSONObject?, failure: String?) {
-        if (released || pendingHandoffId != id || generation != modeGeneration.get()) return
-        handoffWorking = false
-        val status = handoffStatus(response)
-        if (PlaybackTransitionPolicy.mayAdoptHandoff(status) && HouseConnection.isPresent(this, endpoint)) {
-            retained.clearHandoff()
-            pendingHandoffId = null
-            pendingEndpoint = null
-            temporaryLeases.remove(id) // Runtime replaces this exact controller's temporary lease.
-            transitionMessage(null)
-            enterHouse(endpoint)
-        } else {
-            handoffTerminal = status in setOf("failed", "expired", "cancelled", "unknown", "reserved")
-            transitionMessage(when (status) {
-                "failed" -> "Return home paused — transfer failed; use Stop transfer in the notification"
-                "unknown" -> "Return home paused — server has no transfer receipt; use Stop transfer in the notification"
-                "expired", "cancelled", "reserved" -> "Return home paused — transfer incomplete; use Stop transfer in the notification"
-                else -> "Return home paused — checking transfer status${failure?.let { ": $it" }.orEmpty()}"
-            })
-        }
-    }
-
-    private fun cancelHandoff(stopTransferredSession: Boolean) {
-        val id = pendingHandoffId ?: return
-        val endpoint = pendingEndpoint
-        modeGeneration.incrementAndGet()
-        pendingStopRequested = stopTransferredSession
-        handoffWorking = endpoint != null
-        handoffTerminal = false
-        if (stopTransferredSession) {
-            runCatching { retained.saveHandoff(id, stopRequested = true) }
-            transitionMessage("Return home paused — cancelling transfer")
-        } else {
-            pendingHandoffId = null
-            pendingEndpoint = null
-            retained.clearHandoff()
-            transitionMessage(null)
-        }
-        if (endpoint != null) transitions.execute {
-            val api = HouseApi(this, endpoint)
-            // Serialized after any commit, so an explicit Stop wins even if that write's
-            // response was delayed. Quit only cancels/detaches and leaves other rooms alone.
-            val cancelled = runCatching { api.post("/session/handoff/cancel", handoffIdentity(id)) }.getOrNull()
-            val status = handoffStatus(cancelled)
-            var stopped = true
-            var ambiguousStop = false
-            if (stopTransferredSession && status in setOf("committed", "failed")) {
-                // Send Stop only once. An ambiguous response remains paused for explicit
-                // user review rather than automatically stopping a later HOUSE session.
-                stopped = runCatching {
-                    check(retained.markStopSent(id)) { "Stop already attempted or transfer closed" }
-                    api.post("/stop")
-                }.isSuccess
-                ambiguousStop = !stopped
-            }
-            temporaryLeases.remove(id)?.let { lease -> runCatching {
-                api.post("/controllers/detach", JSONObject().put("controllerId", HouseConnection.deviceId(this)).put("leaseId", lease))
-            } }
-            handler.post {
-                if (!released && pendingHandoffId == id && pendingStopRequested) {
-                    handoffWorking = false
-                    if (cancelled != null && stopped) {
-                        pendingHandoffId = null
-                        pendingEndpoint = null
-                        pendingStopRequested = false
-                        retained.clearHandoff()
-                        transitionMessage("SMB — playback stopped")
-                        clearStoppedNotification()
-                    } else {
-                        handoffTerminal = ambiguousStop
-                        transitionMessage("Return home paused — Stop could not be confirmed; Quit to close the phone")
-                    }
-                }
-            }
-        }
+        }, PERSIST_TOKEN, SystemClock.uptimeMillis() + 5_000)
     }
 
     override fun onCreate() {
         super.onCreate()
-        selectionEpoch = HouseConnection.epoch
 
-        val initialHouse = HouseConnection.current
-        HouseConnection.publish(selectionEpoch, null)
         retained = StandaloneSessionStore(this)
-        pendingHandoffId = retained.handoffId()
-        pendingStopRequested = retained.handoffStopRequested()
-        handoffTerminal = retained.handoffStopSent()
-        audio = getSystemService(AudioManager::class.java)
-        bluetoothConnected = bluetoothOutputs().isNotEmpty()
+        audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        playbackIntent.restore(stopped = true, bluetoothAvailable = bluetoothAvailable())
+        setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this)
+            .setNotificationId(PLAYBACK_NOTIFICATION_ID).setChannelId(PLAYBACK_CHANNEL)
+            .setChannelName(R.string.app_name).build())
 
         smb = SmbClient(CredentialStore(this))
         // A timed-out jcifs attempt must not permanently block every later recovery probe.
@@ -502,7 +195,7 @@ class PlaybackService : MediaLibraryService() {
         player.setHandleAudioBecomingNoisy(true)
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
-                if (house == null && pendingHandoffId == null && !released) beginOutageRecovery(error)
+                if (!released) beginOutageRecovery(error)
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -522,6 +215,9 @@ class PlaybackService : MediaLibraryService() {
             }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (released) return
+                if (playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST &&
+                    player.mediaItemCount > 0) playbackIntent.playbackRequested()
                 if (!playWhenReady) {
                     fadeArmed = false
                     cancelFade(resetToFull = true)
@@ -535,9 +231,6 @@ class PlaybackService : MediaLibraryService() {
                         pauseRecovery()
                     }
                     return
-                }
-                if (house == null && pendingHandoffId == null) {
-                    getSystemService(NotificationManager::class.java).cancel(2401)
                 }
 
                 // Fade only when a real user/controller requests playback. Automatic track
@@ -562,6 +255,12 @@ class PlaybackService : MediaLibraryService() {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying && fadeArmed) startFadeIn()
             }
+
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION) ||
+                    events.contains(Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED) ||
+                    events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED)) saveStandalone()
+            }
         })
 
         session = MediaLibrarySession.Builder(
@@ -571,24 +270,21 @@ class PlaybackService : MediaLibraryService() {
         ).build()
 
         retained.load()?.let { saved ->
-            explicitlyStopped = saved.explicitlyStopped
+            playbackIntent.restore(saved.explicitlyStopped, bluetoothAvailable())
             player.setMediaItems(saved.items, saved.index, saved.positionMs)
             player.shuffleModeEnabled = saved.shuffle
         }
         publishRecoveryStatus(RECOVERY_PHASE_IDLE)
-        if (pendingHandoffId != null) transitionMessage(if (handoffTerminal)
-            "Return home paused — Stop outcome uncertain; Quit to close the phone" else "Return home paused — checking retained transfer")
         registerNetworkCallback()
         audio.registerAudioDeviceCallback(audioDevices, handler)
-        if (initialHouse != null && HouseConnection.isPresent(this, initialHouse)) {
-            // Treat a retained session exactly like a live one when Bluetooth was already on.
-            if (canBluetoothResume()) resumeStandalone()
-            houseFound(initialHouse)
-        } else {
-            if (canBluetoothResume()) resumeStandalone()
-            monitorMode()
+        // Let a simultaneous Quit command run before considering a preconnected output.
+        handler.post {
+            if (!released) {
+                if (playbackIntent.canResume(player.mediaItemCount > 0)) resumeStandalone()
+                else if (keepStandaloneReady()) updateStandbyNotification()
+            }
         }
-        scheduleModeMonitor()
+        schedulePersistence()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
@@ -596,105 +292,68 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
         if (released) return
-        if (house != null) updateHouseNotification()
-        else if (pendingHandoffId != null) updateTransitionNotification()
-        else if (keepStandaloneReady()) updateStandaloneStandbyNotification()
+        if (playbackIntent.explicitlyStopped && !player.playWhenReady) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            getSystemService(NotificationManager::class.java).cancel(PLAYBACK_NOTIFICATION_ID)
+        } else if (keepStandaloneReady()) updateStandbyNotification()
         else super.onUpdateNotification(session, startInForegroundRequired)
     }
 
-    private fun keepStandaloneReady(): Boolean = !released && house == null && pendingHandoffId == null &&
-        ::player.isInitialized && player.mediaItemCount > 0 && !explicitlyStopped &&
-        !player.playWhenReady && !bluetoothConnected
+    private fun keepStandaloneReady(): Boolean = !released && ::player.isInitialized &&
+        player.mediaItemCount > 0 && !playbackIntent.explicitlyStopped &&
+        !player.playWhenReady && (recovering || !playbackIntent.bluetoothConnected)
 
-    private fun clearStoppedNotification() {
-        if (house == null && pendingHandoffId == null && explicitlyStopped) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            getSystemService(NotificationManager::class.java).cancel(2401)
-        }
-    }
-
-    private fun updateStandaloneStandbyNotification() {
+    /** Keep the retained, user-started session available through a Bluetooth disconnect/outage. */
+    private fun updateStandbyNotification(status: String? = null): Boolean {
+        if (released || !::session.isInitialized) return false
         val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel("house", "House music", NotificationManager.IMPORTANCE_LOW))
+        manager.createNotificationChannel(NotificationChannel(PLAYBACK_CHANNEL, "SMB Music",
+            NotificationManager.IMPORTANCE_LOW))
         val open = PendingIntent.getActivity(this, 0, Intent(this, NowPlayingActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val quit = PendingIntent.getService(this, 2403, Intent(this, PlaybackService::class.java).setAction(ACTION_QUIT),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val notification = NotificationCompat.Builder(this, "house").setSmallIcon(R.drawable.ic_launcher)
-            .setContentTitle(player.mediaMetadata.title ?: "SMB Music — paused")
-            .setContentText("Bluetooth disconnected — session retained")
-            .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Quit", quit).build()
-        ServiceCompat.startForeground(this, 2401, notification,
-            if (android.os.Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0)
-    }
-
-    private fun updateTransitionNotification() {
-        if (released) return
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel("house", "House music", NotificationManager.IMPORTANCE_LOW))
-        val open = PendingIntent.getActivity(this, 0, Intent(this, NowPlayingActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val stop = PendingIntent.getService(this, 2402,
-            Intent(this, PlaybackService::class.java).setAction(ACTION_STOP_TRANSFER),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val notification = NotificationCompat.Builder(this, "house").setSmallIcon(R.drawable.ic_launcher)
-            .setContentTitle("SMB Music — returning home")
-            .setContentText(transitionStatus ?: "Checking playlist transfer")
-            .setStyle(NotificationCompat.BigTextStyle().bigText(transitionStatus))
-            .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
-            .addAction(android.R.drawable.ic_media_pause, "Stop transfer", stop).build()
-        ServiceCompat.startForeground(this, 2401, notification,
-            if (android.os.Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0)
-    }
-
-    private fun updateHouseNotification() {
-        if (released) return
-        val runtime = house ?: return
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel("house", "House music", NotificationManager.IMPORTANCE_LOW))
-        val open = PendingIntent.getActivity(this, 0, Intent(this, NowPlayingActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         fun action(name: String) = PendingIntent.getService(this, name.hashCode(),
-            Intent(this, PlaybackService::class.java).setAction(name), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val playing = runtime.state.transport == "play"
-        val notification = NotificationCompat.Builder(this, "house").setSmallIcon(R.drawable.ic_launcher)
-            .setContentTitle(runtime.player.mediaMetadata.title ?: "SMB Music — HOUSE")
-            .setContentText(runtime.extras().getString(HouseRuntime.EXTRA_STATUS)).setContentIntent(open)
-            .setOngoing(true).setOnlyAlertOnce(true)
-            .addAction(android.R.drawable.ic_media_previous, "Previous", action(HOUSE_PREVIOUS))
-            .addAction(if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
-                if (playing) "Pause" else "Play", action(HOUSE_PLAY_PAUSE))
-            .addAction(android.R.drawable.ic_media_next, "Next", action(HOUSE_NEXT))
-            .setStyle(MediaStyleNotificationHelper.MediaStyle(session).setShowActionsInCompactView(0, 1, 2)).build()
-        // Connected-device foreground lifetime keeps muted/background controllers present too.
-        ServiceCompat.startForeground(this, 2401, notification,
-            if (android.os.Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0)
+            Intent(this, PlaybackService::class.java).setAction(name),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val notification = NotificationCompat.Builder(this, PLAYBACK_CHANNEL)
+            .setSmallIcon(R.drawable.ic_launcher)
+            .setContentTitle(player.mediaMetadata.title ?: "SMB Music")
+            .setContentText(status ?: if (recovering && !recoveryPaused)
+                "Waiting for SMB — session retained" else "Paused — session retained")
+            .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
+            .addAction(android.R.drawable.ic_media_play, "Play", action(ACTION_PLAY))
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Quit", action(ACTION_QUIT))
+            .setStyle(MediaStyleNotificationHelper.MediaStyle(session).setShowActionsInCompactView(0, 1))
+            .build()
+        // The service is for SMB audio playback/recovery, not an unrelated connected device.
+        return runCatching {
+            ServiceCompat.startForeground(this, PLAYBACK_NOTIFICATION_ID, notification,
+                if (android.os.Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0)
+        }.isSuccess
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_QUIT) {
             releasePlayback(explicitQuit = true)
             stopForeground(STOP_FOREGROUND_REMOVE)
-            getSystemService(NotificationManager::class.java).cancel(2401)
+            getSystemService(NotificationManager::class.java).cancel(PLAYBACK_NOTIFICATION_ID)
             stopSelf()
             return START_NOT_STICKY
         }
         if (released) return START_NOT_STICKY
-        if (intent?.action == ACTION_STOP_TRANSFER) {
-            explicitlyStopped = true
-            player.pause()
-            player.stop()
-            cancelRecovery()
-            cancelHandoff(stopTransferredSession = true)
-            saveStandalone()
-            clearStoppedNotification()
-            return START_NOT_STICKY
-        }
-        house?.let { runtime ->
-            when (intent?.action) {
-                HOUSE_PLAY_PAUSE -> if (runtime.state.transport == "play") runtime.player.pause() else runtime.player.play()
-                HOUSE_NEXT -> runtime.player.seekToNextMediaItem()
-                HOUSE_PREVIOUS -> runtime.player.seekToPreviousMediaItem()
+        if (intent?.action == ACTION_PLAY) {
+            if (player.mediaItemCount > 0) {
+                playbackIntent.playbackRequested()
+                if (updateStandbyNotification("Resuming playback")) {
+                    if (recovering) {
+                        resumeShouldPlay = true
+                        recoveryPaused = false
+                        requestImmediateRecoveryProbe()
+                    } else {
+                        if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) player.prepare()
+                        player.play()
+                    }
+                }
+                saveStandalone()
             }
             return START_NOT_STICKY
         }
@@ -706,31 +365,23 @@ class PlaybackService : MediaLibraryService() {
             session: MediaSession,
             controller: MediaSession.ControllerInfo
         ): MediaSession.ConnectionResult {
-            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
-            if (controller.packageName == packageName) HouseRuntime.CUSTOM_COMMANDS.forEach {
-                commands.add(SessionCommand(it, Bundle.EMPTY))
-            }
-            val result = MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
-                .setAvailableSessionCommands(commands.build())
+            // Garmin Connect can see metadata/position through the default read-only access,
+            // but its phone-music controls are a third-party controller. Grant that specific
+            // package the standard player/session commands so Play/Pause, Previous/Next and
+            // device-volume commands can reach the player. Trusted controllers such as Android
+            // Auto keep Media3's normal default behavior.
             if (controller.packageName == GARMIN_CONNECT_PACKAGE) {
-                result.setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS)
+                return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
+                    .setAvailableSessionCommands(
+                        MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+                    )
+                    .setAvailablePlayerCommands(
+                        MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
+                    )
+                    .build()
             }
-            return result.build()
-        }
-
-        override fun onCustomCommand(session: MediaSession, controller: MediaSession.ControllerInfo,
-            customCommand: SessionCommand, args: Bundle): ListenableFuture<SessionResult> =
-            house?.custom(customCommand, args)
-                ?: Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE))
-
-        @Suppress("DEPRECATION")
-        override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo,
-                                            playerCommand: Int): Int {
-            // An ambiguous commit must not let a Bluetooth or UI Play restart private audio.
-            // Stop remains available and cancels the pending transfer explicitly.
-            if (house == null && pendingHandoffId != null && playerCommand != Player.COMMAND_STOP &&
-                playerCommand in TRANSFER_COMMANDS) return SessionResult.RESULT_ERROR_INVALID_STATE
-            return SessionResult.RESULT_SUCCESS
+            // Reproduce Media3's normal trusted/untrusted defaults for every other controller.
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller).build()
         }
 
         override fun onPlayerInteractionFinished(
@@ -738,16 +389,13 @@ class PlaybackService : MediaLibraryService() {
             controllerInfo: MediaSession.ControllerInfo,
             playerCommands: Player.Commands
         ) {
-            if (house != null || released) return
+            if (released) return
             if (playerCommands.contains(Player.COMMAND_STOP)) {
-                explicitlyStopped = true
-                modeGeneration.incrementAndGet()
-                cancelHandoff(stopTransferredSession = true)
+                playbackIntent.stop()
                 player.pause()
             } else if (playerCommands.contains(Player.COMMAND_CHANGE_MEDIA_ITEMS) ||
-                       (playerCommands.contains(Player.COMMAND_PLAY_PAUSE) && player.playWhenReady)) {
-                explicitlyStopped = false
-                transitionStatus = null
+                (playerCommands.contains(Player.COMMAND_PLAY_PAUSE) && player.playWhenReady)) {
+                playbackIntent.playbackRequested()
             }
             // A replacement queue or explicit Stop makes all recovery callbacks for the old
             // request stale. The newly requested queue is allowed to establish its own state.
@@ -776,7 +424,10 @@ class PlaybackService : MediaLibraryService() {
                 player.repeatMode = Player.REPEAT_MODE_ALL
             }
             saveStandalone()
-            clearStoppedNotification()
+            if (playbackIntent.explicitlyStopped) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                getSystemService(NotificationManager::class.java).cancel(PLAYBACK_NOTIFICATION_ID)
+            }
         }
     }
 
@@ -814,6 +465,10 @@ class PlaybackService : MediaLibraryService() {
 
     private fun beginOutageRecovery(error: PlaybackException) {
         val mediaItem = player.currentMediaItem ?: return
+
+        // A loader can report its error after Pause closed the source. That late result
+        // must not restart probing or downloading until explicit Play/Bluetooth resume.
+        if (recoveryPaused) return
 
         // A late loader error after an explicit Pause/Stop must not create a brand-new
         // automatic-resume request. Errors that occur inside an existing recovery session
@@ -1122,31 +777,20 @@ class PlaybackService : MediaLibraryService() {
     private fun registerNetworkCallback() {
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val callback = object : ConnectivityManager.NetworkCallback() {
-            private fun changed() = handler.post {
-                if (!released) {
-                    requestImmediateRecoveryProbe()
-                    if (house != null) monitorMode()
-                    else {
-                        // A fresh physical route bypasses the old five-second probe timer.
-                        // If an away probe is already in flight, remember to probe again.
-                        lastHouseProbeAt = -5_000L
-                        if (houseProbeInFlight) modeProbeAgainRequested = true
-                        handler.removeCallbacksAndMessages(MODE_NETWORK_TOKEN)
-                        handler.postAtTime({ monitorMode() }, MODE_NETWORK_TOKEN,
-                            SystemClock.uptimeMillis() + 200)
-                    }
-                }
+            override fun onAvailable(network: Network) {
+                handler.post { requestImmediateRecoveryProbe() }
             }
-            override fun onAvailable(network: Network) { changed() }
-            override fun onLost(network: Network) { changed() }
-            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { changed() }
-            override fun onLinkPropertiesChanged(network: Network, links: LinkProperties) { changed() }
+
+            override fun onCapabilitiesChanged(
+                network: Network,
+                networkCapabilities: NetworkCapabilities
+            ) {
+                handler.post { requestImmediateRecoveryProbe() }
+            }
         }
+
         runCatching {
-            // Default-network callbacks can describe only the VPN while the physical Wi-Fi
-            // arrives/leaves underneath it. Observe all physical networks, including cellular.
-            connectivityManager.registerNetworkCallback(NetworkRequest.Builder()
-                .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), callback)
+            connectivityManager.registerDefaultNetworkCallback(callback)
             networkCallback = callback
         }
     }
@@ -1182,21 +826,19 @@ class PlaybackService : MediaLibraryService() {
         bufferedAheadMs: Long = 0L,
         requiredBufferMs: Long = 0L
     ) {
-        if (!::session.isInitialized || house != null || released) return
+        if (released || !::session.isInitialized) return
 
         // Round rapidly changing values to whole seconds so a 250 ms buffer check does not flood
         // every controller with redundant Binder updates.
         val roundedRetry = if (retryInMs <= 0L) 0L else ((retryInMs + 999L) / 1000L) * 1000L
         val roundedBuffered = if (bufferedAheadMs <= 0L) 0L else (bufferedAheadMs / 1000L) * 1000L
         val roundedRequired = if (requiredBufferMs <= 0L) 0L else ((requiredBufferMs + 999L) / 1000L) * 1000L
-        val signature = "$phase|$roundedRetry|$roundedBuffered|$roundedRequired|$transitionStatus"
+        val signature = "$phase|$roundedRetry|$roundedBuffered|$roundedRequired"
         if (signature == lastPublishedRecoverySignature) return
         lastPublishedRecoverySignature = signature
 
         session.setSessionExtras(
             Bundle().apply {
-                putBoolean(HouseRuntime.EXTRA_HOUSE, false)
-                putString(SESSION_EXTRA_TRANSITION_STATUS, transitionStatus)
                 putString(SESSION_EXTRA_RECOVERY_PHASE, phase)
                 putLong(SESSION_EXTRA_RETRY_IN_MS, roundedRetry)
                 putLong(SESSION_EXTRA_BUFFERED_AHEAD_MS, roundedBuffered)
@@ -1206,39 +848,28 @@ class PlaybackService : MediaLibraryService() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (released || house != null) return
+        if (released) return
         // Keep an active playback or pending recovery session alive if the UI is swiped away.
-        if (!isPlaybackOngoing() && !recovering && pendingHandoffId == null &&
-            (explicitlyStopped || player.mediaItemCount == 0)) stopSelf()
+        if (!isPlaybackOngoing() && !recovering && !keepStandaloneReady()) stopSelf()
     }
 
-    /** Runs immediately on explicit Quit, even while an Activity still binds the service. */
+    /** Explicit Quit takes effect even while an Activity still holds its controller binding. */
     private fun releasePlayback(explicitQuit: Boolean = false) {
         if (released) return
-        if (explicitQuit) {
-            explicitlyStopped = true
-            cancelHandoff(stopTransferredSession = false)
-        }
-        if (house == null || explicitQuit) saveStandalone()
+        if (explicitQuit) playbackIntent.stop()
+        saveStandalone()
         released = true
-        modeGeneration.incrementAndGet()
         cancelRecovery()
         cancelFade(resetToFull = false)
         handler.removeCallbacksAndMessages(null)
-        networkCallback?.let { runCatching { connectivityManager.unregisterNetworkCallback(it) } }
+        networkCallback?.let { callback ->
+            runCatching { connectivityManager.unregisterNetworkCallback(callback) }
+        }
         networkCallback = null
         audio.unregisterAudioDeviceCallback(audioDevices)
-        val runtime = house
-        house = null
-        runtime?.close() // Detach local controller only; other rooms continue.
-        session.release()
-        runtime?.player?.release()
-        player.release()
         executor.shutdownNow()
-        // Finish any serialized cancel behind a possibly completed commit; never interrupt it
-        // at an unknown write boundary and then automatically restart the retained SMB queue.
-        transitions.shutdown()
-        HouseConnection.clear(selectionEpoch)
+        session.release()
+        player.release()
     }
 
     override fun onDestroy() {
@@ -1248,10 +879,13 @@ class PlaybackService : MediaLibraryService() {
 
     companion object {
         const val ACTION_QUIT = "com.smbmusic.player.QUIT"
-        private const val ACTION_STOP_TRANSFER = "com.smbmusic.player.STOP_TRANSFER"
-        private const val HOUSE_PLAY_PAUSE = "house.notification.playPause"
-        private const val HOUSE_NEXT = "house.notification.next"
-        private const val HOUSE_PREVIOUS = "house.notification.previous"
+        private const val ACTION_PLAY = "com.smbmusic.player.PLAY"
+        private const val PLAYBACK_NOTIFICATION_ID = 2401
+        private const val PLAYBACK_CHANNEL = "smb_playback"
+        private val BLUETOOTH_OUTPUT_TYPES = setOf(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            AudioDeviceInfo.TYPE_BLE_HEADSET, AudioDeviceInfo.TYPE_BLE_SPEAKER,
+            AudioDeviceInfo.TYPE_BLE_BROADCAST, AudioDeviceInfo.TYPE_HEARING_AID)
+        private val PERSIST_TOKEN = Any()
         private val RETRY_TOKEN = Any()
         private val BUFFER_TOKEN = Any()
         private val STATUS_TOKEN = Any()
@@ -1261,14 +895,6 @@ class PlaybackService : MediaLibraryService() {
 
         private const val GARMIN_CONNECT_PACKAGE = "com.garmin.android.apps.connectmobile"
 
-        const val SESSION_EXTRA_TRANSITION_STATUS = "com.smbmusic.player.transition.STATUS"
-        private val MODE_TOKEN = Any()
-        private val MODE_NETWORK_TOKEN = Any()
-        private val TRANSFER_COMMANDS = setOf(Player.COMMAND_PLAY_PAUSE, Player.COMMAND_PREPARE,
-            Player.COMMAND_CHANGE_MEDIA_ITEMS, Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM,
-            Player.COMMAND_SEEK_TO_MEDIA_ITEM, Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_PREVIOUS,
-            Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
-            Player.COMMAND_SET_SHUFFLE_MODE, Player.COMMAND_SET_REPEAT_MODE)
         const val SESSION_EXTRA_RECOVERY_PHASE = "com.smbmusic.player.recovery.PHASE"
         const val SESSION_EXTRA_RETRY_IN_MS = "com.smbmusic.player.recovery.RETRY_IN_MS"
         const val SESSION_EXTRA_BUFFERED_AHEAD_MS = "com.smbmusic.player.recovery.BUFFERED_AHEAD_MS"

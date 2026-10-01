@@ -1,39 +1,27 @@
-SMB Music Player v0.4.3 — build/install
+SMB Music v0.5.0 — standalone build/install
 
-1. Clone or download this repository to a LOCAL folder.
+1. Clone or download this repository to a local folder.
+2. Open its root in Android Studio with Java 17.
+3. Install Android SDK 36 and Build Tools 36.0.0, then sync Gradle.
+   No NDK, CMake or Snapclient preparation is needed.
+4. If gradle-wrapper.jar is missing, run SETUP_GRADLE_WRAPPER.bat
+   or ./gradlew; the wrapper download is checksum-verified.
+5. Connect an Android device with USB debugging and run the app.
 
-2. Open the repository root in Android Studio.
+applicationId: com.smbmusic.player
+versionCode: 16
+versionName: 0.5.0
+Minimum Android: 8.0 / API 26
 
-3. If Android Studio reports that gradle/wrapper/gradle-wrapper.jar is missing,
-   run SETUP_GRADLE_WRAPPER.bat once. It downloads the official Gradle 9.6
-   wrapper JAR and verifies its SHA-256 before using it.
+Build checks:
+./gradlew :app:assembleDebug :app:testDebugUnitTest --max-workers=2
+./gradlew :app:lintDebug -PapiCompatibilityCheck --max-workers=2
 
-4. Install Android SDK 36, Build Tools 36.0.0, NDK 28.2.13676358,
-   and CMake 3.22.1. Use Java 17. Run python3 native/prepare.py from
-   the repository root to fetch checksum-pinned receiver sources/licenses.
-   Then let Gradle sync. See native/README.md for receiver build details.
+This is standalone SMB Music. House Music is a separate future app.
+There are no HOUSE settings, transfers or house-audio-server dependencies.
+Use your existing SMB address, username and password. No Pi/S3 update.
 
-5. Connect an Android device with USB debugging enabled.
-
-6. Click the green Run button for the app configuration.
-
-Current applicationId: com.smbmusic.player
-Current versionCode: 15
-Current versionName: 0.4.3
-
-CI builds the APK and matching source archive, including corresponding
-Snapclient/FLAC/Boost sources. Keep both artifacts together when distributing.
-Local check: ./gradlew :app:assembleDebug :app:testDebugUnitTest --max-workers=2
-
-For current v0.4.3 behavior/build boundaries, exact artifacts, checksums,
-and signing details, see docs/RELEASE_0.4.3.md. Current physical HOUSE
-acceptance belongs in docs/HOUSE_VALIDATION.md; standalone regression checks
-are in docs/TESTING.md.
-
-The CI debug certificate can differ between releases, so an in-place update
-may fail. Save connection details before uninstalling an older debug build.
-
-Live session transfer requires house-audio-server v0.9.0. In Connections,
-set HOUSE music root on SMB to the folder corresponding to the Pi music root
-(the folder containing MP3s/Rap). Hold the Browser SMB/default-folder button
-to open Connections while in HOUSE. An empty/wrong mapping blocks transfer.
+CI creates a debug APK and matching source archive. The CI certificate can
+change between releases, so Android may require uninstalling the older APK.
+Save SMB connection details before uninstalling; uninstall clears app data.
+See docs/RELEASE_0.5.0.md for exact build/artifact/signing verification.
