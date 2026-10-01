@@ -4,7 +4,7 @@ A native Android music player that streams audio directly from SMB shares using 
 
 Current source version: **0.5.0 — standalone SMB Music**. This app has no HOUSE discovery, controller, queue transfer or Snapcast receiver. Build/artifact verification belongs in [docs/RELEASE_0.5.0.md](docs/RELEASE_0.5.0.md); physical regression checks are in [docs/TESTING.md](docs/TESTING.md). **v0.3.8 remains the last confirmed standalone hardware baseline; v0.5.0 still needs device acceptance.**
 
-The separately planned app is named **House Music**. It will control/render the Pi session independently. Its combined v0.4.3 source is preserved on [house-music-pre-split](https://github.com/oolah10293/smb-music-player/tree/house-music-pre-split). Installing or playing SMB Music never resets the house queue. No Pi or S3 update is required for this standalone release.
+The separate **[House Music v0.1.0](house-app/README.md)** controls/renders the Pi session independently and installs alongside SMB Music. It lives in `house-app`, an independent Gradle root; see its [release record](house-app/docs/RELEASE_0.1.0.md) for build verification. The combined v0.4.3 source remains preserved on [house-music-pre-split](https://github.com/oolah10293/smb-music-player/tree/house-music-pre-split). Installing or playing SMB Music never resets the house queue. No Pi or S3 update is required for either independent app release.
 
 ## What it does
 
@@ -100,7 +100,7 @@ The v0.3.8 prolonged-outage recovery hardening still needs its dedicated field t
 
 ## Independent House Music project
 
-SMB Music is standalone from v0.5.0. The two-app product contract remains in [CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md); [ROADMAP.md](docs/ROADMAP.md) records the preserved source checkpoint and later work. House Music is not delivered by this release.
+SMB Music is standalone from v0.5.0. The two-app product contract remains in [CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md); [ROADMAP.md](docs/ROADMAP.md) records the preserved source checkpoint and later work. House Music has its own [source, build and installation instructions](house-app/README.md) and [physical acceptance checks](house-app/docs/TESTING.md). It contains the HOUSE controller/receiver only, with no SMB engine or handoff. Server v0.9.0 stays unchanged while older combined phones remain in use; removal of its obsolete handoff API is later work.
 
 Historical combined-app field results remain in [HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md), with version history in [VALIDATION_STATE.md](docs/VALIDATION_STATE.md). Frozen v0.4.x release records describe the older combined APKs. Do not apply their HOUSE configuration or handoff requirements to SMB Music v0.5.0.
 

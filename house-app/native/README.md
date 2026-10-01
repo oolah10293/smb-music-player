@@ -1,0 +1,9 @@
+# Bundled Snapcast receiver
+
+The APK runs an isolated upstream Snapclient executable; Android UI/control code does not reimplement its decoding or synchronization. It is built from Snapcast **v0.31.0**, commit `cf2be07155b850fd3d660416164970688179ce5c`, with FLAC 1.4.3, Boost 1.85.0 headers, Android OpenSL ES, and the NDK static C++ runtime. The current Pi stream is FLAC, 48 kHz / 16-bit / stereo. PCM is also available; other codecs are not enabled in this build.
+
+Run `python3 native/prepare.py` before Gradle. Downloads are pinned by SHA-256. The native source directories are generated and excluded from Git, but **included in the CI source archive** distributed alongside the APK, together with this build file/script. No upstream source is modified. GPLv3-or-later Snapcast, BSD FLAC, and Boost license texts are included in APK assets. Upstream sources: https://github.com/snapcast/snapcast, https://github.com/xiph/flac, https://www.boost.org/.
+
+The Android network relay carries raw Snapcast bytes using normal Android routing after qualifying physical non-VPN Wi-Fi/Ethernet presence; it performs no decoding, buffering policy, or seeking. Snapclient connects to a loopback port and retains its upstream timestamp/clock-correction algorithm. Stable `--hostID` matches the renderer registered with the house service. Receiver registration always precedes connection. Muting kills the local receiver, while the controller's foreground heartbeat stays alive; unmuting opens a fresh stream at current house time.
+
+Both `arm64-v8a` and `armeabi-v7a` are packaged for the S24, S8, and J3-era phones. NDK r28c and 16 KiB ELF alignment support current Android page sizes. Native startup, audio focus/route interruption, and actual phone/S3 synchronization still require the hardware checkpoint; an APK build alone cannot prove them.

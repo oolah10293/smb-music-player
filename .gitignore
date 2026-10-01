@@ -29,3 +29,9 @@ Thumbs.db
 native/vendor/
 native/deps/
 app/src/main/assets/licenses/
+
+# Independent House Music build/generated sources
+house-app/native/vendor/
+house-app/native/deps/
+house-app/src/main/assets/licenses/
+house-app/gradle/wrapper/gradle-wrapper.jar

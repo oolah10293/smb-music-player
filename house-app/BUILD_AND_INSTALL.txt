@@ -1,0 +1,65 @@
+HOUSE MUSIC v0.1.0 — BUILD AND INSTALL
+
+Application: House Music
+Application ID: com.housemusic.player
+Version name/code: 0.1.0 / 1
+Minimum Android: 8.0 (API 26)
+Compile/target SDK: 36
+
+INSTALL THE SUPPLIED APK
+
+Install HouseMusic-v0.1.0.apk. This is a new application ID, so it can coexist
+with SMB Music v0.5.0. It does not import the combined app's settings.
+
+Quit an older combined app on the same phone before using House Music. Record
+its route-specific sync correction first. In House Music, hold the output/mute
+icon on Now Playing to enter that correction again. Recheck audible sync.
+
+On first launch, enter the Pi's LAN host. On the Browser page, Server opens
+the connection setting. Enter only the Pi hostname or IPv4 address. There
+is no bundled deployment address.
+
+No smb:// prefix, port, folder, SMB username or SMB password belongs in this
+field. House Music uses HTTP 8787, MPD identity port 6600 and Snapcast 1704.
+Existing house-audio-server v0.9.0 and S3 firmware require no update.
+
+Bluetooth automation is retained. The manual Unmute button still requires
+Bluetooth in this release; the requested headphone-jack override is deferred.
+
+BUILD FROM SOURCE
+
+Open house-app as its own project in Android Studio, not the repository's
+standalone SMB Music project. Requirements:
+
+- Java 17 and Python 3
+- Android Gradle Plugin 9.4.0 / Gradle 9.6.0
+- Android SDK 36 / Build Tools 36.0.0
+- Android NDK 28.2.13676358 (r28c)
+- CMake 3.22.1
+
+All commands below run from the house-app directory.
+
+Linux/macOS:
+
+    python3 native/prepare.py
+    ./gradlew assembleDebug testDebugUnitTest
+    ./gradlew lintDebug -PapiCompatibilityCheck
+
+Windows:
+
+    SETUP_GRADLE_WRAPPER.bat
+    py -3 native/prepare.py
+    gradlew.bat assembleDebug testDebugUnitTest
+    gradlew.bat lintDebug -PapiCompatibilityCheck
+
+The wrapper bootstrap downloads the official wrapper JAR and checks its pinned
+SHA-256. Native preparation downloads checksum-pinned Snapcast, FLAC and Boost
+sources. These generated sources are excluded from Git and included in the
+matching CI source archive; preserve them when distributing the receiver.
+
+See docs/RELEASE_0.1.0.md for the verified CI artifacts, APK manifest identity,
+checksums and signing information. CI uses a debug signing certificate; stable
+signing for future in-place upgrades remains separate release work.
+
+See docs/TESTING.md for physical acceptance. A successful build and API-26 lint
+do not establish an S8/J3 hardware pass or verified audio synchronization.

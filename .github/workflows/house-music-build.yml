@@ -1,0 +1,96 @@
+name: House Music build
+
+on:
+  pull_request:
+    paths:
+      - 'house-app/**'
+      - '.github/workflows/house-music-build.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'house-app/**'
+      - '.github/workflows/house-music-build.yml'
+
+jobs:
+  house-debug:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: house-app
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK packages
+        run: |
+          SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358" "cmake;3.22.1"
+
+      - name: Fetch verified Snapclient source and licenses
+        run: python3 native/prepare.py
+
+      - name: Assemble and test House Music
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug testDebugUnitTest --stacktrace --max-workers=2
+
+      - name: Check API 26 compatibility
+        run: ./gradlew lintDebug -PapiCompatibilityCheck --stacktrace --max-workers=2
+
+      - name: Verify independent HOUSE APK and test results
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          source = Path('src/main/java')
+          assert not (source / 'com/housemusic/player/smb').exists()
+          assert not (source / 'com/housemusic/player/storage').exists()
+          for path in source.rglob('*.kt'):
+              text = path.read_text()
+              for forbidden in ('com.smbmusic.player', 'SmbDataSource', 'SmbClient', 'StandaloneSessionStore', '/session/handoff/'):
+                  assert forbidden not in text, (path, forbidden)
+          apks = list(Path('build/outputs/apk/debug').glob('*.apk'))
+          assert len(apks) == 1, apks
+          with zipfile.ZipFile(apks[0]) as apk:
+              for abi in ('arm64-v8a', 'armeabi-v7a'):
+                  assert len(apk.read(f'lib/{abi}/libsnapclient.so')) > 100000
+              for name in ('Snapcast-GPL-3.txt', 'FLAC-BSD.txt', 'Boost-1.0.txt'):
+                  assert apk.read('assets/licenses/' + name)
+              for name in apk.namelist():
+                  if name.endswith('.dex'):
+                      dex = apk.read(name)
+                      for forbidden in (b'Lcom/smbmusic/player/', b'Ljcifs/', b'SmbDataSource', b'/session/handoff/'):
+                          assert forbidden not in dex, (name, forbidden)
+          suites = [ET.parse(p).getroot() for p in Path('build/test-results/testDebugUnitTest').glob('TEST-*.xml')]
+          total = sum(int(s.get('tests', 0)) for s in suites)
+          assert total > 0
+          assert all(int(s.get('errors', 0)) == 0 and int(s.get('failures', 0)) == 0 for s in suites)
+          print(f'{total} unit tests passed; both native ABIs and licenses verified; no SMB engine or handoff API in APK.')
+          PY
+
+      - name: Package corresponding source archive
+        run: |
+          zip -qr HouseMusic-v0.1.0-source.zip . \
+            -x '.gradle/*' '.kotlin/*' '.idea/*' '.cxx/*' 'build/*' \
+               'gradle/wrapper/gradle-wrapper.jar' 'local.properties' '*.iml' \
+               'HouseMusic-v0.1.0-source.zip'
+
+      - name: Upload House Music APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: HouseMusic-v0.1.0
+          path: house-app/build/outputs/apk/debug/*.apk
+
+      - name: Upload matching source and native dependencies
+        uses: actions/upload-artifact@v4
+        with:
+          name: HouseMusic-v0.1.0-source
+          path: house-app/HouseMusic-v0.1.0-source.zip

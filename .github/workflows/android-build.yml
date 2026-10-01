@@ -2,9 +2,23 @@ name: Android build
 
 on:
   pull_request:
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'gradlew*'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/android-build.yml'
   push:
     branches:
       - main
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'gradlew*'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/android-build.yml'
 
 jobs:
   assemble-debug:
@@ -59,6 +73,7 @@ jobs:
                'build/*' \
                'app/build/*' \
                'app/.cxx/*' \
+               'house-app/*' \
                'gradle/wrapper/gradle-wrapper.jar' \
                'local.properties' \
                '*.iml' \

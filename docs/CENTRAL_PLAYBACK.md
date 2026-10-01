@@ -1,16 +1,16 @@
 # Independent Android SMB and HOUSE apps
 
-This document is the **normative behavior and architecture contract for the two independent Android apps**. Current source/build identity belongs in the release record; current real-device pass/fail status belongs in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md); historical validation belongs in [VALIDATION_STATE.md](VALIDATION_STATE.md).
+This document is the **normative behavior and architecture contract for the two independent Android apps**. Current source/build identity belongs in each app's release record. New House Music physical acceptance belongs in [its testing record](../house-app/docs/TESTING.md); combined-app field evidence remains in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md), and historical validation belongs in [VALIDATION_STATE.md](VALIDATION_STATE.md).
 
 The authoritative product rules are in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md). This document translates those decisions into Android requirements and identifies the corresponding implementation work. Engineering proposals and unresolved details below are not additional user-approved behavior.
 
 **2026-09-30 clarification:** HOUSE phone renderer eligibility requires Bluetooth audio. Transport commands never grant eligibility or independently unmute the phone. This supersedes the earlier pre-command audible-state auto-unmute policy. Existing server pause/retention rules remain in force. Implementation and physical acceptance are tracked separately.
 
-**Superseding decision, 2026-10-01:** the user wants two completely independent Android apps, with no connection between them. SMB Music owns its standalone session; the HOUSE app controls/renders the Pi session. Remove automatic home/away switching and all automatic or manual session transfers from the planned product. Neither app shares a queue/song/position, resets the other session, launches the other app, or implements special cross-app stop/start coordination. Listening through SMB has no effect on HOUSE, including its next passive-node queue. This replaces the 2026-09-30 handoff requirement and the later proposed transition-coordinator redesign. SMB Music v0.5.0 implements the standalone side of this split. The combined v0.4.3 source is preserved on `house-music-pre-split`; the separate **House Music** app is still pending. Server v0.9.0 is unchanged.
+**Superseding decision, 2026-10-01:** the user wants two completely independent Android apps, with no connection between them. SMB Music owns its standalone session; the HOUSE app controls/renders the Pi session. Remove automatic home/away switching and all automatic or manual session transfers from the planned product. Neither app shares a queue/song/position, resets the other session, launches the other app, or implements special cross-app stop/start coordination. Listening through SMB has no effect on HOUSE, including its next passive-node queue. This replaces the 2026-09-30 handoff requirement and the later proposed transition-coordinator redesign. SMB Music v0.5.0 and **House Music v0.1.0** now implement the separate source trees. The combined v0.4.3 source is preserved on `house-music-pre-split`. Server v0.9.0 is unchanged.
 
 Tracking: [Android Issue #1](https://github.com/oolah10293/smb-music-player/issues/1).
 
-Current standalone implementation/build references are in [RELEASE_0.5.0.md](RELEASE_0.5.0.md), with device checks in [TESTING.md](TESTING.md). Historical combined-app physical acceptance remains in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
+SMB Music implementation/build references are in [RELEASE_0.5.0.md](RELEASE_0.5.0.md), with device checks in [TESTING.md](TESTING.md). House Music has its own [release record](../house-app/docs/RELEASE_0.1.0.md) and [device checks](../house-app/docs/TESTING.md). Historical combined-app physical acceptance remains in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
 
 ## 1. Separate playback authority from phone sound
 
@@ -162,7 +162,7 @@ The 2026-10-01 decision removes both directions of Android handoff entirely:
 - The apps do not need a HOUSE-to-SMB root mapping. HOUSE browses library-relative paths through its server API; SMB Music browses its own configured share.
 - The HOUSE app reconnects to the current server session when its own connection recovers. SMB Music retains and recovers its own session. Neither recovery depends on the other app.
 
-The v0.4.3 mapping, heard-position handoff, transfer journal, temporary controller, and reservation/commit workflow describe the shipped combined implementation, not requirements to carry into either independent app. Server v0.9.0 handoff endpoints remain deployed implementation history; the new apps do not use them. SMB Music v0.5.0 removes this Android runtime machinery. House Music extraction and any server cleanup remain separate pending work.
+The v0.4.3 mapping, heard-position handoff, transfer journal, temporary controller, and reservation/commit workflow describe the shipped combined implementation, not requirements to carry into either independent app. Server v0.9.0 handoff endpoints remain deployed implementation history; the new apps do not use them. SMB Music v0.5.0 and House Music v0.1.0 omit this Android runtime machinery. Server cleanup remains pending until the old combined clients are retired.
 
 ## 7. Required house-service contract
 
@@ -189,9 +189,9 @@ The Android client needs:
 
 Credentials stay local and out of Git/logs. Keep existing encrypted SMB storage separate from any house-service trust/token configuration. Do not embed private network addresses or user-specific filesystem roots in Android source or public examples.
 
-## 8. Standalone split and pending House Music extraction
+## 8. Independent application builds
 
-SMB Music v0.5.0 implements the standalone app; the separately named **House Music** APK is still pending. Preserve independent app identities, settings, sessions, notifications and services when extracting House Music. The combined source is retained on [house-music-pre-split](https://github.com/oolah10293/smb-music-player/tree/house-music-pre-split).
+SMB Music v0.5.0 uses application ID `com.smbmusic.player`. **House Music v0.1.0** uses `com.housemusic.player` and the independent `house-app` Gradle root. They have separate identities, settings, sessions, notifications and services, and can be installed together. Settings are not imported from the older combined app; enter the Pi host and each phone's route timing correction locally. Exact build verification is recorded in each release document. The combined source is retained on [house-music-pre-split](https://github.com/oolah10293/smb-music-player/tree/house-music-pre-split).
 
 Use v0.3.8 as the standalone source reference, selectively retain the later non-HOUSE improvements, and extract HOUSE from the latest combined implementation. The exact pre-HOUSE checkpoint and reviewed change inventory are maintained once in [ROADMAP.md](ROADMAP.md#split-references-and-carry-forward-inventory--reviewed-2026-10-01).
 
@@ -203,7 +203,7 @@ Do not preserve the combined service's player-switching boundary as a hidden coo
 
 ## 9. Acceptance checklist
 
-These are acceptance requirements. Their current pass/fail status is maintained only in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md); source implementation alone is not field proof.
+These are acceptance requirements. New House Music results belong in [its testing record](../house-app/docs/TESTING.md); [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md) retains combined-app evidence. Source implementation alone is not field proof.
 
 - [ ] The HOUSE app requires a qualifying directly connected non-VPN Wi-Fi/Ethernet route plus a successful Pi identity probe using normal Android routing. Loss/recovery never launches or controls SMB Music.
 - [ ] Fresh-idle HOUSE controller attachment alone makes no playback/queue mutation. Passive-node default start remains server-owned and independent of SMB Music.
@@ -224,7 +224,7 @@ These are acceptance requirements. Their current pass/fail status is maintained 
 
 Automatic departure/return, whole-queue copying, cross-library mapping and a replacement handoff coordinator are no longer open product questions: the user removed the connection between the apps. Preserve the established server lifecycle, presence/expiry, synchronization and output rules. Check app separation, each app's recovery, and retained working behavior in the next implementation; do not carry forward handoff acceptance gates.
 
-These product decisions do not prove the split works on hardware. Current source is standalone SMB Music v0.5.0; the combined v0.4.3 field results and frozen release records retain its actual failures. AI DJ, Philco display, and room-management expansion are separate work.
+These product decisions do not prove the split works on hardware. Current source is SMB Music v0.5.0 and House Music v0.1.0; the combined v0.4.3 field results and frozen release records retain its actual failures. AI DJ, Philco display, and room-management expansion are separate work.
 
 Implementation and field evidence are tracked outside this contract. Use [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md) for Android acceptance and the server [API.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/API.md) for the deployed control contract.
 
