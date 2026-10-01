@@ -10,8 +10,10 @@ This file contains **open work and future features only**. Completed implementat
    - Measure departure continuity at track boundaries and after seek with the explicit SMB music-root mapping. The current implementation carries only the estimated heard track; whole-queue HOUSE -> away copying remains undecided.
    - Decide whether physical-network departure needs a grace period after field evidence.
 
-2. **Validate Bluetooth and controller lifecycle**
-   - Recheck the reported two-node Pause/Resume failure: no Bluetooth must always mean muted HOUSE phone output.
+2. **Fix the manual mute button; preserve Bluetooth automation**
+   - **Queued on 2026-10-01; implementation deferred at the user's request.** v0.4.3 blocks manual Unmute when Bluetooth is absent, preventing use of a third phone's headphone jack. Make the icon a normal manual Mute/Unmute control for the phone's current Android audio output, including wired headphones, without requiring Bluetooth.
+   - Keep the existing Bluetooth automatic mute/unmute and connection behavior unchanged. This request adds a working manual override; it does not remove Bluetooth functionality.
+   - Recheck the reported two-node Pause/Resume failure: shared transport must preserve local mute and must never independently unmute the phone. An explicit press of Unmute is a separate user action.
    - Check pre-connected Bluetooth on HOUSE attachment, manual mute across transport commands, and retained standalone connect/disconnect/reconnect behavior.
    - Complete HOUSE Quit/reopen, screen-off heartbeat/expiry, muted-only pause/resume, and active-queue-sort acceptance.
    - Preserve standalone/vehicle behavior through the new service mode boundary.
