@@ -50,4 +50,25 @@ class HouseNetworkPolicyTest {
         assertFalse(qualifies(listOf(route("127.0.0.0", 8)), target = "127.0.0.1"))
         assertFalse(qualifies(listOf(route("224.0.0.0", 4)), target = "224.0.0.1"))
     }
+
+    @Test fun olderAndroidGatewayEvidenceHandlesNullAndBothZeroAddressFamilies() {
+        for (gateway in listOf(null, address("0.0.0.0"), address("::"))) {
+            assertFalse(HouseNetworkPolicy.hasGateway(gateway))
+        }
+        assertTrue(HouseNetworkPolicy.hasGateway(address("192.0.2.1")))
+        assertTrue(HouseNetworkPolicy.hasGateway(address("2001:db8::1")))
+    }
+
+    @Test fun olderAndroidRequiresTheActualLocalInterfacePrefix() {
+        fun matches(prefix: String, bits: Int, local: String, localBits: Int) =
+            HouseNetworkPolicy.hasMatchingLinkPrefix(address(prefix), bits, address(local), localBits)
+        assertTrue(matches("192.0.2.0", 24, "192.0.2.77", 24))
+        assertTrue(matches("2001:db8:1::", 64, "2001:db8:1::77", 64))
+        assertTrue(matches("192.0.2.8", 29, "192.0.2.15", 29))
+        assertFalse(matches("192.0.2.0", 24, "198.51.100.77", 24))
+        assertFalse(matches("192.0.2.0", 24, "192.0.2.77", 25))
+        assertFalse(matches("0.0.0.0", 0, "192.0.2.77", 24))
+        assertFalse(matches("192.0.2.12", 32, "192.0.2.77", 24))
+        assertFalse(matches("192.0.2.0", 24, "2001:db8:1::77", 64))
+    }
 }

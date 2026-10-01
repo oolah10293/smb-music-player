@@ -16,6 +16,18 @@ The project accumulated several fixes where a seemingly harmless UI or performan
 - Explicit Play/Resume fades in over roughly 1.5 seconds without changing Android's system media volume.
 - Automatic track-to-track transitions do not fade.
 
+## Retained standalone Bluetooth session
+
+- With an available SMB queue, Bluetooth audio disconnect pauses and retains the exact queue/index/position; reconnect resumes it.
+- Already-connected Bluetooth is evaluated when the app restores its standalone session.
+- Explicit Stop and Quit prevent route callbacks or process restart from resurrecting playback.
+- With no retained queue, Bluetooth connect creates no playlist.
+- A watch/input-only Bluetooth connection is not an audio output.
+- Repeat during SMB recovery and screen-off playback. A paused/stopped HOUSE departure remains silent even if Bluetooth was already connected.
+- Save/reload a queue containing spaces, punctuation and Unicode in its paths; credentials remain in the encrypted credential store.
+
+Live HOUSE transfer and mapping acceptance is maintained in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md).
+
 ## SMB outage recovery
 
 1. Start a track and note its position.
@@ -131,4 +143,3 @@ Standalone regression:
 - Service stops when the UI disconnects.
 
 HOUSE Quit behavior/acceptance is maintained in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md), not duplicated here.
-

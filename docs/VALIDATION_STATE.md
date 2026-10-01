@@ -2,9 +2,13 @@
 
 This file separates behavior exercised in real use from source changes that still need targeted phone testing.
 
+## v0.4.3 source checkpoint
+
+Live service-owned home/away switching, coordinated idle-HOUSE return transfer, Bluetooth output eligibility, retained standalone Bluetooth lifecycle, and guarded Android route APIs are implemented. Build verification belongs in [RELEASE_0.4.3.md](RELEASE_0.4.3.md). Physical acceptance has not been established for this iteration; [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md) holds the live checklist and results.
+
 ## v0.4.2 revision checkpoint
 
-v0.4.2 is physically **partially accepted**. Bluetooth connect/disconnect output automation works and **+400 ms** is the current route-specific sync value. Live home/away mode transitions, pre-connected-Bluetooth HOUSE attachment, Galaxy S8 launch, and HOUSE Quit cleanup remain open.
+v0.4.2 was physically **partially accepted**. Bluetooth connect/disconnect output automation worked and **+400 ms** aligned the tested route. Its final field checkpoint still had live home/away transition failures, incorrect unmute after Pause/Resume without Bluetooth, muted pre-connected-Bluetooth attachment, the Galaxy S8 launch crash, and pending HOUSE Quit cleanup validation. These historical failures are not new-build results.
 
 For the detailed current pass/fail list and reproduction sequence, use [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md). For normative behavior, use [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md). This file keeps only the version-by-version validation history.
 

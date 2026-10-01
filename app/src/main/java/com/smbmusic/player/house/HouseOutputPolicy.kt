@@ -1,32 +1,27 @@
 package com.smbmusic.player.house
 
-import org.json.JSONObject
+/** Local sound eligibility is independent of MPD transport and other listeners. */
+class HouseOutputPolicy(initialBluetoothConnected: Boolean) {
+    var bluetoothConnected = initialBluetoothConnected
+        private set
+    var muted = !initialBluetoothConnected
+        private set
 
-enum class HousePlaybackStart { NONE, PLAY, QUEUE }
-
-/** Decide from fresh pre-command state, not the playing state produced by the command. */
-object HouseOutputPolicy {
-    fun shouldUnmute(start: HousePlaybackStart, muted: Boolean, transport: String,
-                     controllers: JSONObject?, ownControllerId: String, bluetoothConnected: Boolean = false): Boolean {
-        if (!muted || start == HousePlaybackStart.NONE) return false
-        if (bluetoothConnected && transport in setOf("play", "pause", "stop")) return true
-        if (transport == "pause" || transport == "stop") return true
-        if (start != HousePlaybackStart.QUEUE || transport != "play") return false
-        val presence = controllers?.optJSONObject("presence") ?: return false
-        // A monitor outage is not evidence of an empty house.
-        if (!presence.optBoolean("snapserverReachable")) return false
-        val renderers = presence.optJSONArray("renderers") ?: return false
-        val audibleCount = presence.optInt("audibleCount", -1)
-        if (audibleCount < 0) return false
-        var ownAudible = false
-        for (i in 0 until renderers.length()) {
-            val renderer = renderers.getJSONObject(i)
-            if (renderer.optBoolean("audible")) {
-                if (renderer.optString("controllerId") != ownControllerId) return false
-                ownAudible = true
-            }
+    fun updateRoute(connected: Boolean, newOutput: Boolean) {
+        bluetoothConnected = connected
+        muted = when {
+            !connected -> true
+            newOutput -> false
+            else -> muted
         }
-        // Exclude this phone's briefly stale renderer report, but never guess about missing outputs.
-        return audibleCount <= if (ownAudible) 1 else 0
+    }
+
+    fun requestMute(value: Boolean) {
+        muted = value || !bluetoothConnected
+    }
+
+    /** Play/Resume/queue commands never supply permission to unmute. */
+    fun transportChanged() {
+        muted = muted || !bluetoothConnected
     }
 }

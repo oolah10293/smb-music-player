@@ -4,28 +4,25 @@ This file contains **open work and future features only**. Completed implementat
 
 ## Current Android priorities
 
-1. **Finish live HOUSE <-> STANDALONE handoff**
-   - HOUSE -> STANDALONE: continue the same audibly playing track through SMB/Tailscale after physical home-LAN departure.
-   - STANDALONE -> idle HOUSE: transfer the phone's actively playing SMB session to the Pi, preserving queue/order, track, position and Shuffle/Repeat; stop private SMB playback as the handoff takes effect.
-   - Coordinate transfer with passive auto-start. An S3 powered on after return or during handoff must join that session, never start a separate default queue. Adopting a wrongly started second queue afterward is not the fix.
-   - If HOUSE was already active before arrival, adopt it without overwriting its queue. Preserve Bluetooth eligibility and paused/stopped intent; mere controller attachment does not start a session.
+1. **Validate v0.4.3 live transitions with server v0.9.0**
+   - Confirm idle-HOUSE return transfers the playing SMB queue/order/song/position/Shuffle and Repeat All before a later S3 joins.
+   - Exercise S3 arrival during the reservation/commit window, active-HOUSE adoption, acknowledgement loss, explicit Stop/Quit, and server restart.
+   - Measure departure continuity at track boundaries and after seek with the explicit SMB music-root mapping. The current implementation carries only the estimated heard track; whole-queue HOUSE -> away copying remains undecided.
+   - Decide whether physical-network departure needs a grace period after field evidence.
 
-2. **Finish Bluetooth output-intent handling**
-   - Enforce Bluetooth audio eligibility on every HOUSE output path. Play/Resume and queue changes must never independently unmute the phone; fix the reported two-node Pause/Resume case where the phone sounds without Bluetooth.
-   - On HOUSE attach/reopen, honor Bluetooth that is already connected when HOUSE is already playing.
-   - Keep route timing adjustable; current measured values belong in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md), not the roadmap.
-   - Add STANDALONE lifecycle triggers: connect starts/resumes an available retained SMB session; disconnect retains/pauses the exact queue/track/position; reconnect resumes; existing Bluetooth is recognized on app/mode entry; explicit Stop/Quit wins; no retained session means no automatic playlist.
+2. **Validate Bluetooth and controller lifecycle**
+   - Recheck the reported two-node Pause/Resume failure: no Bluetooth must always mean muted HOUSE phone output.
+   - Check pre-connected Bluetooth on HOUSE attachment, manual mute across transport commands, and retained standalone connect/disconnect/reconnect behavior.
+   - Complete HOUSE Quit/reopen, screen-off heartbeat/expiry, muted-only pause/resume, and active-queue-sort acceptance.
+   - Preserve standalone/vehicle behavior through the new service mode boundary.
 
 3. **Galaxy S8 compatibility**
-   - Capture the actual launch crash/stack trace and fix the v0.4.2 startup failure.
-   - Tracked separately in Issue #3.
+   - Run the build with guarded public Android route APIs on the S8. The source API mismatch is fixed, but it is not a proven explanation for the reported launch crash.
+   - Capture a crash trace if launch still fails; tracked separately in Issue #3.
 
-4. **Finish remaining v0.4.2 acceptance**
-   - Dedicated HOUSE Quit/reopen stale-state check.
-   - Background controller heartbeat/expiry and muted-only pause/resume cases.
-   - Physical Android queue-sort preservation check.
-   - Standalone/vehicle regression pass.
-   - Stable APK signing so updates do not require uninstall/reconfiguration.
+4. **Release reliability**
+   - Stable APK signing so upgrades do not require uninstall/reconfiguration.
+   - Retest retained-session recovery after process death and interrupted handoff persistence.
 
 5. **Reliability experiments**
    - Field-test the prepared multi-second HOUSE Country Buffer without assuming stale-buffer flush behavior.
@@ -51,4 +48,4 @@ This file contains **open work and future features only**. Completed implementat
 - Current physical results: [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md)
 - Historical validation: [VALIDATION_STATE.md](VALIDATION_STATE.md)
 - Normative HOUSE architecture: [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md)
-- Current release artifact: [RELEASE_0.4.2.md](RELEASE_0.4.2.md)
+- Current release record: [RELEASE_0.4.3.md](RELEASE_0.4.3.md)

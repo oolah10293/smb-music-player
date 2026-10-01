@@ -10,8 +10,8 @@ android {
         applicationId = "com.smbmusic.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 14
-        versionName = "0.4.2"
+        versionCode = 15
+        versionName = "0.4.3"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         externalNativeBuild {
             cmake { arguments += "-DANDROID_STL=c++_static" }
@@ -35,6 +35,12 @@ android {
     ndkVersion = "28.2.13676358"
     externalNativeBuild { cmake { path = file("../native/CMakeLists.txt"); version = "3.22.1" } }
     packaging { jniLibs { useLegacyPackaging = true } }
+    // CI runs the compatibility gate explicitly; ordinary lint retains its full check set.
+    lint {
+        if (providers.gradleProperty("apiCompatibilityCheck").isPresent) {
+            checkOnly += "NewApi"
+        }
+    }
 }
 
 dependencies {

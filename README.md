@@ -2,7 +2,7 @@
 
 A native Android music player that streams audio directly from SMB shares using Media3/ExoPlayer and jcifs-ng. It is intentionally optimized for unreliable networks: it buffers aggressively when bandwidth is available, preserves the current track and position through SMB outages, and retries instead of treating a network failure as a bad song.
 
-Current source version: **0.4.2**. See [docs/RELEASE_0.4.2.md](docs/RELEASE_0.4.2.md) for the exact build/artifacts and [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md) for the current real-device pass/fail state. **v0.3.8 remains the confirmed standalone hardware baseline.**
+Current source version: **0.4.3**. See [docs/RELEASE_0.4.3.md](docs/RELEASE_0.4.3.md) for build/artifact verification and [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md) for the current real-device pass/fail state. **v0.3.8 remains the confirmed standalone hardware baseline.**
 
 ## What it does
 
@@ -98,20 +98,24 @@ The v0.3.8 prolonged-outage recovery hardening still needs its dedicated field t
 
 HOUSE uses the existing Browser/Now Playing UI while the Raspberry Pi remains the authoritative playback host: MPD owns the house session, `house-audio-server` supplies control/session policy, and Snapserver distributes synchronized audio. STANDALONE continues to use the proven SMB/Tailscale -> Media3/ExoPlayer path.
 
-Current Android source is **v0.4.2**. Current device acceptance and open failures are maintained only in [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md).
+v0.4.3 adds live home/away switching. Returning with playing SMB audio transfers that queue/song/position into an idle HOUSE session; a later S3 joins it. An already-active HOUSE session remains authoritative. This coordinated return requires **house-audio-server v0.9.0**. Departure carries the current estimated heard track into SMB, without copying the whole HOUSE queue. HOUSE phone output requires Bluetooth audio; transport commands do not unmute it.
+
+Set **HOUSE music root on SMB** in Connections to the SMB folder corresponding to the Pi's music-library root. Hold the Browser's **SMB / MP3s / Rap** button to open Connections. For example, if HOUSE lists `MP3s/song.mp3`, the configured root must contain that `MP3s` folder. This mapping is separate from the folder you currently browse, and is required for transfers. Missing or incompatible mapping leaves the transfer paused with an explanation.
+
+These changes still require physical acceptance. Current device results are maintained only in [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md).
 
 To avoid duplicating state across documents:
 
 - [docs/CENTRAL_PLAYBACK.md](docs/CENTRAL_PLAYBACK.md) is the **normative Android HOUSE behavior/architecture**.
 - [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md) is the **current physical-test checklist and live field results**.
 - [docs/VALIDATION_STATE.md](docs/VALIDATION_STATE.md) is the **historical validation summary**.
-- [docs/RELEASE_0.4.2.md](docs/RELEASE_0.4.2.md) is the **immutable v0.4.2 build/artifact record**.
+- [docs/RELEASE_0.4.3.md](docs/RELEASE_0.4.3.md) records the **v0.4.3 build/artifacts**; earlier release files retain their historical records.
 - [docs/ROADMAP.md](docs/ROADMAP.md) contains **open work and future features only**.
 - The authoritative cross-project session rules live in [house-audio-server/docs/SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md).
 
 ## Build
 
-Requirements for v0.4.2:
+Requirements for v0.4.3:
 
 - Android Gradle Plugin 9.4.0
 - Gradle 9.6.0

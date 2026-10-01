@@ -64,6 +64,16 @@
             android:textColor="@color/white"
             android:textColorHint="@color/text_secondary" />
 
+        <EditText
+            android:id="@+id/houseMusicRootEdit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="HOUSE music root on SMB (for handoff)"
+            android:inputType="textUri"
+            android:singleLine="true"
+            android:textColor="@color/white"
+            android:textColorHint="@color/text_secondary" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

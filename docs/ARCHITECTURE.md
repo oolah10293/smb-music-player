@@ -11,20 +11,14 @@ HOUSE qualification uses the physical non-VPN LAN as presence evidence, while or
 
 ## High-level flow
 
-```text
-MainActivity / NowPlayingActivity
-        -> MediaController
-        -> PlaybackService
-             -> STANDALONE: ExoPlayer -> SmbDataSource -> jcifs-ng -> SMB
-             -> HOUSE: HousePlayer / HouseRuntime -> house-audio-server / MPD
-                                      -> bundled Snapcast receiver -> local output
-```
+The Activities bind one `MediaController` to the service's `MediaLibrarySession`. The service switches that session between its retained ExoPlayer and `HousePlayer`. SMB bytes reach ExoPlayer through `SmbDataSource` and jcifs-ng. HOUSE control reaches MPD through `HouseRuntime`/`HouseApi`; a separate bundled Snapcast receiver supplies synchronized audio.
 
 ## Main components
 
 ### `MainActivity`
 
 - Restores/saves SMB connection details.
+- Stores the explicit HOUSE-library-to-SMB root mapping and refreshes Browser when the service changes mode.
 - Requests Tailscale connection at startup and after repeated SMB browse failures, while treating actual SMB access as the reachability authority.
 - Tests connection and browses the current SMB directory.
 - Retries failed folder loads.
@@ -51,11 +45,16 @@ MainActivity / NowPlayingActivity
 - Re-sorts the active queue with one queue replacement while preserving the current item, exact position, play/pause state, and Shuffle setting.
 - Rotates the current item to queue item zero after an explicit active-queue sort.
 - Reads recovery phase/progress from Media3 session extras.
-- Implements clean standalone Quit behavior.
+- Displays transfer status and adapts HOUSE controls when the session changes player.
+- Requests service-owned Quit cleanup for the selected authority.
 
 ### `PlaybackService`
 
-- Owns the single ExoPlayer instance and `MediaLibrarySession`.
+- Owns one ExoPlayer and one `MediaLibrarySession`; changes the session's player without requiring Activity or controller reconnection.
+- Monitors physical home presence and verifies Pi identity before changing authority. A server failure while the physical home route remains present stays in HOUSE recovery.
+- Coordinates return-home reservation/commit/status with the server, retaining an unresolved transfer identity across process restart and rejecting stale callbacks.
+- Retains standalone queue/index/position/Shuffle and explicit Stop intent; handles Bluetooth connect/disconnect around that retained session.
+- Uses the current estimated heard HOUSE track for departure, with explicit path mapping and no full HOUSE queue copy.
 - Applies the Country Buffer load-control policy.
 - Uses media/music audio attributes with audio-focus handling.
 - Holds network wake mode while actively playing/buffering.
@@ -94,6 +93,11 @@ MainActivity / NowPlayingActivity
 - `RemoteEntry`: browser model for directory/audio entries.
 - `SmbUrl`: SMB URL normalization, display, and parent traversal.
 - `FileAdapter`: RecyclerView adapter for browser entries.
+- `HouseOutputPolicy`: Bluetooth eligibility and local mute, independent of transport commands.
+- `HouseHeardPosition`: bounded recent MPD observations and Snapclient timing for approximate heard-track/position checkpoints.
+- `HouseLibraryPaths` / `HouseLibraryMapping`: validated relative-path conversion under a user-configured SMB music root.
+- `PlaybackTransitionPolicy`: pure decisions for departure continuation, Bluetooth resume and handoff adoption.
+- `StandaloneSessionStore`: app-private retained queue/state and pending handoff identity; no SMB password duplication.
 
 ## Queue semantics
 
@@ -115,4 +119,3 @@ The same rotation is applied after an explicit active-queue sort using the curre
 ## Behavior ownership
 
 This file describes code structure. HOUSE/STANDALONE product behavior, output intent, home/away transitions, and server-session semantics are defined in [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md) and the server's [SESSION_BEHAVIOR.md](https://github.com/oolah10293/house-audio-server/blob/main/docs/SESSION_BEHAVIOR.md). Do not copy live validation results into this architecture document.
-

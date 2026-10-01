@@ -30,6 +30,7 @@ import androidx.media3.session.SessionToken
 import androidx.media3.session.SessionCommand
 import com.smbmusic.player.house.HouseApi
 import com.smbmusic.player.house.HouseConnection
+import com.smbmusic.player.house.HouseLibraryMapping
 import com.smbmusic.player.house.HouseRuntime
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -55,6 +56,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var userEdit: EditText
     private lateinit var passwordEdit: EditText
     private lateinit var houseAddressEdit: EditText
+    private lateinit var houseMusicRootEdit: EditText
+    private var displayedHouseMode: Boolean? = null
     private val isHouse: Boolean get() = HouseConnection.current != null
     private lateinit var connectionStatus: TextView
     private lateinit var pathText: TextView
@@ -110,7 +113,7 @@ class MainActivity : AppCompatActivity() {
         browserStatus.text = "Checking home connection…"
         val selectionEpoch = HouseConnection.epoch
         executor.execute {
-            val selected = if (HouseConnection.resolved) HouseConnection.current else HouseConnection.probe(this)
+            val selected = if (HouseConnection.resolved) HouseConnection.current else runCatching { HouseConnection.probe(this) }.getOrNull()
             runOnUiThread {
                 if (isFinishing || isDestroyed || !HouseConnection.publish(selectionEpoch, selected)) return@runOnUiThread
                 if (!isHouse) requestTailscaleConnect()
@@ -141,6 +144,7 @@ class MainActivity : AppCompatActivity() {
         userEdit = findViewById(R.id.userEdit)
         passwordEdit = findViewById(R.id.passwordEdit)
         houseAddressEdit = findViewById(R.id.houseAddressEdit)
+        houseMusicRootEdit = findViewById(R.id.houseMusicRootEdit)
         connectionStatus = findViewById(R.id.connectionStatus)
         pathText = findViewById(R.id.pathText)
         browserStatus = findViewById(R.id.browserStatus)
@@ -160,7 +164,6 @@ class MainActivity : AppCompatActivity() {
             {
                 try {
                     controller = controllerFuture.get().also {
-                        if (!isHouse) it.repeatMode = Player.REPEAT_MODE_ALL
                         showHouseDefault(it.sessionExtras)
                     }
                 } catch (e: Exception) {
@@ -268,6 +271,7 @@ class MainActivity : AppCompatActivity() {
             val credentials = enteredCredentials() ?: return@setOnClickListener
             try {
                 val normalized = SmbUrl.normalize(credentials.address)
+                HouseLibraryMapping.saveRoot(this, houseMusicRootEdit.text.toString())
                 store.save(credentials.copy(address = normalized))
                 smb.invalidate()
                 if (!isHouse) {
@@ -290,6 +294,7 @@ class MainActivity : AppCompatActivity() {
         userEdit.setText(credentials.username)
         passwordEdit.setText(credentials.password)
         houseAddressEdit.setText(HouseConnection.host(this))
+        houseMusicRootEdit.setText(SmbUrl.display(HouseLibraryMapping.root(this)).trimEnd('/'))
 
         if (isHouse) {
             rootUrl = ""
@@ -582,6 +587,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showHouseDefault(extras: Bundle) {
+        val houseMode = extras.getBoolean(HouseRuntime.EXTRA_HOUSE)
+        if (displayedHouseMode != null && displayedHouseMode != houseMode) {
+            browseRequestGeneration++
+            cancelBrowseRetry()
+            pendingListState = null
+            pendingListUrl = null
+            entries = emptyList()
+            adapter.submit(emptyList())
+            restoreSavedConnection()
+        }
+        displayedHouseMode = houseMode
         if (extras.getBoolean(HouseRuntime.EXTRA_HOUSE)) {
             findViewById<Button>(R.id.settingsButton).text = extras.getString(HouseRuntime.EXTRA_DEFAULT).orEmpty().ifBlank { "…" }
             val connected = extras.getBoolean(HouseRuntime.EXTRA_CONNECTED)
@@ -590,6 +606,12 @@ class MainActivity : AppCompatActivity() {
             wasHouseConnected = connected
             lastHouseConnectionRevision = revision
             if (recovered && browseRetryPending) browse(currentUrl)
+        } else {
+            wasHouseConnected = false
+            lastHouseConnectionRevision = -1L
+            findViewById<Button>(R.id.settingsButton).text = "SMB"
+            extras.getString(PlaybackService.SESSION_EXTRA_TRANSITION_STATUS)?.takeIf { it.isNotBlank() }
+                ?.let { browserStatus.text = it }
         }
     }
 

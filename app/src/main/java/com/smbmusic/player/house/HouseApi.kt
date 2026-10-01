@@ -22,7 +22,8 @@ class HouseApi(private val context: Context, @Volatile var endpoint: HouseEndpoi
         val connection = URL("http://${target.httpHost}:8787$path").openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = 2000
-            connection.readTimeout = 2500
+            // A large folder transfer may take longer; an uncertain write is reconciled, not replayed.
+            connection.readTimeout = if (path.startsWith("/session/handoff/")) 15_000 else 2500
             connection.instanceFollowRedirects = false
             connection.useCaches = false
             if (body != null) {

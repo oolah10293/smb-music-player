@@ -2,6 +2,15 @@
 
 This history is reconstructed from the actual saved source checkpoints. Release notes are condensed, but behavior and rationale are preserved. Public copies remove device/location-specific comments; functional code is otherwise retained.
 
+## 0.4.3 — live home/away session handoff
+
+- Keep one Media3 session while switching live between HOUSE and standalone SMB.
+- Transfer a playing phone queue to idle HOUSE using the server v0.9.0 reservation/receipt protocol. Passive nodes arriving during the reservation join the transferred session; an already-active HOUSE remains authoritative.
+- Continue the current estimated heard track through SMB after physical home departure. Explicit HOUSE music-root mapping prevents guessing paths; the entire HOUSE queue is not copied away.
+- Require Bluetooth audio for HOUSE phone output on every path. Transport commands preserve mute; existing Bluetooth is recognized on attach. Add retained standalone sessions with Bluetooth connect/resume and disconnect/pause; Stop/Quit wins.
+- Guard route APIs by Android version and add an API-26 compatibility lint gate. The Galaxy S8 launch result still requires device testing.
+- Build evidence and limitations: [docs/RELEASE_0.4.3.md](docs/RELEASE_0.4.3.md). Current physical acceptance: [docs/HOUSE_VALIDATION.md](docs/HOUSE_VALIDATION.md).
+
 ## 0.4.2 — HOUSE recovery/output-intent correction build
 
 - Added service-owned HOUSE Quit teardown/cleanup protections so local receiver/session state can be cleared without sending MPD Stop/Clear.

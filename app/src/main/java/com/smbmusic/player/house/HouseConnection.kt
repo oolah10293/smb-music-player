@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.RouteInfo
+import android.os.Build
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -47,8 +48,20 @@ object HouseConnection {
             caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET),
             caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN),
             caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN), address,
-            links.routes.map { HouseLanRoute(it.destination.address, it.destination.prefixLength,
-                it.hasGateway(), it.type == RouteInfo.RTN_UNICAST) })
+            links.routes.map { route ->
+                // hasGateway() became public in API 29; getType() in API 33.
+                // Use public API 21 gateway/link-address evidence on older phones.
+                val unicast = if (Build.VERSION.SDK_INT >= 33) {
+                    route.type == RouteInfo.RTN_UNICAST
+                } else {
+                    links.linkAddresses.any { local ->
+                        HouseNetworkPolicy.hasMatchingLinkPrefix(route.destination.address,
+                            route.destination.prefixLength, local.address, local.prefixLength)
+                    }
+                }
+                HouseLanRoute(route.destination.address, route.destination.prefixLength,
+                    HouseNetworkPolicy.hasGateway(route.gateway), unicast)
+            })
     }
 
     /** Worker thread only. Qualify a direct physical route, then verify through normal routing. */

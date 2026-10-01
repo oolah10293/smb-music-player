@@ -1,4 +1,4 @@
-SMB Music Player v0.4.2 — build/install
+SMB Music Player v0.4.3 — build/install
 
 1. Clone or download this repository to a LOCAL folder.
 
@@ -18,17 +18,22 @@ SMB Music Player v0.4.2 — build/install
 6. Click the green Run button for the app configuration.
 
 Current applicationId: com.smbmusic.player
-Current versionCode: 14
-Current versionName: 0.4.2
+Current versionCode: 15
+Current versionName: 0.4.3
 
 CI builds the APK and matching source archive, including corresponding
 Snapclient/FLAC/Boost sources. Keep both artifacts together when distributing.
 Local check: ./gradlew :app:assembleDebug :app:testDebugUnitTest --max-workers=2
 
-For current v0.4.2 behavior/build boundaries, exact artifacts, checksums,
-and signing details, see docs/RELEASE_0.4.2.md. Current physical HOUSE
+For current v0.4.3 behavior/build boundaries, exact artifacts, checksums,
+and signing details, see docs/RELEASE_0.4.3.md. Current physical HOUSE
 acceptance belongs in docs/HOUSE_VALIDATION.md; standalone regression checks
 are in docs/TESTING.md.
 
 The CI debug certificate can differ between releases, so an in-place update
 may fail. Save connection details before uninstalling an older debug build.
+
+Live session transfer requires house-audio-server v0.9.0. In Connections,
+set HOUSE music root on SMB to the folder corresponding to the Pi music root
+(the folder containing MP3s/Rap). Hold the Browser SMB/default-folder button
+to open Connections while in HOUSE. An empty/wrong mapping blocks transfer.

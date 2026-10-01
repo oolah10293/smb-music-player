@@ -164,7 +164,6 @@ class NowPlayingActivity : AppCompatActivity() {
                     val mediaController = controllerFuture.get()
                     controller = mediaController
                     mediaController.addListener(playerListener)
-                    if (!isHouse) mediaController.repeatMode = Player.REPEAT_MODE_ALL
                     controlsPlayerView.setRepeatToggleModes(if (isHouse) RepeatModeUtil.REPEAT_TOGGLE_MODE_ALL else RepeatModeUtil.REPEAT_TOGGLE_MODE_NONE)
 
                     // Artwork and controls intentionally share the same MediaController.
@@ -339,6 +338,7 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun updateStatus() {
         val mediaController = controller ?: return
+        controlsPlayerView.setRepeatToggleModes(if (isHouse) RepeatModeUtil.REPEAT_TOGGLE_MODE_ALL else RepeatModeUtil.REPEAT_TOGGLE_MODE_NONE)
         muteOutputButton.visibility = if (isHouse) View.VISIBLE else View.GONE
         if (isHouse) {
             val muted = mediaController.sessionExtras.getBoolean(HouseRuntime.EXTRA_MUTED, true)
@@ -348,6 +348,8 @@ class NowPlayingActivity : AppCompatActivity() {
             playbackStatus.text = mediaController.sessionExtras.getString(HouseRuntime.EXTRA_STATUS, "HOUSE — connecting")
             return
         }
+        mediaController.sessionExtras.getString(PlaybackService.SESSION_EXTRA_TRANSITION_STATUS)
+            ?.takeIf { it.isNotBlank() }?.let { playbackStatus.text = it; return }
         playbackStatus.text = when (recoveryStatus.phase) {
             PlaybackService.RECOVERY_PHASE_WAITING -> {
                 val seconds = ((recoveryStatus.retryInMs + 999L) / 1000L).coerceAtLeast(0L)

@@ -55,8 +55,7 @@ class HousePlayer(private val house: HouseRuntime) : SimpleBasePlayer(Looper.get
     }
 
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
-        return house.command(if (playWhenReady) "/play" else "/pause",
-            playbackStart = if (playWhenReady) HousePlaybackStart.PLAY else HousePlaybackStart.NONE)
+        return house.command(if (playWhenReady) "/play" else "/pause")
     }
     override fun handlePrepare(): ListenableFuture<*> = Futures.immediateVoidFuture()
     override fun handleStop(): ListenableFuture<*> = house.command("/stop")

@@ -1,69 +1,44 @@
 package com.smbmusic.player.house
 
-import org.json.JSONArray
-import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 
 class HouseOutputPolicyTest {
-    private val own = "phone-self"
-    private fun renderer(audible: Boolean, owner: String? = null) = JSONObject()
-        .put("controllerId", owner ?: JSONObject.NULL).put("present", true).put("audible", audible)
-    private fun presence(count: Int, vararg outputs: JSONObject, reachable: Boolean = true) = JSONObject()
-        .put("presence", JSONObject().put("snapserverReachable", reachable)
-            .put("audibleCount", count).put("renderers", JSONArray(outputs.toList())))
-    private fun decide(transport: String, presence: JSONObject? = null,
-                       action: HousePlaybackStart = HousePlaybackStart.QUEUE, muted: Boolean = true) =
-        HouseOutputPolicy.shouldUnmute(action, muted, transport, presence, own)
-
-    @Test fun changingSongsOrPlaylistWithAudibleRadiosPreservesPhoneMute() {
-        assertFalse(decide("play", presence(1, renderer(true))))
-        assertFalse(decide("play", presence(2, renderer(true), renderer(true))))
-        assertFalse(decide("play", presence(1, renderer(true, "another-phone"))))
+    @Test fun pauseResumeWithTwoNodesNeverEnablesPhoneWithoutBluetooth() {
+        val phone = HouseOutputPolicy(false)
+        phone.transportChanged() // Pause the shared session.
+        phone.transportChanged() // Resume the two nodes.
+        assertTrue(phone.muted)
+        assertFalse(phone.bluetoothConnected)
+        phone.requestMute(false) // The local button cannot bypass route eligibility either.
+        assertTrue(phone.muted)
     }
 
-    @Test fun deliberatelyStartingFromPauseOrStopUnmutesEvenIfARadioIsPresent() {
-        for (transport in listOf("pause", "stop")) {
-            assertTrue(decide(transport, presence(1, renderer(true))))
-            assertTrue(decide(transport, action = HousePlaybackStart.PLAY))
-        }
+    @Test fun alreadyConnectedOutputIsRecognizedOnAttachment() {
+        val phone = HouseOutputPolicy(true)
+        assertFalse(phone.muted)
+        assertTrue(phone.bluetoothConnected)
+        phone.transportChanged()
+        assertFalse(phone.muted)
     }
 
-    @Test fun playingWithoutAudibleOutputsUnmutesIncludingFinalTrackDrain() {
-        assertTrue(decide("play", presence(0)))
-        assertTrue(decide("play", presence(0, renderer(false))))
-        assertTrue(decide("play", presence(0, renderer(false, "another-phone"))))
+    @Test fun manualMuteSurvivesTransportAndUnchangedRoute() {
+        val phone = HouseOutputPolicy(true)
+        phone.requestMute(true)
+        repeat(5) { phone.transportChanged() }
+        phone.updateRoute(true, false)
+        assertTrue(phone.muted)
+        phone.updateRoute(true, true) // A newly connected media route is distinct output intent.
+        assertFalse(phone.muted)
     }
 
-    @Test fun ownStaleOutputDoesNotMasqueradeAsAnotherListener() {
-        assertTrue(decide("play", presence(1, renderer(true, own))))
-        assertFalse(decide("play", presence(2, renderer(true, own), renderer(true))))
-    }
-
-    @Test fun alreadyUnmutedPhoneDoesNotRequestOutputAgain() {
-        assertFalse(decide("stop", muted = false))
-        assertFalse(decide("play", presence(0), muted = false))
-    }
-
-    @Test fun browseSortSkipAndPlayDuringPlaybackDoNotUnmute() {
-        for (transport in listOf("play", "pause", "stop"))
-            assertFalse(decide(transport, presence(0), action = HousePlaybackStart.NONE))
-        assertFalse(decide("play", presence(1, renderer(true)), action = HousePlaybackStart.PLAY))
-    }
-
-    @Test fun unknownOrUnreachableAudibilityIsNotEvidenceOfSilence() {
-        assertFalse(decide("play"))
-        assertFalse(decide("play", presence(0, reachable = false)))
-        assertFalse(decide("play", presence(-1)))
-        assertFalse(decide("play", presence(1))) // Incomplete renderer evidence.
-        assertFalse(decide("unknown", presence(0)))
-    }
-    @Test fun connectedBluetoothUnmutesDeliberateStartsEvenWithOtherAudibleNodes() {
-        for (action in listOf(HousePlaybackStart.PLAY, HousePlaybackStart.QUEUE))
-            for (transport in listOf("play", "pause", "stop"))
-                assertTrue(HouseOutputPolicy.shouldUnmute(action, true, transport,
-                    presence(1, renderer(true)), own, bluetoothConnected = true))
-        assertFalse(HouseOutputPolicy.shouldUnmute(HousePlaybackStart.NONE, true, "play",
-            presence(1, renderer(true)), own, bluetoothConnected = true))
+    @Test fun disconnectOverridesPendingPlayAndReconnectRestoresEligibility() {
+        val phone = HouseOutputPolicy(true)
+        phone.updateRoute(false, false)
+        phone.transportChanged()
+        phone.requestMute(false)
+        assertTrue(phone.muted)
+        phone.updateRoute(true, true)
+        assertFalse(phone.muted)
     }
 }
