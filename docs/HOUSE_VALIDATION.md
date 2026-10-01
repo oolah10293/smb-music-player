@@ -19,7 +19,7 @@ Server v0.8.2 remains the deployed server baseline.
 - **FAIL:** STANDALONE -> HOUSE live return transition does not reliably occur when the qualifying home LAN returns; the app can remain on its private SMB player.
 - **PASS only after close/reopen:** after that failed live return, reopening can qualify HOUSE and adopt the shared Now Playing state.
 - **FAIL:** if Bluetooth is already connected during HOUSE reopen/reattach while the HOUSE/S3 session is already playing, the phone can attach muted. Current route state must be evaluated on attachment.
-- **Observed split-brain consequence:** while stranded in STANDALONE after returning home, private SMB playback can run while powering an S3 starts/joins a separate authoritative HOUSE queue.
+- **Observed split-brain consequence:** while stranded in STANDALONE after returning home, the phone played its SMB session and a subsequently powered S3 started a second HOUSE queue. **Required correction:** the playing phone session should have transferred to the Pi and become HOUSE on return; the S3 should have joined it. Stopping the phone later and adopting the second/default queue is not a successful handoff.
 - **FAIL:** Galaxy S8 v0.4.2 crashes on launch. Root cause is not yet assigned; tracked separately in Issue #3.
 - **PENDING:** dedicated HOUSE Quit/reopen stale-state cleanup validation.
 
@@ -34,8 +34,11 @@ Server v0.8.2 remains the deployed server baseline.
 2. **Live home/away transition after the next fix**
    - Depart while the phone is audibly playing HOUSE: continue the same track through standalone SMB/Tailscale from the last-heard position.
    - Muted/paused/stopped departure stays silent.
-   - Return home: immediately probe the qualifying LAN, stop private standalone ownership, and adopt the authoritative HOUSE session without overwriting its queue.
-   - Confirm the split-brain state cannot occur.
+   - Return while SMB is actively playing and HOUSE is idle: immediately qualify the physical LAN/Pi, transfer the phone's current queue/order, track, position and Shuffle/Repeat to the authoritative HOUSE session, and end private SMB playback as the handoff takes effect.
+   - Then power on an S3: it must join that same session at its current track/position, with no separate passive-default start, queue replacement, or song restart.
+   - Also power on the S3 during handoff to check that passive auto-start cannot race the transfer and create a second session.
+   - Separately return to a HOUSE session already active before arrival: adopt it without overwriting its queue. Mere controller attachment and paused/stopped return must not create Playing intent.
+   - Confirm the failed sequence is prevented, not merely repaired by adopting an independently started S3/default queue afterward. These are required checks, not new PASS results.
 
 3. **Bluetooth attachment and sole-phone policy**
    - If HOUSE is already playing and Bluetooth is already connected on attach/reopen, join unmuted immediately.

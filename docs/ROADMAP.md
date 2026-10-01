@@ -6,9 +6,9 @@ This file contains **open work and future features only**. Completed implementat
 
 1. **Finish live HOUSE <-> STANDALONE handoff**
    - HOUSE -> STANDALONE: continue the same audibly playing track through SMB/Tailscale after physical home-LAN departure.
-   - STANDALONE -> HOUSE: automatically adopt the authoritative HOUSE session when the qualifying home LAN returns.
-   - Prevent the observed split-brain state where private SMB playback and a separately started S3 HOUSE queue run at the same time.
-   - Preserve muted/paused/stopped intent and avoid overwriting the HOUSE queue on return.
+   - STANDALONE -> idle HOUSE: transfer the phone's actively playing SMB session to the Pi, preserving queue/order, track, position and Shuffle/Repeat; stop private SMB playback as the handoff takes effect.
+   - Coordinate transfer with passive auto-start. An S3 powered on after return or during handoff must join that session, never start a separate default queue. Adopting a wrongly started second queue afterward is not the fix.
+   - If HOUSE was already active before arrival, adopt it without overwriting its queue. Preserve Bluetooth eligibility and paused/stopped intent; mere controller attachment does not start a session.
 
 2. **Finish Bluetooth output-intent handling**
    - Enforce Bluetooth audio eligibility on every HOUSE output path. Play/Resume and queue changes must never independently unmute the phone; fix the reported two-node Pause/Resume case where the phone sounds without Bluetooth.
