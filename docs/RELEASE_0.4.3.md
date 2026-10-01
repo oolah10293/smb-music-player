@@ -24,12 +24,28 @@ An explicit library-root mapping is required in both directions. A server/contro
 
 Paired server source: [`d19e269`](https://github.com/oolah10293/house-audio-server/commit/d19e2694e9c1222e5eadf88607511130a4a0cb7a). [Server CI run 36814563574](https://github.com/oolah10293/house-audio-server/actions/runs/36814563574) passes all **119 tests**. This is source/build verification, not Pi deployment.
 
-**Pending:** the implementation has not yet received a completed Android CI build/artifact verification record. Fill this section with the passing source commit and run, unit-test and targeted API-lint results, packaged native/license checks, artifact links, exact APK size and SHA-256, archive digests, and signing-certificate SHA-256 before treating the build as verified.
+Implementation/build commit: [`d56881f8`](https://github.com/oolah10293/smb-music-player/commit/d56881f8a87b3aa88d6e679b89b5d0f17ff5502f). [CI run 36814746962](https://github.com/oolah10293/smb-music-player/actions/runs/36814746962) passed on 2026-10-01: APK assembly, all **42 unit tests**, targeted **NewApi/API-26 compatibility lint**, both native receiver ABIs, license checks and matching source packaging. Later release-record commits do not change the APK implementation.
+
+The extracted APK is **12,943,938 bytes**. Its manifest identifies `com.smbmusic.player`, version **0.4.3 (15)**. Local verification checked its APK v2 cryptographic signature and content digest, `arm64-v8a` and `armeabi-v7a` receivers, and Snapcast/FLAC/Boost notices. Both downloaded artifact ZIPs match GitHub's digests. The corresponding-source ZIP includes Snapclient, FLAC and Boost sources and their licenses.
+
+| Artifact | Exact CI download |
+| --- | --- |
+| APK artifact ZIP — contains `app-debug.apk` | [SMBMusicPlayer-debug](https://github.com/oolah10293/smb-music-player/actions/runs/36814746962/artifacts/11141495477) |
+| Source artifact ZIP — contains the corresponding-source ZIP | [SMBMusicPlayer-v0.4.3-source](https://github.com/oolah10293/smb-music-player/actions/runs/36814746962/artifacts/11141455754) |
+
+| Bytes identified | SHA-256 |
+| --- | --- |
+| Delivered `SMBMusicPlayer-v0.4.3.apk` | `ebee7798e59973664af17aa87c930f64c39111331c3d98fb16ac213ca491614a` |
+| APK artifact ZIP | `236052313295d998ab34caf8841cd7d2afd03e6909a3a23733c16252c0992db7` |
+| Delivered `SMBMusicPlayer-v0.4.3-source.zip` | `db33df02cadbb963ea22f666fb5e39bb94fe73710462be7a15e7853adf3c2ffe` |
+| Source artifact ZIP | `38de343885858744b4843c85eef3a2f5a0cba497dc5c7f997872f1d9e0f7e6ad` |
+
+Signing certificate SHA-256: `61671a45a88bdb17ac203edf26309c605169bb28db20e6039c2766f1101062d2`.
 
 Physical testing is separate from build verification. Do not promote v0.4.2 observations or source-level test results into v0.4.3 hardware PASS results.
 
 ## Installation and signing
 
-CI currently uses a newly generated debug certificate per runner. Stable upgrade signing is not configured. Preserve SMB credentials, HOUSE address, music-root mapping and route timing settings before any required uninstall/reinstall. Exact compatibility with the prior delivered APK must be established from this build's signing certificate, not assumed.
+CI currently uses a newly generated debug certificate per runner. Stable upgrade signing is not configured. Preserve SMB credentials, HOUSE address, music-root mapping and route timing settings before any required uninstall/reinstall. **This APK certificate differs from delivered v0.4.2 (`256f969b…`), so an in-place update from that build will fail. Save settings, uninstall the older debug APK, install v0.4.3, then re-enter settings.**
 
 Keep the matching corresponding-source archive available alongside the APK when redistributing the bundled native receiver.
