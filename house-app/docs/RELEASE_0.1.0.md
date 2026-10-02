@@ -19,17 +19,27 @@ The optional diagnostic mini-log, node DSP/crossover/volume/phase controls and i
 
 ## Build verification
 
-Source implementation is present. Exact source commit, successful CI run, test/lint/package results, artifact digests and signing certificate will be recorded here after verification. Do not treat this pending record as a successful APK build.
+Source commit: [`2130422cf65488eab045926b044a2f400711bb1e`](https://github.com/oolah10293/smb-music-player/commit/2130422cf65488eab045926b044a2f400711bb1e).
 
-Required release checks:
+[House Music build 36943322128](https://github.com/oolah10293/smb-music-player/actions/runs/36943322128) passed:
 
-- APK assembly and app unit tests.
+- APK assembly and **25 unit tests**.
 - Targeted NewApi/API-26 compatibility lint.
-- Manifest identity and independent package verification.
-- No SMB transport/credential classes, app-owned ExoPlayer playback engine or handoff API paths in the House Music APK. Media3 UI dependencies may include unused upstream library classes.
-- Native Snapclient executables for both `arm64-v8a` and `armeabi-v7a`, with Snapcast/FLAC/Boost notices.
-- Matching source archive containing the pinned native source trees, licenses and build scripts.
-- Downloaded artifact digest checks and local APK signature/content verification.
+- Both native Snapclient ABIs and all Snapcast/FLAC/Boost notices.
+- APK exclusion checks for the old SMB package, jcifs transport, SMB reader and handoff API paths. Source review also confirms no app-owned ExoPlayer playback engine or private queue.
+
+Downloaded artifact ZIP digests match GitHub's published SHA-256 values. Local verification confirmed the APK v2 signature and signed content digest, `com.housemusic.player`, label **House Music**, version **0.1.0 / 1**, minimum SDK **26** and target SDK **36**. Native receivers are 2,830,048 bytes (`arm64-v8a`) and 1,466,980 bytes (`armeabi-v7a`).
+
+The matching source archive contains the exact application sources, native source trees, pinned download markers, licenses and build scripts. It is a self-contained Gradle project and does not require the SMB Music source tree. This verification record and minor documentation clarifications were completed after that build snapshot.
+
+| Delivered file | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `HouseMusic-v0.1.0.apk` | 8,125,369 | `7cf5aeb4540cc459d8d0be7a755e1e1a1811e61ae76d5b4d9a63f5b58aa5b03f` |
+| `HouseMusic-v0.1.0-source.zip` | 29,743,324 | `fe90e92568216903fd397087e08a665005183c7e88b70bad34be5159ed6cb7b0` |
+
+CI artifact IDs: `11200578973` (APK), `11200703699` (source). Debug certificate SHA-256: `3fb445e31620dc65fdeeda3353cfde089a369ca2f139b9d96bba92b9e15453d3`.
+
+The unchanged SMB application also passed its [separate build/test/compatibility/isolation workflow](https://github.com/oolah10293/smb-music-player/actions/runs/36943322326). No replacement SMB APK is delivered by this House Music release.
 
 ## Installation and first test
 

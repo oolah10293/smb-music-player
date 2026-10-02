@@ -28,8 +28,8 @@ Bluetooth in this release; the requested headphone-jack override is deferred.
 
 BUILD FROM SOURCE
 
-Open house-app as its own project in Android Studio, not the repository's
-standalone SMB Music project. Requirements:
+Open house-app as its own project in Android Studio. If using the source ZIP,
+open its extracted root folder (the folder containing settings.gradle.kts). Requirements:
 
 - Java 17 and Python 3
 - Android Gradle Plugin 9.4.0 / Gradle 9.6.0
