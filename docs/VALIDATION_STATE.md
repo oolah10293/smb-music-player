@@ -2,6 +2,15 @@
 
 This file separates behavior exercised in real use from source changes that still need targeted phone testing.
 
+## SMB Music v0.5.1 — field corrections
+
+Reported against standalone SMB Music after the split:
+
+- **FAIL, 2026-10-03:** Tailscale stopped automatically connecting when HOUSE was removed. Review of v0.5.0 confirms the connect code was retained in MainActivity; removal of the broadcast itself is not the demonstrated cause. Service-only playback/resume/recovery had no connect request, and broadcast exceptions were swallowed.
+- **FAIL, 2026-10-03:** Bluetooth resume required unlocking the phone and bringing SMB Music forward. v0.5.0 used only a live service AudioDeviceCallback; foreground-promotion failure silently abandoned resume. No device log proves the initiating failure.
+
+v0.5.1 adds service/browser connect requests through one paced explicit Tailscale receiver path, a permission-gated Bluetooth broadcast wake path, a started foreground playback service, retained/retried resume intent and bounded diagnostics. Build evidence is in [RELEASE_0.5.1.md](RELEASE_0.5.1.md). **Device acceptance remains pending**; use the targeted checks in [TESTING.md](TESTING.md). Neither a successful broadcast nor a successful build establishes a working VPN or locked-screen resume.
+
 ## House Music v0.1.0 independent checkpoint
 
 The HOUSE controller/receiver is extracted into `house-app`, an independent Android build with application ID `com.housemusic.player`. It installs alongside SMB Music v0.5.0, retains Pi queue control, Snapcast synchronization, Bluetooth output policy and the older Android API guards, and omits SMB playback and all handoff machinery. Exact build/artifact evidence belongs in [House Music's release record](../house-app/docs/RELEASE_0.1.0.md). Physical checks are [pending](../house-app/docs/TESTING.md); the combined build's S8 and multi-node sync passes below are not a new-APK pass. Manual Unmute without Bluetooth remains deferred. Server v0.9.0 and S3 firmware are unchanged.

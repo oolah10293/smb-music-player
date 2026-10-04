@@ -1,8 +1,19 @@
 # Regression testing
 
-SMB Music v0.5.0 is standalone. Historical combined-app device acceptance is in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md). This file is the reusable standalone/regression suite; older field results do not automatically validate a new build.
+SMB Music v0.5.1 is standalone. Historical combined-app device acceptance is in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md). This file is the reusable standalone/regression suite; older field results do not automatically validate a new build.
 
 The project accumulated several fixes where a seemingly harmless UI or performance change could regress proven playback behavior. Run these checks after meaningful playback, SMB, queue, Media3, or Browser changes.
+
+## v0.5.1 targeted device acceptance
+
+Allow **Nearby devices** (Android 12+) and notifications when requested. Tailscale must already be installed, signed in, and have Android VPN approval. Hold the status text in Browser or Now Playing to inspect the bounded connection log (timestamps, events and exception classes; no SMB addresses/credentials).
+
+1. With Tailscale disconnected and the SMB share reachable only through it, cold-open SMB Music. Verify Tailscale connects and the folder loads. A log entry saying "requested" is not a pass; the share must actually load.
+2. Start an SMB folder and leave the app. Disconnect/reconnect Bluetooth while the phone stays locked, first after a short pause and again after at least 15 minutes. The same queue/song/position must resume without foregrounding the UI. Check both a warm service and ordinary process recreation (Android Force stop intentionally prevents broadcasts until reopening and is not a supported wake case).
+3. Repeat with Tailscale disconnected and SMB unavailable at reconnect. Connection/recovery must run without Browse, retain the song, and rebuild the normal recovery buffer before resuming. Network availability alone must not count as SMB success.
+4. Disconnect Bluetooth while resume is pending. No delayed retry may play through the phone speaker. Explicit Pause cancels the pending attempt; Stop/Quit prevents later Bluetooth wake. Reconnection with no retained queue must start nothing. A watch/keyboard alone must not start music.
+5. If any step fails, hold the status text and capture the connection log, including permission, service-wake, foreground-start/focus and Tailscale-request events. Record phone/Android version and output route. On unsupported/blocked background starts, the app must retain intent and report the block rather than silently dropping it.
+6. Recheck screen-off playback, media/vehicle controls, artwork, queue sort, Repeat All and long SMB outage recovery. Country Buffer and the independent House Music session must remain unchanged.
 
 ## Core playback
 

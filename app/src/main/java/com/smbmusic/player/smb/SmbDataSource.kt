@@ -12,6 +12,7 @@ import java.io.EOFException
 import java.io.IOException
 import java.io.InputStream
 
+@androidx.media3.common.util.UnstableApi
 class SmbDataSource(private val client: SmbClient) : BaseDataSource(true) {
     private var currentSpec: DataSpec? = null
     private var currentUri: Uri? = null

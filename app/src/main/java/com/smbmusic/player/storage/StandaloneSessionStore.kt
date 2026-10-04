@@ -17,6 +17,11 @@ data class StandaloneSnapshot(val items: List<MediaItem>, val index: Int, val po
 class StandaloneSessionStore(context: Context) {
     private val file = java.io.File(context.noBackupFilesDir, "standalone-session.json")
 
+    fun isResumeEligible(): Boolean = runCatching {
+        val json = JSONObject(file.readText())
+        !json.optBoolean("explicitlyStopped", true) && json.getJSONArray("items").length() > 0
+    }.getOrDefault(false)
+
     fun load(): StandaloneSnapshot? = runCatching {
         val json = JSONObject(file.readText())
         val rows = json.getJSONArray("items")

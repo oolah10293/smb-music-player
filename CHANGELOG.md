@@ -2,6 +2,14 @@
 
 This history is reconstructed from the actual saved source checkpoints. Release notes are condensed, but behavior and rationale are preserved. Public copies remove device/location-specific comments; functional code is otherwise retained.
 
+## 0.5.1 — SMB connection and background Bluetooth corrections
+
+- Send paced, explicit Tailscale connection requests from browser startup/recovery and service Play/Bluetooth/recovery paths. Remove the unconditional two-second duplicate; SMB reads remain the success check.
+- Receive system Bluetooth audio-connection events with Nearby devices permission, restore only an eligible retained SMB session, and wait for an actual audio route.
+- Start the foreground playback service before resume, retain blocked resume intent, retry briefly, and preserve Stop/Quit/disconnect cancellation.
+- Add a bounded connection log by holding Browser/Now Playing status text; expose foreground/focus blocks rather than swallowing them.
+- Device verification remains pending. See [release record](docs/RELEASE_0.5.1.md) and [targeted tests](docs/TESTING.md).
+
 ## 0.5.0 — standalone SMB Music
 
 - Separate SMB Music completely from the planned House Music app. Remove HOUSE probing, player switching, session transfers, mapping settings, custom controls and the native Snapcast receiver/build.

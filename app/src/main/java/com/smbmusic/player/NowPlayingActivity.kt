@@ -36,6 +36,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private var controller: MediaController? = null
     private var queueSortMode = SortMode.NAME_ASC
     private var recoveryStatus = RecoveryStatus.idle()
+    private var resumeStatus = ""
 
     private val playerListener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -63,6 +64,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private val controllerListener = object : MediaController.Listener {
         override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
             if (isFinishing || isDestroyed) return
+            resumeStatus = extras.getString(PlaybackService.SESSION_EXTRA_RESUME_STATUS).orEmpty()
             recoveryStatus = RecoveryStatus.from(extras)
             updateStatus()
         }
@@ -79,6 +81,7 @@ class NowPlayingActivity : AppCompatActivity() {
         albumArtistText = findViewById(R.id.albumArtistText)
         albumText = findViewById(R.id.albumText)
         playbackStatus = findViewById(R.id.playbackStatus)
+        playbackStatus.setOnLongClickListener { PlaybackDiagnostics.show(this); true }
         queueSortButton = findViewById(R.id.queueSortButton)
 
         findViewById<Button>(R.id.browseButton).setOnClickListener {
@@ -159,6 +162,7 @@ class NowPlayingActivity : AppCompatActivity() {
                     controlsPlayerView.player = mediaController
                     controlsPlayerView.showController()
 
+                    resumeStatus = mediaController.sessionExtras.getString(PlaybackService.SESSION_EXTRA_RESUME_STATUS).orEmpty()
                     recoveryStatus = RecoveryStatus.from(mediaController.sessionExtras)
                     updateMetadata(mediaController.mediaMetadata)
                     queueSortMode = SortModeStore.load(this)
@@ -271,7 +275,7 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun updateStatus() {
         val mediaController = controller ?: return
-        playbackStatus.text = when (recoveryStatus.phase) {
+        playbackStatus.text = if (resumeStatus.isNotBlank() && recoveryStatus.phase == PlaybackService.RECOVERY_PHASE_IDLE) resumeStatus else when (recoveryStatus.phase) {
             PlaybackService.RECOVERY_PHASE_WAITING -> {
                 val seconds = ((recoveryStatus.retryInMs + 999L) / 1000L).coerceAtLeast(0L)
                 if (seconds > 0L) "Waiting for SMB — retry in ${seconds}s" else "Waiting for SMB…"

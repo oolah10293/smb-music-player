@@ -38,3 +38,12 @@ The existing Bluetooth requirement for manual Unmute is expected in v0.1.0. The 
 - Run the same launch/basic output checks on the S8 and, if used, the Android 8 J3. API compatibility lint alone is insufficient hardware evidence.
 
 Build/test/lint and artifact evidence belongs in [RELEASE_0.1.0.md](RELEASE_0.1.0.md). Do not revive cross-app handoff tests: transfer was removed from the product.
+
+## Reported field issues — 2026-10-02
+
+These are observations, not implemented fixes. SMB Music v0.5.1 does not change the House app.
+
+- New files added to Shared Music do not appear in the browser; refresh/indexing cause uninvestigated.
+- No visible mute/output icon in the supplied Now Playing screenshot. The earlier instruction to hold that icon is unusable on the delivered screen. Keep Bluetooth automation when restoring a working manual control, including wired output.
+- Tapping the gear appears to do nothing; cause uninvestigated.
+- Now Playing displayed `ACK [55@0] {next} Not playing; refresh before ...`, “Boulevard of Broken Dreams”, `00:00 / 04:22`, and a dimmed Play button. The user confirmed that it did not recover and required Quit/reopen. Restore usable controls from fresh server state after a rejected command and provide a readable status; root cause remains unproven.

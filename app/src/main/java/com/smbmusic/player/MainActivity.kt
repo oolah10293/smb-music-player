@@ -67,7 +67,6 @@ class MainActivity : AppCompatActivity() {
     private var browseRetryIndex = 0
     private var browseRequestGeneration = 0
     private var browseRetryEnabled = true
-    private var tailscaleRecoveryRequested = false
 
     private var rootUrl: String = ""
     private var currentUrl: String = ""
@@ -101,8 +100,23 @@ class MainActivity : AppCompatActivity() {
         requestTailscaleConnect()
         setupController()
         restoreSavedConnection()
+        val permissions = mutableListOf<String>()
+        if (android.os.Build.VERSION.SDK_INT >= 31 && checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            permissions += android.Manifest.permission.BLUETOOTH_CONNECT
+        }
         if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 30)
+            permissions += android.Manifest.permission.POST_NOTIFICATIONS
+        }
+        if (permissions.isNotEmpty()) requestPermissions(permissions.toTypedArray(), 30)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 30) permissions.forEachIndexed { i, permission ->
+            if (permission == "android.permission.BLUETOOTH_CONNECT") {
+                val granted = grantResults.getOrNull(i) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                PlaybackDiagnostics.record(this, "Bluetooth wake permission: ${if (granted) "granted" else "denied"}")
+            }
         }
     }
 
@@ -126,6 +140,7 @@ class MainActivity : AppCompatActivity() {
         connectionStatus = findViewById(R.id.connectionStatus)
         pathText = findViewById(R.id.pathText)
         browserStatus = findViewById(R.id.browserStatus)
+        browserStatus.setOnLongClickListener { PlaybackDiagnostics.show(this); true }
         sortButton = findViewById(R.id.sortButton)
         searchEdit = findViewById(R.id.searchEdit)
         searchClearButton = findViewById(R.id.searchClearButton)
@@ -283,7 +298,6 @@ class MainActivity : AppCompatActivity() {
         if (resetRetry) {
             browseRetryEnabled = true
             browseRetryIndex = 0
-            tailscaleRecoveryRequested = false
             cancelBrowseRetry()
         }
 
@@ -300,7 +314,6 @@ class MainActivity : AppCompatActivity() {
                         currentUrl != url || requestGeneration != browseRequestGeneration) return@runOnUiThread
                     cancelBrowseRetry()
                     browseRetryIndex = 0
-                    tailscaleRecoveryRequested = false
                     entries = result
                     store.saveLastFolder(url)
                     showSortedEntries()
@@ -327,13 +340,8 @@ class MainActivity : AppCompatActivity() {
         if (!browseRetryEnabled) return
         cancelBrowseRetry()
 
-        // Startup already asks Tailscale to connect. If SMB is still unreachable after
-        // several retries, make one additional connect request sequence. This deliberately
-        // does not force-disconnect Tailscale: a missing server/share should not tear down an
-        // otherwise healthy VPN, and the existing SMB retry loop remains authoritative.
-        if (!tailscaleRecoveryRequested && browseRetryIndex >= TAILSCALE_RECOVERY_AFTER_RETRIES) {
-            tailscaleRecoveryRequested = true
-            requestTailscaleConnect()
+        if (browseRetryIndex >= TAILSCALE_RECOVERY_AFTER_RETRIES) {
+            TailscaleConnector.request(this, "browser recovery")
         }
         val delay = BROWSE_RETRY_SCHEDULE_MS[minOf(browseRetryIndex, BROWSE_RETRY_SCHEDULE_MS.lastIndex)]
         browseRetryIndex++
@@ -350,27 +358,7 @@ class MainActivity : AppCompatActivity() {
         browserHandler.removeCallbacksAndMessages(BROWSE_RETRY_TOKEN)
     }
 
-    private fun requestTailscaleConnect() {
-        browserHandler.removeCallbacksAndMessages(TAILSCALE_CONNECT_TOKEN)
-        sendTailscaleConnectBroadcast()
-        // Current Tailscale Android exposes CONNECT_VPN for external automation. On some
-        // Android 16 devices a second request shortly after the first is more reliable while
-        // the VPN backend is starting. Sending CONNECT_VPN while already connected is benign.
-        browserHandler.postAtTime(
-            { sendTailscaleConnectBroadcast() },
-            TAILSCALE_CONNECT_TOKEN,
-            android.os.SystemClock.uptimeMillis() + TAILSCALE_SECOND_CONNECT_DELAY_MS
-        )
-    }
-
-    private fun sendTailscaleConnectBroadcast() {
-        runCatching {
-            sendBroadcast(
-                Intent(TAILSCALE_CONNECT_ACTION)
-                    .setPackage(TAILSCALE_PACKAGE)
-            )
-        }
-    }
+    private fun requestTailscaleConnect() = TailscaleConnector.request(this, "browser start")
 
     private fun hideSearchKeyboard() {
         searchEdit.clearFocus()
@@ -532,7 +520,6 @@ class MainActivity : AppCompatActivity() {
         browseRequestGeneration++
         browseRetryEnabled = false
         cancelBrowseRetry()
-        browserHandler.removeCallbacksAndMessages(TAILSCALE_CONNECT_TOKEN)
         if (::controllerFuture.isInitialized) {
             MediaController.releaseFuture(controllerFuture)
         }
@@ -551,12 +538,8 @@ class MainActivity : AppCompatActivity() {
         const val PREF_QUEUE_SORT = SortModeStore.PREF_SORT_MODE
 
         private val BROWSE_RETRY_TOKEN = Any()
-        private val TAILSCALE_CONNECT_TOKEN = Any()
         private val BROWSE_RETRY_SCHEDULE_MS = longArrayOf(1_000, 2_000, 5_000, 10_000, 15_000)
 
-        private const val TAILSCALE_PACKAGE = "com.tailscale.ipn"
-        private const val TAILSCALE_CONNECT_ACTION = "com.tailscale.ipn.CONNECT_VPN"
-        private const val TAILSCALE_SECOND_CONNECT_DELAY_MS = 2_000L
         private const val TAILSCALE_RECOVERY_AFTER_RETRIES = 3
     }
 }

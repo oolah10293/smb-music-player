@@ -32,6 +32,7 @@ import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaStyleNotificationHelper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import com.smbmusic.player.smb.SmbClient
 import com.smbmusic.player.smb.SmbDataSource
 import com.smbmusic.player.storage.CredentialStore
@@ -44,6 +45,11 @@ import java.util.concurrent.Future
 @UnstableApi
 class PlaybackService : MediaLibraryService() {
     private var released = false
+    private var serviceStarted = false
+    private var resumeRetryIndex = 0
+    private var resumeStatus = ""
+    private val resumeRetryDelays = longArrayOf(1_000, 2_000, 5_000, 10_000, 15_000)
+
     private val playbackIntent = StandalonePlaybackIntent()
     private lateinit var retained: StandaloneSessionStore
     private lateinit var audio: AudioManager
@@ -96,6 +102,8 @@ class PlaybackService : MediaLibraryService() {
         if (released) return
         when (playbackIntent.bluetoothChanged(bluetoothAvailable(), player.mediaItemCount > 0)) {
             StandalonePlaybackIntent.BluetoothAction.PAUSE -> {
+                cancelPendingResume()
+                PlaybackDiagnostics.record(this, "Bluetooth audio disconnected; retaining position")
                 player.pause()
                 if (recovering) pauseRecovery()
                 saveStandalone()
@@ -107,19 +115,70 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun resumeStandalone() {
-        if (released || !playbackIntent.canResume(player.mediaItemCount > 0)) return
-        // Android 15+ requires a foreground app or foreground service before audio focus.
-        // Establish the same mediaPlayback service before an automatic Bluetooth resume.
-        if (!updateStandbyNotification("Resuming playback")) return
-        if (recovering) {
-            resumeShouldPlay = true
-            recoveryPaused = false
-            requestImmediateRecoveryProbe()
-        } else {
-            if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
-                player.prepare()
+        if (released || player.isPlaying || !playbackIntent.requestResume(player.mediaItemCount > 0)) return
+        resumeRetryIndex = 0
+        PlaybackDiagnostics.record(this, "Bluetooth audio available; resume requested")
+        attemptPendingResume()
+    }
+
+    private fun attemptPendingResume() {
+        if (released || !playbackIntent.canAttemptResume(player.mediaItemCount > 0)) return
+        handler.removeCallbacksAndMessages(RESUME_RETRY_TOKEN)
+        if (!bluetoothAvailable()) { bluetoothChanged(); return }
+        setResumeStatus("Resuming Bluetooth playback…")
+        // Promote the started playback service before requesting focus. A rejected promotion
+        // leaves the intent pending; the system Bluetooth broadcast can retry under its grant.
+        if (updateStandbyNotification("Resuming Bluetooth playback")) {
+            TailscaleConnector.request(this, "Bluetooth resume")
+            if (recovering) {
+                resumeShouldPlay = true
+                recoveryPaused = false
+                requestImmediateRecoveryProbe()
+            } else {
+                if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
+                    player.prepare()
+                }
+                player.play()
             }
-            player.play()
+        }
+        // Cover asynchronous audio-focus rejection as well as foreground start failure.
+        // Keep a bounded retry burst, then retain intent for the next connection/user event.
+        if (playbackIntent.resumePending && resumeRetryIndex < resumeRetryDelays.size) {
+            val delay = resumeRetryDelays[resumeRetryIndex++]
+            handler.postAtTime({
+                if (!recovering) attemptPendingResume()
+            }, RESUME_RETRY_TOKEN, SystemClock.uptimeMillis() + delay)
+        }
+    }
+
+    private fun cancelPendingResume() {
+        playbackIntent.cancelResume()
+        handler.removeCallbacksAndMessages(RESUME_RETRY_TOKEN)
+        handler.removeCallbacksAndMessages(BLUETOOTH_ROUTE_TOKEN)
+        setResumeStatus("")
+    }
+
+    private fun setResumeStatus(value: String) {
+        if (resumeStatus == value) return
+        resumeStatus = value
+        if (::session.isInitialized && !released) {
+            session.setSessionExtras(Bundle(session.sessionExtras).apply {
+                putString(SESSION_EXTRA_RESUME_STATUS, value)
+            })
+        }
+    }
+
+    private fun checkBluetoothRoute(attempt: Int = 0) {
+        if (released || playbackIntent.explicitlyStopped) return
+        val alreadyPending = playbackIntent.resumePending
+        bluetoothChanged()
+        if (alreadyPending && playbackIntent.resumePending) attemptPendingResume()
+        // ACL connection arrives before A2DP route readiness on many devices. Never play
+        // merely because an accessory connected; wait for a real Android audio sink.
+        if (!bluetoothAvailable() && attempt < 20) {
+            handler.removeCallbacksAndMessages(BLUETOOTH_ROUTE_TOKEN)
+            handler.postAtTime({ checkBluetoothRoute(attempt + 1) }, BLUETOOTH_ROUTE_TOKEN,
+                SystemClock.uptimeMillis() + 500L)
         }
     }
 
@@ -145,6 +204,7 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        PlaybackDiagnostics.record(this, "Playback service created")
 
         retained = StandaloneSessionStore(this)
         audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -195,6 +255,7 @@ class PlaybackService : MediaLibraryService() {
         player.setHandleAudioBecomingNoisy(true)
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
+                PlaybackDiagnostics.record(this@PlaybackService, "Player error: ${error.errorCodeName}")
                 if (!released) beginOutageRecovery(error)
             }
 
@@ -219,6 +280,10 @@ class PlaybackService : MediaLibraryService() {
                 if (playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST &&
                     player.mediaItemCount > 0) playbackIntent.playbackRequested()
                 if (!playWhenReady) {
+                    if (playbackIntent.resumePending && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS) {
+                        PlaybackDiagnostics.record(this@PlaybackService, "Bluetooth resume waiting for audio focus")
+                        setResumeStatus("Bluetooth resume waiting for audio focus")
+                    }
                     fadeArmed = false
                     cancelFade(resetToFull = true)
 
@@ -253,6 +318,10 @@ class PlaybackService : MediaLibraryService() {
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying && playbackIntent.resumePending) {
+                    PlaybackDiagnostics.record(this@PlaybackService, "Bluetooth resume playing")
+                    cancelPendingResume()
+                }
                 if (isPlaying && fadeArmed) startFadeIn()
             }
 
@@ -301,7 +370,8 @@ class PlaybackService : MediaLibraryService() {
 
     private fun keepStandaloneReady(): Boolean = !released && ::player.isInitialized &&
         player.mediaItemCount > 0 && !playbackIntent.explicitlyStopped &&
-        !player.playWhenReady && (recovering || !playbackIntent.bluetoothConnected)
+        (!player.playWhenReady || playbackIntent.resumePending) &&
+        (recovering || !playbackIntent.bluetoothConnected || playbackIntent.resumePending)
 
     /** Keep the retained, user-started session available through a Bluetooth disconnect/outage. */
     private fun updateStandbyNotification(status: String? = null): Boolean {
@@ -325,10 +395,20 @@ class PlaybackService : MediaLibraryService() {
             .setStyle(MediaStyleNotificationHelper.MediaStyle(session).setShowActionsInCompactView(0, 1))
             .build()
         // The service is for SMB audio playback/recovery, not an unrelated connected device.
-        return runCatching {
+        return try {
+            if (!serviceStarted) {
+                ContextCompat.startForegroundService(this, Intent(this, PlaybackService::class.java)
+                    .setAction(ACTION_KEEP_ALIVE))
+                serviceStarted = true
+            }
             ServiceCompat.startForeground(this, PLAYBACK_NOTIFICATION_ID, notification,
                 if (android.os.Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0)
-        }.isSuccess
+            true
+        } catch (e: Exception) {
+            PlaybackDiagnostics.record(this, "Playback foreground blocked: ${e.javaClass.simpleName}")
+            setResumeStatus("Background resume blocked — tap Play to retry")
+            false
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -339,10 +419,32 @@ class PlaybackService : MediaLibraryService() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (released) return START_NOT_STICKY
+        if (released) {
+            stopSelf(startId) // A queued Bluetooth wake after Quit must not leave a start pending.
+            return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_KEEP_ALIVE) return START_NOT_STICKY
+        if (intent?.action == ACTION_BLUETOOTH_CONNECTED) {
+            serviceStarted = true
+            if (player.isPlaying) {
+                triggerNotificationUpdate()
+                return START_NOT_STICKY
+            }
+            // Fulfil startForegroundService promptly, including a race with Stop/Quit.
+            updateStandbyNotification()
+            if (playbackIntent.explicitlyStopped || player.mediaItemCount == 0) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            } else {
+                checkBluetoothRoute()
+            }
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_PLAY) {
             if (player.mediaItemCount > 0) {
+                cancelPendingResume()
                 playbackIntent.playbackRequested()
+                TailscaleConnector.request(this, "notification Play")
                 if (updateStandbyNotification("Resuming playback")) {
                     if (recovering) {
                         resumeShouldPlay = true
@@ -391,11 +493,17 @@ class PlaybackService : MediaLibraryService() {
         ) {
             if (released) return
             if (playerCommands.contains(Player.COMMAND_STOP)) {
+                cancelPendingResume()
                 playbackIntent.stop()
                 player.pause()
             } else if (playerCommands.contains(Player.COMMAND_CHANGE_MEDIA_ITEMS) ||
                 (playerCommands.contains(Player.COMMAND_PLAY_PAUSE) && player.playWhenReady)) {
                 playbackIntent.playbackRequested()
+            }
+            if (playerCommands.contains(Player.COMMAND_PLAY_PAUSE) ||
+                playerCommands.contains(Player.COMMAND_CHANGE_MEDIA_ITEMS)) {
+                cancelPendingResume()
+                if (player.playWhenReady) TailscaleConnector.request(this@PlaybackService, "media Play")
             }
             // A replacement queue or explicit Stop makes all recovery callbacks for the old
             // request stale. The newly requested queue is allowed to establish its own state.
@@ -499,6 +607,7 @@ class PlaybackService : MediaLibraryService() {
 
     private fun scheduleRetry() {
         if (!recovering || recoveryPaused || recoveryUrl.isBlank()) return
+        TailscaleConnector.request(this, "playback recovery")
 
         handler.removeCallbacksAndMessages(RETRY_TOKEN)
         handler.removeCallbacksAndMessages(STATUS_TOKEN)
@@ -838,7 +947,7 @@ class PlaybackService : MediaLibraryService() {
         lastPublishedRecoverySignature = signature
 
         session.setSessionExtras(
-            Bundle().apply {
+            Bundle(session.sessionExtras).apply {
                 putString(SESSION_EXTRA_RECOVERY_PHASE, phase)
                 putLong(SESSION_EXTRA_RETRY_IN_MS, roundedRetry)
                 putLong(SESSION_EXTRA_BUFFERED_AHEAD_MS, roundedBuffered)
@@ -856,6 +965,8 @@ class PlaybackService : MediaLibraryService() {
     /** Explicit Quit takes effect even while an Activity still holds its controller binding. */
     private fun releasePlayback(explicitQuit: Boolean = false) {
         if (released) return
+        PlaybackDiagnostics.record(this, if (explicitQuit) "Quit; automatic resume disabled" else "Playback service destroyed")
+        cancelPendingResume()
         if (explicitQuit) playbackIntent.stop()
         saveStandalone()
         released = true
@@ -878,6 +989,11 @@ class PlaybackService : MediaLibraryService() {
     }
 
     companion object {
+        const val ACTION_BLUETOOTH_CONNECTED = "com.smbmusic.player.BLUETOOTH_CONNECTED"
+        private const val ACTION_KEEP_ALIVE = "com.smbmusic.player.KEEP_ALIVE"
+        const val SESSION_EXTRA_RESUME_STATUS = "com.smbmusic.player.resume_status"
+        private val RESUME_RETRY_TOKEN = Any()
+        private val BLUETOOTH_ROUTE_TOKEN = Any()
         const val ACTION_QUIT = "com.smbmusic.player.QUIT"
         private const val ACTION_PLAY = "com.smbmusic.player.PLAY"
         private const val PLAYBACK_NOTIFICATION_ID = 2401

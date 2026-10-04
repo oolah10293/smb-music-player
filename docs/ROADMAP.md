@@ -4,7 +4,7 @@ This file contains **open work and future features only**. Completed implementat
 
 ## Current Android priorities
 
-1. **Validate standalone SMB Music v0.5.0 and House Music v0.1.0**
+1. **Validate standalone SMB Music v0.5.1 and House Music v0.1.0**
    - **User decision, 2026-10-01:** no connection between the apps. This supersedes automatic LAN/cellular/LAN handoff, the proposed coordinator redesign, and the briefly discussed manual transfer. The normative boundary is [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md).
    - SMB Music owns only its standalone SMB/ExoPlayer session. The HOUSE app controls/renders only the Pi's shared MPD/Snapcast session. No shared queue/song/position, SMB-triggered HOUSE reset, automatic or manual transfer, app-specific launch/stop coordination, or background synchronization.
    - Use the last pre-HOUSE standalone source as the SMB reference, inventory subsequent improvements, and extract the current HOUSE player into its own app. Produce separate installable apps and remove the combined mode-switching machinery from their playback paths. The verified references and carry-forward inventory are below.
@@ -13,6 +13,8 @@ This file contains **open work and future features only**. Completed implementat
    - Validate that playing/pausing/quitting SMB Music or changing Wi-Fi/cellular never touches HOUSE. HOUSE launch/reconnection adopts current server state without importing SMB music or controlling that app. Each app must recover its own connection independently.
    - Address reader shutdown and measure SMB data use within the standalone app. The screenshot's 72.19 MB app counter does not establish excess use; Mobile Services' 2.23 GB is separately attributed.
    - **Approved diagnostic space retained:** the Now Playing album-art area may show a bounded, readable, timestamped mini-log during diagnosis. Show each app's own connection, audio-reader lifecycle, actual errors and retries; label measured SMB payload bytes accurately. Preserve surrounding controls and omit credentials. Transfer/mode-switch events are obsolete with the split; the log must not create a connection between apps.
+   - **SMB Music v0.5.1 field gate:** retest Tailscale auto-connect after the split and Bluetooth resume without unlocking/foregrounding the app, including long pauses and service recreation. Source corrections are implemented, not hardware-accepted; see [VALIDATION_STATE.md](VALIDATION_STATE.md) and [TESTING.md](TESTING.md).
+   - **House Music v0.1.0 feedback remains open:** missing mute icon, apparently inert gear, newly added files absent from the browser, and rejected Next leaving the app stuck until Quit/reopen. See [House field reports](../house-app/docs/TESTING.md#reported-field-issues--2026-10-02).
 
 2. **Fix the manual mute button; preserve Bluetooth automation**
    - **Queued on 2026-10-01; implementation deferred at the user's request.** v0.4.3 blocks manual Unmute when Bluetooth is absent, preventing use of a third phone's headphone jack. Make the icon a normal manual Mute/Unmute control for the phone's current Android audio output, including wired headphones, without requiring Bluetooth.

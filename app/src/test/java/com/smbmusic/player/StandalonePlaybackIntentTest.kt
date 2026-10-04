@@ -52,4 +52,52 @@ class StandalonePlaybackIntentTest {
         assertEquals(NONE, intent.bluetoothChanged(true, hasQueue = true))
         assertEquals(PAUSE, intent.bluetoothChanged(false, hasQueue = true))
     }
+
+    @Test fun backgroundDenialRetainsResumeAcrossDuplicateRouteCallbacks() {
+        val intent = StandalonePlaybackIntent()
+        intent.restore(stopped = false, bluetoothAvailable = false)
+        assertEquals(RESUME, intent.bluetoothChanged(true, hasQueue = true))
+        assertTrue(intent.requestResume(hasQueue = true))
+        // Promotion/focus failed: no completion. A duplicate route callback must not lose it.
+        assertEquals(NONE, intent.bluetoothChanged(true, hasQueue = true))
+        assertTrue(intent.canAttemptResume(hasQueue = true))
+        intent.cancelResume() // Playback actually became audible.
+        assertFalse(intent.canAttemptResume(hasQueue = true))
+    }
+
+    @Test fun disconnectWhileResumeIsBlockedCannotLaterPlayOnSpeaker() {
+        val intent = StandalonePlaybackIntent()
+        intent.restore(stopped = false, bluetoothAvailable = true)
+        intent.requestResume(hasQueue = true)
+        assertEquals(PAUSE, intent.bluetoothChanged(false, hasQueue = true))
+        assertFalse(intent.canAttemptResume(hasQueue = true))
+        assertFalse(intent.requestResume(hasQueue = true))
+    }
+
+    @Test fun explicitPauseCancelsPendingRetryButAllowsLaterReconnect() {
+        val intent = StandalonePlaybackIntent()
+        intent.restore(stopped = false, bluetoothAvailable = true)
+        intent.requestResume(hasQueue = true)
+        intent.cancelResume()
+        assertFalse(intent.canAttemptResume(hasQueue = true))
+        assertEquals(NONE, intent.bluetoothChanged(true, hasQueue = true))
+        intent.bluetoothChanged(false, hasQueue = true)
+        assertEquals(RESUME, intent.bluetoothChanged(true, hasQueue = true))
+    }
+
+    @Test fun quitCancelsBlockedResumeAndRejectsDelayedWake() {
+        val intent = StandalonePlaybackIntent()
+        intent.restore(stopped = false, bluetoothAvailable = true)
+        intent.requestResume(hasQueue = true)
+        intent.stop()
+        assertFalse(intent.canAttemptResume(hasQueue = true))
+        assertFalse(intent.requestResume(hasQueue = true))
+    }
+
+    @Test fun vanishedQueuePreventsRetainedResume() {
+        val intent = StandalonePlaybackIntent()
+        intent.restore(stopped = false, bluetoothAvailable = true)
+        intent.requestResume(hasQueue = true)
+        assertFalse(intent.canAttemptResume(hasQueue = false))
+    }
 }
