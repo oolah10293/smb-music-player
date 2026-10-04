@@ -27,3 +27,13 @@ The v0.1.0 CI debug signing key was not retained. Before installing, record the 
 This delivered APK uses the retained private debug key with certificate SHA-256 `7935fde3a71e87e5964399facd15f01d620ad0a6f684442be8e9ce353d10475e`. Reuse it for later delivered House Music APKs to preserve in-place upgrades. CI generates its own debug key; CI APKs are not interchangeable upgrades unless signed with the retained key. Never commit a private keystore.
 
 Distribute the matching `HouseMusic-v0.1.1-source.zip` with the APK. It contains the independent Gradle project, pinned Snapcast/FLAC/Boost corresponding sources, licenses and native build scripts. This archive is not the SMB app.
+
+
+## Delivered artifacts
+
+Published implementation commit: `ad5beeb1ed2cbf30ec23ece987dcb1dc24d3d770`. The source archive's `SOURCE_COMMIT.txt` records local build commit `4997bf25286deb23de4d8c79648c0a49566f1c6a`; its tree equals the published implementation tree `1c969ad2a3c07ca5f7d7ec99a26c9d04e10a25d2`. This artifact record is a later documentation-only commit.
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| HouseMusic-v0.1.1.apk | 9,414,294 | `5e1d2c773207a3e5324255d2939d8231cbb92ca956cd8b3351d7a989375e766a` |
+| HouseMusic-v0.1.1-source.zip | 28,401,796 | `50690986b9e9aa751e45b1c3a8ba325c98b591f9998bab8a5f3b815985894e22` |
