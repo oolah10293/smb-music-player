@@ -32,3 +32,9 @@ The exact key used for this delivered APK is retained privately in `SMBMusic-v0.
 | File | Bytes | SHA-256 |
 | --- | ---: | --- |
 | `SMBMusic-v0.5.1.apk` | 11296303 | `be6d76786e1a15cab0da3d334674f90f3817d26966c19c020245c5e249fb227a` |
+
+## Source identity
+
+Published implementation: [`0e8888544b459be869f22806917e9d22cf916245`](https://github.com/oolah10293/smb-music-player/commit/0e8888544b459be869f22806917e9d22cf916245), tree `49d81cff2539d0dcaa21826a46ae7f15090cea69`. The delivered source ZIP identifies the equivalent local build commit `e856197953f9f3cfc3e55d3a5b29ce934b3ab6d7`; its tree is byte-for-byte identical to the published implementation. This release-record addition follows the archived snapshot.
+
+`SMBMusic-v0.5.1-source.zip`: 120,187 bytes, SHA-256 `c9067305613295a33cab16b62fbdb843d1bb0bbf4071dca8b7fcf4c26c42c806`.
