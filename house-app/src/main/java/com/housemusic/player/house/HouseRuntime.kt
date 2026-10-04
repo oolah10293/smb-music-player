@@ -22,10 +22,12 @@ import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
+import com.housemusic.player.HouseDiagnostics
 import com.housemusic.player.SortMode
 import org.json.JSONArray
 import org.json.JSONObject
@@ -36,15 +38,15 @@ import java.util.concurrent.atomic.AtomicLong
 
 /** Service-owned HOUSE control/audio lifetime; Activities are only observers/controllers. */
 @UnstableApi
-class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, private val changed: () -> Unit) {
+class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, private val changed: () -> Unit) : HousePlaybackState {
     private val connectionEpoch = HouseConnection.beginSession()
     private val audio = context.getSystemService(AudioManager::class.java)
     private val bluetooth = HouseBluetoothPolicy(bluetoothDevices())
     private val outputPolicy = HouseOutputPolicy(bluetooth.connected)
     val api = HouseApi(context, endpoint)
-    @Volatile var state = HouseState()
+    @Volatile override var state = HouseState()
         private set
-    @Volatile var connected = false
+    @Volatile override var connected = false
         private set
     @Volatile var muted = outputPolicy.muted
         private set
@@ -60,7 +62,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
     private var sequence = 0L
     @Volatile private var registered = false
     @Volatile private var homePresent = HouseConnection.isPresent(context, endpoint)
-    val canControl: Boolean get() = homePresent && connected && registered && state.ready &&
+    override val canControl: Boolean get() = homePresent && connected && registered && state.ready &&
         !closed.get() && HouseConnection.epoch == connectionEpoch
     private val generation = AtomicLong(0)
     private val attachmentGeneration = AtomicLong(0)
@@ -114,6 +116,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
     private var queueVersion = -1
     private var defaultFolder = ""
     @Volatile private var commandError: String? = null
+    private var pendingCommand: SettableFuture<SessionResult>? = null
     private var focusAllowed = false
     private var requestFocusWhenReady = !muted
     private fun bluetoothDevices(): Set<Int> = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
@@ -139,7 +142,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
     }
     private fun syncKey(bluetooth: Boolean) = if (bluetooth) "sync_bluetooth_ms" else "sync_phone_ms"
     private fun requestedOffset(bluetooth: Boolean = bluetoothConnected): Int =
-        HouseConnection.preferences(context).getInt(syncKey(bluetooth), 0).coerceIn(-2000, 2000)
+        HouseConnection.preferences(context).getInt(syncKey(bluetooth), 0).coerceIn(-1000, 1000)
     private val receiver = SnapcastReceiver(context) { main.post { reconcileOutput() } }
     val player = HousePlayer(this)
     private val wake = context.getSystemService(PowerManager::class.java)
@@ -288,6 +291,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
                 if (!closed.get() && epoch == generation.get() && endpoint == api.endpoint &&
                     HouseConnection.isPresent(context, endpoint)) {
                     state = next
+                    commandError = null
                     defaultFolder = folder
                     connected = true
                     HouseConnection.publish(connectionEpoch, endpoint)
@@ -327,13 +331,14 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             requestFocusWhenReady = false
             focusAllowed = audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         }
-        if (!bluetoothConnected || !homePresent || muted || !focusAllowed || !state.ready) receiver.close()
+        if (!homePresent || muted || !focusAllowed || !state.ready) receiver.close()
         else if (registered) receiver.start(api.endpoint, rendererId,
             receiver.timing.effectiveOffset(requestedOffset()))
         outputChanged()
     }
 
     private var outputSignature = ""
+    private var lastDiagnosticState = ""
     private fun outputChanged() {
         if (closed.get()) return
         status = when {
@@ -342,11 +347,18 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             !connected -> "HOUSE — server unavailable; reconnecting"
             !state.ready -> "HOUSE — server starting"
             !registered -> "HOUSE — controller reconnecting"
-            !bluetoothConnected -> "HOUSE — Bluetooth audio not connected; phone muted"
             muted -> "HOUSE — output muted"
             !focusAllowed -> "HOUSE — output interrupted"
             !receiver.ready -> "HOUSE — ${receiver.error ?: "audio connecting"}"
             else -> "HOUSE — output on"
+        }
+        if (canControl && state.tracks.isNotEmpty() && state.transport == "stop") {
+            status = "HOUSE — stopped; press Play"
+        }
+        val diagnosticState = "$status | ${state.transport}"
+        if (diagnosticState != lastDiagnosticState) {
+            lastDiagnosticState = diagnosticState
+            HouseDiagnostics.record(context, diagnosticState)
         }
         val signature = "$muted|${receiver.ready}"
         if (signature != outputSignature) {
@@ -356,35 +368,44 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         announce()
     }
 
-    fun command(path: String, body: JSONObject = JSONObject()): ListenableFuture<SessionResult> {
+    override fun command(path: String, body: JSONObject): ListenableFuture<SessionResult> {
         val result = SettableFuture.create<SessionResult>()
-        if (!canControl) {
-            result.set(SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)); return result
+        if (!canControl || pendingCommand != null) {
+            result.set(SessionResult(SessionError.ERROR_INVALID_STATE))
+            return result
         }
+        pendingCommand = result
         commandError = null
         outputPolicy.transportChanged()
-        muted = outputPolicy.muted
         val epoch = generation.get()
         controls.execute {
-            if (!canControl || epoch != generation.get()) {
-                result.set(SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)); return@execute
-            }
+            var code = SessionError.ERROR_INVALID_STATE
             try {
-                if (!canControl || epoch != generation.get()) {
-                    result.set(SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE)); return@execute
-                }
-                api.post(path, body)
-                refresh()
-                main.post {
-                    result.set(SessionResult(SessionResult.RESULT_SUCCESS))
+                if (canControl && epoch == generation.get()) {
+                    api.post(path, body)
+                    code = SessionResult.RESULT_SUCCESS
                 }
             } catch (e: Exception) {
-                // The server may have applied a write whose response was lost. Never retry it.
-                generation.incrementAndGet()
-                commandError = "HOUSE — ${e.message ?: "command failed"}; refresh before retrying"
-                refresh()
+                // A failed response may follow an applied command. Refresh reads only.
+                code = SessionError.ERROR_UNKNOWN
+                commandError = "HOUSE — command failed; refreshing playback"
+                HouseDiagnostics.record(context, "Command $path failed: ${e.javaClass.simpleName}" +
+                    if (e is HouseApiException) " (${e.status}/${e.code})" else "")
                 announce()
-                result.set(SessionResult(SessionResult.RESULT_ERROR_UNKNOWN))
+            } finally {
+                // Force queue as well as state: MPD may have restarted with a reused revision.
+                queueVersion = -1
+                runCatching { refresh() }
+                // refresh publishes its snapshot on main first. Complete only after that publication,
+                // so Media3 removes the pending operation against the new authoritative snapshot.
+                main.post {
+                    pendingCommand = null
+                    result.set(SessionResult(code))
+                    if (!closed.get()) {
+                        player.refresh()
+                        changed()
+                    }
+                }
             }
         }
         return result
@@ -394,8 +415,8 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         MUTE -> { setMuted(!muted); Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS)) }
         SYNC -> {
             val offset = args.getInt("offsetMs", Int.MAX_VALUE)
-            if (offset !in -2000..2000 || closed.get()) {
-                Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE))
+            if (offset !in -1000..1000 || closed.get()) {
+                Futures.immediateFuture(SessionResult(SessionError.ERROR_BAD_VALUE))
             } else {
                 HouseConnection.preferences(context).edit()
                     .putInt(syncKey(args.getBoolean("bluetooth")), offset).apply()
@@ -405,7 +426,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         }
         PLAY_LIST -> {
             val tracks = args.getStringArrayList("tracks").orEmpty()
-            if (tracks.isEmpty()) Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_BAD_VALUE))
+            if (tracks.isEmpty()) Futures.immediateFuture(SessionResult(SessionError.ERROR_BAD_VALUE))
             else {
                 command("/queue/replace", JSONObject().put("tracks", JSONArray(tracks))
                     .put("startIndex", 0).put("play", true).put("positionSeconds", 0))
@@ -425,7 +446,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             val ids = (sorted.drop(pivot) + sorted.take(pivot)).map { it.id }
             command("/queue/reorder", JSONObject().put("songIds", JSONArray(ids)).put("queueVersion", snapshot.queueVersion))
         }
-        else -> Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+        else -> Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
     }
 
     private fun detach() {
@@ -445,6 +466,8 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         muted = true
         requestFocusWhenReady = false
         state = HouseState()
+        pendingCommand?.set(SessionResult(SessionError.ERROR_INVALID_STATE))
+        pendingCommand = null
         commandError = null
         defaultFolder = ""
         status = "HOUSE — closed"

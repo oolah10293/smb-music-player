@@ -4,7 +4,7 @@ A native Android music player that streams audio directly from SMB shares using 
 
 Current source version: **0.5.1 — standalone SMB Music**. This app has no HOUSE discovery, controller, queue transfer or Snapcast receiver. Build/artifact verification belongs in [docs/RELEASE_0.5.1.md](docs/RELEASE_0.5.1.md); physical regression checks are in [docs/TESTING.md](docs/TESTING.md). **v0.3.8 remains the last confirmed standalone hardware baseline; v0.5.1 still needs device acceptance.**
 
-The separate **[House Music v0.1.0](house-app/README.md)** controls/renders the Pi session independently and installs alongside SMB Music. It lives in `house-app`, an independent Gradle root; see its [release record](house-app/docs/RELEASE_0.1.0.md) for build verification. The combined v0.4.3 source remains preserved on [house-music-pre-split](https://github.com/oolah10293/smb-music-player/tree/house-music-pre-split). Installing or playing SMB Music never resets the house queue. No Pi or S3 update is required for either independent app release.
+The separate **[House Music v0.1.1](house-app/README.md)** controls/renders the Pi session independently and installs alongside SMB Music. It lives in `house-app`, an independent Gradle root; see its [release record](house-app/docs/RELEASE_0.1.1.md) for build verification. The combined v0.4.3 source remains preserved on [house-music-pre-split](https://github.com/oolah10293/smb-music-player/tree/house-music-pre-split). Installing or playing SMB Music never resets the house queue. House Music v0.1.1 needs server v0.9.1 for library indexing; no S3 update is needed. SMB Music is unchanged.
 
 ## What it does
 

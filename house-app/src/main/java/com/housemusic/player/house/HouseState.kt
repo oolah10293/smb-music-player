@@ -11,6 +11,8 @@ data class HouseState(
     val songId: Int = -1, val transport: String = "stop", val positionMs: Long = 0,
     val shuffle: Boolean = false, val repeat: Boolean = false, val ready: Boolean = false,
 ) {
+    // MPD rejects Next/Previous/Seek when stopped. Play remains available for a retained queue.
+    val canNavigate: Boolean get() = tracks.isNotEmpty() && transport in setOf("play", "pause")
     val index: Int get() = tracks.indexOfFirst { it.id == songId }.coerceAtLeast(0)
     companion object {
         fun tracks(array: JSONArray): List<HouseTrack> = (0 until array.length()).map { i ->

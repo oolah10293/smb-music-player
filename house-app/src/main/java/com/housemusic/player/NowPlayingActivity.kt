@@ -88,6 +88,8 @@ class NowPlayingActivity : AppCompatActivity() {
         playbackStatus = findViewById(R.id.playbackStatus)
         queueSortButton = findViewById(R.id.queueSortButton)
         muteOutputButton = controlsPlayerView.findViewById(R.id.muteOutputButton)
+        controlsPlayerView.findViewById<ImageButton>(R.id.houseSettingsButton).setOnClickListener { showSyncAdjustment() }
+        playbackStatus.setOnLongClickListener { HouseDiagnostics.show(this); true }
         muteOutputButton.setOnLongClickListener { showSyncAdjustment(); true }
         muteOutputButton.setOnClickListener {
             controller?.sendCustomCommand(SessionCommand(HouseRuntime.MUTE, Bundle.EMPTY), Bundle.EMPTY)
@@ -206,7 +208,10 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private fun showSyncAdjustment() {
-        val mediaController = controller ?: return
+        val mediaController = controller ?: run {
+            playbackStatus.text = "House Music — connecting to playback service"
+            return
+        }
         val extras = mediaController.sessionExtras
         val bluetooth = extras.getBoolean(HouseRuntime.EXTRA_BLUETOOTH)
         val profile = if (bluetooth) "Bluetooth" else "Phone / wired"
@@ -220,7 +225,7 @@ class NowPlayingActivity : AppCompatActivity() {
         layout.addView(TextView(this).apply {
             text = "Shared buffer: $buffer\nServer latency: ${extras.getInt(HouseRuntime.EXTRA_SERVER_LATENCY)} ms\n" +
                 "Applied correction: ${extras.getInt(HouseRuntime.EXTRA_SYNC_APPLIED)} ms\n\n" +
-                "Positive makes this phone earlier; negative makes it later. Range: −2000 to 2000 ms. " +
+                "Positive makes this phone earlier; negative makes it later. Range: −1000 to 1000 ms. " +
                 "Advance is limited by the reported buffer. Applying rejoins this phone’s audio."
         })
         val input = EditText(this).apply {
@@ -235,12 +240,19 @@ class NowPlayingActivity : AppCompatActivity() {
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val offset = input.text.toString().toIntOrNull()
-                if (offset == null || offset !in -2000..2000) {
-                    input.error = "Enter −2000 to 2000 ms"
+                if (offset == null || offset !in -1000..1000) {
+                    input.error = "Enter −1000 to 1000 ms"
                 } else {
-                    mediaController.sendCustomCommand(SessionCommand(HouseRuntime.SYNC, Bundle.EMPTY),
+                    val button = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                    button.isEnabled = false
+                    val result = mediaController.sendCustomCommand(SessionCommand(HouseRuntime.SYNC, Bundle.EMPTY),
                         Bundle().apply { putInt("offsetMs", offset); putBoolean("bluetooth", bluetooth) })
-                    dialog.dismiss()
+                    result.addListener({
+                        if (isFinishing || isDestroyed) return@addListener
+                        button.isEnabled = true
+                        if (runCatching { result.get().resultCode == 0 }.getOrDefault(false)) dialog.dismiss()
+                        else input.error = "Could not apply — reconnect and try again"
+                    }, ContextCompat.getMainExecutor(this))
                 }
             }
         }

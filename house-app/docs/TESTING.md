@@ -1,4 +1,4 @@
-# House Music v0.1.0 physical acceptance
+# House Music v0.1.1 physical acceptance
 
 All checks below are **pending on the new independent APK**. Record phone model, Android version, output route, server version and the APK version with results. Prior combined-app observations are preserved in [HOUSE_VALIDATION.md](../../docs/HOUSE_VALIDATION.md), not promoted to new-build passes.
 
@@ -6,11 +6,11 @@ All checks below are **pending on the new independent APK**. Record phone model,
 
 1. Install beside SMB Music, Quit the old combined app, and open House Music on home Wi-Fi. Confirm the name is **House Music**, the Pi address is correct and folders load without SMB credentials. Repeat with Tailscale enabled.
 2. With music already playing on an S3, open Now Playing. Confirm it adopts the same song/queue without a restart. Select a song and use Play/Pause, Next and Seek; verify the S3 follows the shared session.
-3. Connect Bluetooth. Confirm the phone joins the same stream, then hold the output icon, enter that phone's prior timing correction and compare phone/S3 synchronization. Confirm the correction remains after Quit/reopen and that changing it does not restart the server's song.
+3. Connect Bluetooth. Confirm the phone joins the same stream, then tap the gear, enter that phone's prior timing correction and compare phone/S3 synchronization. Confirm the correction remains after Quit/reopen and that changing it does not restart the server's song.
 4. Mute the phone, Pause and Resume the house while S3 nodes are audible. Confirm the phone stays muted. Disconnect Bluetooth; the phone must remain silent and other audible nodes must continue under server policy.
 5. Quit House Music while an S3 is playing. Confirm the phone stops, its notification disappears and the S3 continues. Reopen: current server state must be fetched before a track is presented.
 
-The existing Bluetooth requirement for manual Unmute is expected in v0.1.0. The requested wired/headphone override remains deferred; do not mark it fixed by the split.
+Manual Unmute must now work without Bluetooth, including the headphone jack. Verify Bluetooth connect/unmute and disconnect/mute still work. Check unplugging wired headphones mutes without falling back audibly to the phone speaker.
 
 ## Independence and reconnect
 
@@ -37,7 +37,7 @@ The existing Bluetooth requirement for manual Unmute is expected in v0.1.0. The 
 - Exercise lock-screen/media controls and incoming audio-focus interruptions. Local renderer interruption must not masquerade as a global Pause/Stop button press.
 - Run the same launch/basic output checks on the S8 and, if used, the Android 8 J3. API compatibility lint alone is insufficient hardware evidence.
 
-Build/test/lint and artifact evidence belongs in [RELEASE_0.1.0.md](RELEASE_0.1.0.md). Do not revive cross-app handoff tests: transfer was removed from the product.
+Build/test/lint and artifact evidence belongs in [RELEASE_0.1.1.md](RELEASE_0.1.1.md). Do not revive cross-app handoff tests: transfer was removed from the product.
 
 ## Reported field issues — 2026-10-02
 
@@ -47,3 +47,10 @@ These are observations, not implemented fixes. SMB Music v0.5.1 does not change 
 - No visible mute/output icon in the supplied Now Playing screenshot. The earlier instruction to hold that icon is unusable on the delivered screen. Keep Bluetooth automation when restoring a working manual control, including wired output.
 - Tapping the gear appears to do nothing; cause uninvestigated.
 - Now Playing displayed `ACK [55@0] {next} Not playing; refresh before ...`, “Boulevard of Broken Dreams”, `00:00 / 04:22`, and a dimmed Play button. The user confirmed that it did not recover and required Quit/reopen. Restore usable controls from fresh server state after a rejected command and provide a readable status; root cause remains unproven.
+
+## v0.1.1 regression acceptance — pending on phones
+
+- Confirm mute sits on the bottom bar beside Shuffle and Repeat; the gear on that bar directly opens the current route’s −1000 to +1000 ms sync dialog. Check small screens and larger text settings. Apply 410/385 ms only to the phones that previously used those values; reopen and confirm retention.
+- Add a file to Shared Music with server v0.9.1 installed. Pull down on the file list: verify scan status and eventual new entry. Repeat with the browser left open for automatic refresh, with two phones, and while music is playing. The queue/transport should remain unchanged. Retain search/sort/scroll; returning from Now Playing should refresh. No new buttons were added.
+- With a retained stopped queue, Play must be enabled and Next/Previous disabled. Trigger a rejected command or interrupt control access; restore it and confirm the same screen recovers without Quit, guessing a new track, or sending Next twice. Hold status text if logs are needed.
+- Verify mute/unmute via headphone jack, Bluetooth automation, S8 compatibility, lock-screen controls, and audible synchronization on real hardware. JVM/UI and server tests are not these hardware passes.

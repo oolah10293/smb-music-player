@@ -8,20 +8,19 @@ class HouseOutputPolicy(initialBluetoothConnected: Boolean) {
         private set
 
     fun updateRoute(connected: Boolean, newOutput: Boolean) {
+        val disconnected = bluetoothConnected && !connected
         bluetoothConnected = connected
         muted = when {
-            !connected -> true
+            disconnected -> true
             newOutput -> false
             else -> muted
         }
     }
 
     fun requestMute(value: Boolean) {
-        muted = value || !bluetoothConnected
+        muted = value
     }
 
     /** Play/Resume/queue commands never supply permission to unmute. */
-    fun transportChanged() {
-        muted = muted || !bluetoothConnected
-    }
+    fun transportChanged() = Unit
 }

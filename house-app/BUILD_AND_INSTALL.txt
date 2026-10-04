@@ -1,19 +1,18 @@
-HOUSE MUSIC v0.1.0 — BUILD AND INSTALL
+HOUSE MUSIC v0.1.1 — BUILD AND INSTALL
 
 Application: House Music
 Application ID: com.housemusic.player
-Version name/code: 0.1.0 / 1
+Version name/code: 0.1.1 / 2
 Minimum Android: 8.0 (API 26)
 Compile/target SDK: 36
 
 INSTALL THE SUPPLIED APK
 
-Install HouseMusic-v0.1.0.apk. This is a new application ID, so it can coexist
-with SMB Music v0.5.0. It does not import the combined app's settings.
-
-Quit an older combined app on the same phone before using House Music. Record
-its route-specific sync correction first. In House Music, hold the output/mute
-icon on Now Playing to enter that correction again. Recheck audible sync.
+Record the House server address and current route sync corrections before uninstalling
+House Music v0.1.0. Its CI signing key was not retained. Uninstall only House Music,
+then install HouseMusic-v0.1.1.apk; leave SMB Music installed. Re-enter the server
+address and use the gear for each route's -1000 to +1000 ms sync correction.
+The new signing key is retained privately for future in-place delivered updates.
 
 On first launch, enter the Pi's LAN host. On the Browser page, Server opens
 the connection setting. Enter only the Pi hostname or IPv4 address. There
@@ -21,10 +20,10 @@ is no bundled deployment address.
 
 No smb:// prefix, port, folder, SMB username or SMB password belongs in this
 field. House Music uses HTTP 8787, MPD identity port 6600 and Snapcast 1704.
-Existing house-audio-server v0.9.0 and S3 firmware require no update.
+Install house-audio-server v0.9.1 for library indexing. No S3 update is needed.
 
-Bluetooth automation is retained. The manual Unmute button still requires
-Bluetooth in this release; the requested headphone-jack override is deferred.
+Bluetooth automation is retained. Manual Unmute now works with wired headphones
+and phone speakers too. Pull down on the browser file list to refresh its index.
 
 BUILD FROM SOURCE
 
@@ -57,9 +56,9 @@ SHA-256. Native preparation downloads checksum-pinned Snapcast, FLAC and Boost
 sources. These generated sources are excluded from Git and included in the
 matching CI source archive; preserve them when distributing the receiver.
 
-See docs/RELEASE_0.1.0.md for the verified CI artifacts, APK manifest identity,
-checksums and signing information. CI uses a debug signing certificate; stable
-signing for future in-place upgrades remains separate release work.
+See docs/RELEASE_0.1.1.md for the verified CI artifacts, APK manifest identity,
+checksums and signing information. Delivered APKs reuse the retained debug signing key. CI builds use their own
+debug key; do not distribute them as in-place upgrades without the retained key.
 
 See docs/TESTING.md for physical acceptance. A successful build and API-26 lint
 do not establish an S8/J3 hardware pass or verified audio synchronization.

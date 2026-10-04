@@ -9,6 +9,8 @@ import java.net.URL
 import java.net.URLEncoder
 import java.time.Instant
 
+data class HouseBrowseResult(val entries: List<RemoteEntry>, val updating: Boolean)
+
 class HouseApiException(val status: Int, val code: String, message: String) : Exception(message)
 
 /** One attempt per command. Never replay a write after an ambiguous HTTP failure. */
@@ -42,14 +44,20 @@ class HouseApi(private val context: Context, @Volatile var endpoint: HouseEndpoi
         } finally { connection.disconnect() }
     }
 
-    fun browse(path: String): List<RemoteEntry> {
-        val entries = get("/browse?path=" + URLEncoder.encode(path, "UTF-8")).getJSONArray("entries")
-        return (0 until entries.length()).mapNotNull { index ->
+    fun updateLibrary(force: Boolean) {
+        post("/library/update", JSONObject().put("force", force))
+    }
+
+    fun browse(path: String): HouseBrowseResult {
+        val response = get("/browse?path=" + URLEncoder.encode(path, "UTF-8"))
+        val entries = response.getJSONArray("entries")
+        val rows = (0 until entries.length()).mapNotNull { index ->
             val item = entries.getJSONObject(index)
             if (item.optString("type") !in setOf("file", "directory")) null else RemoteEntry(
                 item.getString("name"), item.getString("path"), item.getString("type") == "directory",
                 modifiedTime(item.optString("lastModified")), 0L)
         }
+        return HouseBrowseResult(rows, response.optJSONObject("library")?.optBoolean("updating") == true)
     }
 
     companion object {

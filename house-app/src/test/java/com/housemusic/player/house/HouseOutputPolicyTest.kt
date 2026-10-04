@@ -10,8 +10,32 @@ class HouseOutputPolicyTest {
         phone.transportChanged() // Resume the two nodes.
         assertTrue(phone.muted)
         assertFalse(phone.bluetoothConnected)
-        phone.requestMute(false) // The local button cannot bypass route eligibility either.
+        phone.requestMute(false) // Explicit user intent allows phone / wired output.
+        assertFalse(phone.muted)
+    }
+
+    @Test fun wiredUnmuteSurvivesPlayPauseAndUnrelatedAudioCallbacks() {
+        val phone = HouseOutputPolicy(false)
+        phone.requestMute(false)
+        repeat(5) {
+            phone.transportChanged()
+            phone.updateRoute(false, false)
+            assertFalse(phone.muted)
+        }
+        phone.requestMute(true)
+        phone.transportChanged()
         assertTrue(phone.muted)
+    }
+
+    @Test fun bluetoothAutomationStillOverridesOnConnectAndDisconnect() {
+        val phone = HouseOutputPolicy(false)
+        phone.requestMute(false)
+        phone.updateRoute(true, true)
+        assertFalse(phone.muted)
+        phone.updateRoute(false, false)
+        assertTrue(phone.muted)
+        phone.updateRoute(true, true)
+        assertFalse(phone.muted)
     }
 
     @Test fun alreadyConnectedOutputIsRecognizedOnAttachment() {
@@ -36,8 +60,9 @@ class HouseOutputPolicyTest {
         val phone = HouseOutputPolicy(true)
         phone.updateRoute(false, false)
         phone.transportChanged()
-        phone.requestMute(false)
         assertTrue(phone.muted)
+        phone.requestMute(false)
+        assertFalse(phone.muted)
         phone.updateRoute(true, true)
         assertFalse(phone.muted)
     }

@@ -25,11 +25,13 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.media3.session.SessionCommand
+import com.housemusic.player.house.HouseApiException
 import com.housemusic.player.house.HouseApi
 import com.housemusic.player.house.HouseConnection
 import com.housemusic.player.house.HouseRuntime
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.google.common.util.concurrent.ListenableFuture
 import com.housemusic.player.model.RemoteEntry
 import com.housemusic.player.ui.FileAdapter
@@ -50,6 +52,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var searchEdit: EditText
     private lateinit var searchClearButton: ImageButton
     private lateinit var recycler: RecyclerView
+    private lateinit var libraryRefresh: SwipeRefreshLayout
     private lateinit var layoutManager: LinearLayoutManager
     private lateinit var adapter: FileAdapter
 
@@ -63,6 +66,10 @@ class MainActivity : AppCompatActivity() {
     private var browseRetryIndex = 0
     private var browseRequestGeneration = 0
     private var browseRetryEnabled = true
+    private var browserVisible = false
+    private var browseLoading = false
+    private var libraryUpdating = false
+    private var libraryUpdateUnsupported = false
 
     private var currentUrl: String = ""
     private var entries: List<RemoteEntry> = emptyList()
@@ -119,6 +126,7 @@ class MainActivity : AppCompatActivity() {
         searchEdit = findViewById(R.id.searchEdit)
         searchClearButton = findViewById(R.id.searchClearButton)
         recycler = findViewById(R.id.fileList)
+        libraryRefresh = findViewById(R.id.libraryRefresh)
     }
 
     private fun setupController() {
@@ -150,6 +158,10 @@ class MainActivity : AppCompatActivity() {
         recycler.layoutManager = layoutManager
         recycler.adapter = adapter
 
+        libraryRefresh.setOnRefreshListener {
+            browse(currentUrl, forceUpdate = true)
+        }
+        browserStatus.setOnLongClickListener { HouseDiagnostics.show(this); true }
         findViewById<Button>(R.id.upButton).setOnClickListener {
             if (currentUrl.isNotBlank()) browse(currentUrl.substringBeforeLast('/', ""))
         }
@@ -255,13 +267,15 @@ class MainActivity : AppCompatActivity() {
         browse(currentUrl)
     }
 
-    private fun browse(url: String, resetRetry: Boolean = true) {
+    private fun browse(url: String, resetRetry: Boolean = true, updateIndex: Boolean = true, forceUpdate: Boolean = false) {
         if (isFinishing || isDestroyed) return
         if (HouseConnection.host(this).isBlank()) {
             cancelBrowseRetry()
+            libraryRefresh.isRefreshing = false
             browserStatus.text = "Set the house server address to browse music."
             return
         }
+        browserHandler.removeCallbacksAndMessages(BROWSE_REFRESH_TOKEN)
         browseRetryPending = false
         val endpoint = HouseConnection.current
         if (resetRetry) {
@@ -270,6 +284,15 @@ class MainActivity : AppCompatActivity() {
             cancelBrowseRetry()
         }
 
+        if (url == currentUrl && entries.isNotEmpty() && pendingListState == null) {
+            pendingListState = layoutManager.onSaveInstanceState()
+            pendingListUrl = url
+        } else if (url != currentUrl) {
+            entries = emptyList()
+            adapter.submit(emptyList())
+        }
+        browseLoading = true
+        if (forceUpdate) libraryRefresh.isRefreshing = true
         currentUrl = url
         pathText.text = url.substringAfterLast('/').ifBlank { "Music" }
         browserStatus.text = if (resetRetry) "Loading…" else "Reconnecting to House Music…"
@@ -278,12 +301,27 @@ class MainActivity : AppCompatActivity() {
         executor.execute {
             try {
                 checkNotNull(endpoint) { "House server is not connected" }
-                val result = HouseApi(this, endpoint).browse(url)
+                val api = HouseApi(this, endpoint)
+                var unsupported = libraryUpdateUnsupported
+                if (updateIndex) {
+                    try {
+                        api.updateLibrary(forceUpdate)
+                        unsupported = false
+                    } catch (e: HouseApiException) {
+                        if (e.status != 404) throw e
+                        unsupported = true // Older server still supports browsing and playback.
+                    }
+                }
+                val result = api.browse(url)
                 runOnUiThread {
                     if (isFinishing || isDestroyed || currentUrl != url || requestGeneration != browseRequestGeneration) return@runOnUiThread
                     cancelBrowseRetry()
                     browseRetryIndex = 0
-                    entries = result
+                    browseLoading = false
+                    libraryRefresh.isRefreshing = false
+                    libraryUpdating = result.updating
+                    libraryUpdateUnsupported = unsupported
+                    entries = result.entries
                     HouseConnection.preferences(this).edit().putString("last_folder", url).apply()
                     showSortedEntries()
 
@@ -292,20 +330,30 @@ class MainActivity : AppCompatActivity() {
                         pendingListState = null
                         pendingListUrl = null
                     }
+                    scheduleLibraryRefresh()
                 }
             } catch (e: Exception) {
                 runOnUiThread {
                     if (isFinishing || isDestroyed || currentUrl != url || requestGeneration != browseRequestGeneration) return@runOnUiThread
-                    entries = emptyList()
-                    adapter.submit(emptyList())
+                    browseLoading = false
+                    libraryRefresh.isRefreshing = false
+                    HouseDiagnostics.record(this, "Library refresh failed: ${e.javaClass.simpleName}")
                     scheduleBrowseRetry(url, e)
                 }
             }
         }
     }
 
+    private fun scheduleLibraryRefresh() {
+        if (!browserVisible) return
+        val scanning = libraryUpdating
+        browserHandler.postAtTime({
+            if (browserVisible && !browseLoading) browse(currentUrl, updateIndex = !scanning)
+        }, BROWSE_REFRESH_TOKEN, android.os.SystemClock.uptimeMillis() + if (scanning) 2_000 else 30_000)
+    }
+
     private fun scheduleBrowseRetry(url: String, error: Throwable) {
-        if (!browseRetryEnabled) return
+        if (!browseRetryEnabled || !browserVisible) return
         cancelBrowseRetry()
 
         val delay = BROWSE_RETRY_SCHEDULE_MS[minOf(browseRetryIndex, BROWSE_RETRY_SCHEDULE_MS.lastIndex)]
@@ -334,10 +382,19 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        browserVisible = true
+        if (!browseLoading) browse(currentUrl)
         syncSortModeFromStore()
         // Browse should never throw the keyboard up merely because the Activity was opened or
         // brought back from Now Playing. Tapping the search typing area still focuses it normally.
         if (::searchEdit.isInitialized) searchEdit.post { hideSearchKeyboard() }
+    }
+
+    override fun onPause() {
+        browserVisible = false
+        browserHandler.removeCallbacksAndMessages(BROWSE_REFRESH_TOKEN)
+        cancelBrowseRetry()
+        super.onPause()
     }
 
     private fun syncSortModeFromStore() {
@@ -375,6 +432,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             "$dirs folder(s), $tracks track(s) matching"
         }
+        if (libraryUpdating) browserStatus.append(" · Scanning for new music…")
+        if (libraryUpdateUnsupported) browserStatus.append("\nInstall server v0.9.1 for automatic library updates.")
     }
 
     private fun filteredEntries(): List<RemoteEntry> {
@@ -458,7 +517,7 @@ class MainActivity : AppCompatActivity() {
         val recovered = connected && (!wasHouseConnected || revision != lastHouseConnectionRevision)
         wasHouseConnected = connected
         lastHouseConnectionRevision = revision
-        if (recovered && browseRetryPending) browse(currentUrl)
+        if (recovered && browserVisible && !browseLoading) browse(currentUrl)
     }
 
     private fun friendlyError(t: Throwable): String {
@@ -480,6 +539,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         browseRequestGeneration++
         browseRetryEnabled = false
+        browserHandler.removeCallbacksAndMessages(BROWSE_REFRESH_TOKEN)
         cancelBrowseRetry()
         if (::controllerFuture.isInitialized) {
             MediaController.releaseFuture(controllerFuture)
@@ -498,6 +558,7 @@ class MainActivity : AppCompatActivity() {
         const val PREFS_UI = SortModeStore.PREFS_UI
         const val PREF_QUEUE_SORT = SortModeStore.PREF_SORT_MODE
 
+        private val BROWSE_REFRESH_TOKEN = Any()
         private val BROWSE_RETRY_TOKEN = Any()
         private val BROWSE_RETRY_SCHEDULE_MS = longArrayOf(1_000, 2_000, 5_000, 10_000, 15_000)
 

@@ -16,6 +16,7 @@ import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaStyleNotificationHelper
 import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -155,9 +156,9 @@ class PlaybackService : MediaLibraryService() {
 
         override fun onCustomCommand(session: MediaSession, controller: MediaSession.ControllerInfo,
             customCommand: SessionCommand, args: Bundle): ListenableFuture<SessionResult> =
-            if (released) Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE))
+            if (released) Futures.immediateFuture(SessionResult(SessionError.ERROR_INVALID_STATE))
             else house?.custom(customCommand, args)
-                ?: Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_INVALID_STATE))
+                ?: Futures.immediateFuture(SessionResult(SessionError.ERROR_INVALID_STATE))
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {

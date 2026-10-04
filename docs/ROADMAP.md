@@ -76,3 +76,8 @@ The manual mute override and album-art mini-log are **queued work**, not upgrade
 - Historical validation: [VALIDATION_STATE.md](VALIDATION_STATE.md)
 - Normative HOUSE architecture: [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md)
 - Current standalone release record: [RELEASE_0.5.0.md](RELEASE_0.5.0.md)
+
+
+### House Music v0.1.1 — implemented, physical acceptance pending
+
+Pull-down/automatic library refresh with server v0.9.1; visible mute beside Shuffle/Repeat with wired manual override and retained Bluetooth automation; gear directly opens ±1000 ms route sync; rejected-command recovery refreshes authoritative state without replaying writes. See `house-app/docs/RELEASE_0.1.1.md`. The original field reports remain evidence, not new-build passes.

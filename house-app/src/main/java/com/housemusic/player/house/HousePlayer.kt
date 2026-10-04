@@ -16,8 +16,12 @@ import org.json.JSONObject
 
 /** Media3 adapter for the server-owned MPD queue and transport. */
 @UnstableApi
-class HousePlayer(private val house: HouseRuntime) : SimpleBasePlayer(Looper.getMainLooper()) {
+class HousePlayer(private val house: HousePlaybackState) : SimpleBasePlayer(Looper.getMainLooper()) {
     fun refresh() = invalidateState()
+
+    // Keep showing confirmed server state while a command is pending. In particular,
+    // a rejected Next must not leave a guessed next track/position or transport behind.
+    override fun getPlaceholderState(suggestedPlaceholderState: State): State = getState()
 
     override fun getState(): State {
         // The last successful poll is not a live queue during a lost connection.
@@ -27,10 +31,11 @@ class HousePlayer(private val house: HouseRuntime) : SimpleBasePlayer(Looper.get
             Player.COMMAND_GET_METADATA, Player.COMMAND_RELEASE)
         if (house.canControl) commands.addAll(
             Player.COMMAND_PLAY_PAUSE, Player.COMMAND_PREPARE, Player.COMMAND_STOP,
+            Player.COMMAND_SET_SHUFFLE_MODE, Player.COMMAND_SET_REPEAT_MODE)
+        if (house.canControl && state.canNavigate) commands.addAll(
             Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM, Player.COMMAND_SEEK_TO_NEXT,
             Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM, Player.COMMAND_SEEK_TO_PREVIOUS,
-            Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM, Player.COMMAND_SET_SHUFFLE_MODE,
-            Player.COMMAND_SET_REPEAT_MODE)
+            Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
         val playlist = state.tracks.map { track ->
             val filename = track.file.substringAfterLast('/')
             val metadata = MediaMetadata.Builder()
