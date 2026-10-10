@@ -10,6 +10,7 @@ import androidx.appcompat.view.ContextThemeWrapper
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.housemusic.player.R
+import com.housemusic.player.showLiveRadioControls
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -21,6 +22,49 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class HouseControlsLayoutTest {
+    @Test fun radioHidesLocalControlsAndRestoresThemWithoutMovingPhoneOutputButtons() {
+        val context = ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_HouseMusic)
+        val root = LayoutInflater.from(context).inflate(R.layout.activity_now_playing, null) as ViewGroup
+        val controls = root.findViewById<PlayerView>(R.id.controlsPlayerView)
+        controls.setControllerShowTimeoutMs(0)
+        controls.showController()
+        val density = context.resources.displayMetrics.density
+        val width = (320 * density).toInt()
+        val height = (640 * density).toInt()
+        fun layout() {
+            root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+            root.layout(0, 0, width, height)
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+        fun bounds(id: Int): Rect {
+            val view = controls.findViewById<View>(id)
+            return Rect(0, 0, view.width, view.height).also { root.offsetDescendantRectToMyCoords(view, it) }
+        }
+        controls.showLiveRadioControls(false)
+        layout()
+        val mute = bounds(R.id.muteOutputButton)
+        val sync = bounds(R.id.houseSettingsButton)
+        controls.showLiveRadioControls(true)
+        layout()
+        for (id in listOf(androidx.media3.ui.R.id.exo_prev, androidx.media3.ui.R.id.exo_next,
+            androidx.media3.ui.R.id.exo_shuffle, androidx.media3.ui.R.id.exo_repeat_toggle,
+            androidx.media3.ui.R.id.exo_time, androidx.media3.ui.R.id.exo_progress)) {
+            assertNotEquals("Live control $id should be hidden", View.VISIBLE, controls.findViewById<View>(id).visibility)
+        }
+        assertEquals(View.VISIBLE, controls.findViewById<View>(R.id.muteOutputButton).visibility)
+        assertEquals(View.VISIBLE, controls.findViewById<View>(R.id.houseSettingsButton).visibility)
+        assertEquals(mute, bounds(R.id.muteOutputButton))
+        assertEquals(sync, bounds(R.id.houseSettingsButton))
+        controls.showLiveRadioControls(false)
+        layout()
+        for (id in listOf(androidx.media3.ui.R.id.exo_prev, androidx.media3.ui.R.id.exo_next,
+            androidx.media3.ui.R.id.exo_shuffle, androidx.media3.ui.R.id.exo_repeat_toggle,
+            androidx.media3.ui.R.id.exo_time, androidx.media3.ui.R.id.exo_progress)) {
+            assertEquals("Local control $id should return", View.VISIBLE, controls.findViewById<View>(id).visibility)
+        }
+    }
+
     @Test fun muteAndSyncStayVisibleBesideShuffleAndRepeatOnSmallScreens() {
         val context = ContextThemeWrapper(RuntimeEnvironment.getApplication(), R.style.Theme_HouseMusic)
         val density = context.resources.displayMetrics.density

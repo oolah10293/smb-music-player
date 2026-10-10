@@ -192,6 +192,11 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         putInt(EXTRA_SYNC_APPLIED, receiver.timing.effectiveOffset(requestedOffset()))
         receiver.timing.bufferMs?.let { putInt(EXTRA_STREAM_BUFFER, it) }
         putInt(EXTRA_SERVER_LATENCY, receiver.timing.serverLatencyMs)
+        putBoolean(EXTRA_RADIO, state.isRadio)
+        putString(EXTRA_RADIO_STATION_ID, state.radioStationId)
+        putString(EXTRA_RADIO_STATION_NAME, state.radioStationName)
+        putString(EXTRA_RADIO_STATUS, state.radioStatus)
+        putString(EXTRA_RADIO_ERROR, state.radioError)
     }
 
     private fun announce() {
@@ -352,7 +357,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             !receiver.ready -> "HOUSE — ${receiver.error ?: "audio connecting"}"
             else -> "HOUSE — output on"
         }
-        if (canControl && state.tracks.isNotEmpty() && state.transport == "stop") {
+        if (canControl && !state.isRadio && state.tracks.isNotEmpty() && state.transport == "stop") {
             status = "HOUSE — stopped; press Play"
         }
         val diagnosticState = "$status | ${state.transport}"
@@ -432,19 +437,27 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
                     .put("startIndex", 0).put("play", true).put("positionSeconds", 0))
             }
         }
+        RADIO_PLAY -> {
+            val stationId = args.getString("station_id").orEmpty()
+            if (stationId.isBlank()) Futures.immediateFuture(SessionResult(SessionError.ERROR_BAD_VALUE))
+            else command("/radio/play", JSONObject().put("stationId", stationId))
+        }
         DEFAULT -> command("/settings", JSONObject().put("passiveDefaultFolder", args.getString("folder")))
         SORT -> {
-            val mode = SortMode.fromStorage(args.getString("mode"))
-            val snapshot = state
-            val sorted = when (mode) {
-                SortMode.NAME_ASC -> snapshot.tracks.sortedBy { it.file.substringAfterLast('/').lowercase() }
-                SortMode.NAME_DESC -> snapshot.tracks.sortedByDescending { it.file.substringAfterLast('/').lowercase() }
-                SortMode.DATE_ASC -> snapshot.tracks.sortedWith(compareBy<HouseTrack> { it.modified }.thenBy { it.file.lowercase() })
-                SortMode.DATE_DESC -> snapshot.tracks.sortedWith(compareByDescending<HouseTrack> { it.modified }.thenBy { it.file.lowercase() })
+            if (state.isRadio) Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
+            else {
+                val mode = SortMode.fromStorage(args.getString("mode"))
+                val snapshot = state
+                val sorted = when (mode) {
+                    SortMode.NAME_ASC -> snapshot.tracks.sortedBy { it.file.substringAfterLast('/').lowercase() }
+                    SortMode.NAME_DESC -> snapshot.tracks.sortedByDescending { it.file.substringAfterLast('/').lowercase() }
+                    SortMode.DATE_ASC -> snapshot.tracks.sortedWith(compareBy<HouseTrack> { it.modified }.thenBy { it.file.lowercase() })
+                    SortMode.DATE_DESC -> snapshot.tracks.sortedWith(compareByDescending<HouseTrack> { it.modified }.thenBy { it.file.lowercase() })
+                }
+                val pivot = sorted.indexOfFirst { it.id == snapshot.songId }.coerceAtLeast(0)
+                val ids = (sorted.drop(pivot) + sorted.take(pivot)).map { it.id }
+                command("/queue/reorder", JSONObject().put("songIds", JSONArray(ids)).put("queueVersion", snapshot.queueVersion))
             }
-            val pivot = sorted.indexOfFirst { it.id == snapshot.songId }.coerceAtLeast(0)
-            val ids = (sorted.drop(pivot) + sorted.take(pivot)).map { it.id }
-            command("/queue/reorder", JSONObject().put("songIds", JSONArray(ids)).put("queueVersion", snapshot.queueVersion))
         }
         else -> Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
     }
@@ -497,11 +510,17 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         const val EXTRA_SYNC_APPLIED = "house.syncApplied"
         const val EXTRA_STREAM_BUFFER = "house.streamBuffer"
         const val EXTRA_SERVER_LATENCY = "house.serverLatency"
+        const val EXTRA_RADIO = "house.radio"
+        const val EXTRA_RADIO_STATION_ID = "house.radioStationId"
+        const val EXTRA_RADIO_STATION_NAME = "house.radioStationName"
+        const val EXTRA_RADIO_STATUS = "house.radioStatus"
+        const val EXTRA_RADIO_ERROR = "house.radioError"
         const val MUTE = "house.toggleMute"
         const val SYNC = "house.sync"
         const val PLAY_LIST = "house.playList"
         const val SORT = "house.sort"
         const val DEFAULT = "house.defaultFolder"
-        val CUSTOM_COMMANDS = listOf(MUTE, PLAY_LIST, SORT, DEFAULT, SYNC)
+        const val RADIO_PLAY = "house.radioPlay"
+        val CUSTOM_COMMANDS = listOf(MUTE, PLAY_LIST, SORT, DEFAULT, SYNC, RADIO_PLAY)
     }
 }

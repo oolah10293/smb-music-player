@@ -97,21 +97,34 @@ class PlaybackService : MediaLibraryService() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(NOTIFICATION_CHANNEL, "House Music", NotificationManager.IMPORTANCE_LOW)
         )
-        val playing = runtime.state.transport == "play"
-        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL)
+        val radio = runtime.state.isRadio
+        val playing = if (radio) runtime.state.radioPlayIntent == "play" &&
+            runtime.state.radioStatus in setOf("playing", "connecting", "retrying")
+            else runtime.state.transport == "play"
+        val outputStatus = runtime.extras().getString(HouseRuntime.EXTRA_STATUS)
+        val liveStatus = when (runtime.state.radioStatus) {
+            "paused" -> "Paused"
+            "connecting" -> "Connecting"
+            "retrying" -> "Reconnecting"
+            "stopped" -> "Stopped"
+            "error" -> "Station unavailable"
+            else -> "Playing"
+        }
+        val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher)
             .setContentTitle(runtime.player.mediaMetadata.title ?: "House Music")
-            .setContentText(runtime.extras().getString(HouseRuntime.EXTRA_STATUS))
+            .setContentText(if (radio) "LIVE · $liveStatus · $outputStatus" else outputStatus)
             .setContentIntent(openPlayer())
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .addAction(android.R.drawable.ic_media_previous, "Previous", notificationAction(ACTION_PREVIOUS))
-            .addAction(if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+        if (!radio) builder.addAction(android.R.drawable.ic_media_previous, "Previous", notificationAction(ACTION_PREVIOUS))
+        builder.addAction(if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
                 if (playing) "Pause" else "Play", notificationAction(ACTION_PLAY_PAUSE))
-            .addAction(android.R.drawable.ic_media_next, "Next", notificationAction(ACTION_NEXT))
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Quit", notificationAction(ACTION_QUIT))
-            .setStyle(MediaStyleNotificationHelper.MediaStyle(session).setShowActionsInCompactView(0, 1, 2))
-            .build()
+        if (!radio) builder.addAction(android.R.drawable.ic_media_next, "Next", notificationAction(ACTION_NEXT))
+        builder.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Quit", notificationAction(ACTION_QUIT))
+        val compact = if (radio) intArrayOf(0, 1) else intArrayOf(0, 1, 2)
+        val notification = builder.setStyle(MediaStyleNotificationHelper.MediaStyle(session)
+            .setShowActionsInCompactView(*compact)).build()
         // Connected-device lifetime also covers a muted phone that controls the rooms.
         // CHANGE_NETWORK_STATE supplies the connected-device foreground prerequisite.
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification,
@@ -130,10 +143,10 @@ class PlaybackService : MediaLibraryService() {
         when (intent?.action) {
             ACTION_RECONNECT -> reconnect()
             ACTION_PLAY_PAUSE -> house?.takeIf { it.canControl }?.let { runtime ->
-                if (runtime.state.transport == "play") runtime.player.pause() else runtime.player.play()
+                if (runtime.player.playWhenReady) runtime.player.pause() else runtime.player.play()
             }
-            ACTION_NEXT -> house?.takeIf { it.canControl }?.player?.seekToNextMediaItem()
-            ACTION_PREVIOUS -> house?.takeIf { it.canControl }?.player?.seekToPreviousMediaItem()
+            ACTION_NEXT -> house?.takeIf { it.canControl && it.state.canSkip }?.player?.seekToNextMediaItem()
+            ACTION_PREVIOUS -> house?.takeIf { it.canControl && it.state.canSkip }?.player?.seekToPreviousMediaItem()
             // MediaLibraryService handles standard media-button/headset intents.
             else -> super.onStartCommand(intent, flags, startId)
         }

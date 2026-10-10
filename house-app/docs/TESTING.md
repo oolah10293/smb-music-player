@@ -1,6 +1,31 @@
-# House Music v0.1.1 physical acceptance
+# House Music v0.2.0 physical acceptance
 
-All checks below are **pending on the new independent APK**. Record phone model, Android version, output route, server version and the APK version with results. Prior combined-app observations are preserved in [HOUSE_VALIDATION.md](../../docs/HOUSE_VALIDATION.md), not promoted to new-build passes.
+All checks below are **pending on the v0.2.0 APK**. Record phone model, Android version, output route, server version and the APK version with results. Prior combined-app observations are preserved in [HOUSE_VALIDATION.md](../../docs/HOUSE_VALIDATION.md), not promoted to new-build passes. Server v0.10.0 playback of Radio Paradise and WXDX and return to local music were confirmed by the user through the pre-existing app/API workflow. Those results do not validate the new Radio page.
+
+## Radio page
+
+Use house-audio-server v0.10.0 or newer. Update the delivered v0.1.1 APK in place and confirm the server address, route sync corrections and existing browser settings survive. No S3 firmware update is required.
+
+1. Open **Radio** from the library browser. Confirm station loading, an empty-list explanation when appropriate, and usable navigation back to the library and Now Playing. The keyboard should open when the URL field is tapped, not merely when the page opens.
+2. Paste `https://stream.radioparadise.com/rock-192` and tap **Add & Play**. Confirm a generated name, one saved row, the current-station indication, and audible playback on the house receivers. Station lookup may take several seconds; repeated taps must not create duplicate writes.
+3. Add `https://stream.revma.ihrhls.com/zc2033` (WXDX / 105.9 The X). Confirm playback switches to it. Tap the Radio Paradise row and confirm it switches back. Open another House Music controller and confirm it sees the shared stations and current selection.
+4. Submit an already-saved URL. Confirm it reuses the saved station instead of adding a duplicate. Hold a station, rename it, then reload the page on both phones and confirm the shared name. Empty or whitespace-only names must not be saved.
+5. Delete an inactive station with its **×** and confirm it disappears. Use **Undo** and confirm the bookmark returns without changing playback. Delete the currently playing station and confirm its broadcast continues; return to Now Playing and confirm it still identifies the live source even though the bookmark is gone. Undo should restore the saved row without restarting the stream.
+6. Quit/reopen the app and confirm saved stations remain. Restart the house server and reload: bookmarks must survive, but the server need not resume the pre-restart radio session. Tap a saved station to start it again.
+7. Submit an empty value, whitespace, malformed URL, unsupported scheme, station web page and unreachable stream. Confirm useful errors and usable controls. Invalid or failed probes must not replace the active house music. A pasted URL must remain editable after failure.
+8. Try Add & Play while disconnected; reconnect and confirm it does not later replay the add/play operation. Separately interrupt the response to a station add, rename, delete or play request. After recovery, refresh to establish the server's actual result; the app must not silently repeat the write or switch back to an older requested station. Retry deliberately only after checking the current list/state.
+
+The two URLs above were verified against the deployed server before this APK was built. They are test examples, not a guarantee of future station availability or metadata.
+
+## Live playback and return to local music
+
+- Open Now Playing during radio playback. Confirm **LIVE**, the saved station name and available song/broadcast metadata. Metadata should update as the stream changes tracks without requiring a queue replacement or reopening the screen. Missing metadata must leave a readable station identity, not a raw blank placeholder.
+- Confirm seeking, Previous/Next, Shuffle, Repeat and queue sorting are unavailable for live radio. The phone mute and sync gear must remain usable in their existing positions. Check small screens and larger text settings.
+- Pause radio from Now Playing, then resume. Confirm the app presents the server's logical paused state even though MPD stops its upstream connection. Resume must rejoin the live broadcast, not promise the paused song position. Exercise the radio notification's Play/Pause and Quit actions; there must be no radio skip action.
+- Interrupt the upstream station connection while keeping the Pi reachable. Confirm connecting/retrying/error status remains readable and manual Pause/Stop cancels continued play intent according to the server state. Switching to a different station or local music must prevent the old station from returning after recovery.
+- Return to the library browser and select an MP3s song or **PLAY LIST**. Confirm local music replaces radio on the shared house receivers, **LIVE** disappears, normal local transport/seek/queue-sort controls return, and the stations remain saved. Repeat with Rap. The old local queue and song need not be restored.
+- Change the MP3s/Rap default while radio is playing. Confirm this changes the future passive startup choice without interrupting the current station. Test the server's fresh passive-node startup separately; it must still follow the saved local folder default.
+- During radio, mute the phone and remove the last audible renderer. Confirm server automatic pause is reflected in the app; return an eligible audible node and check live resume. Remove all nodes/controllers and verify the server ends the radio session according to its lifecycle policy. These checks do not replace the local-music lifecycle checks below.
 
 ## First phone pass
 
@@ -37,20 +62,20 @@ Manual Unmute must now work without Bluetooth, including the headphone jack. Ver
 - Exercise lock-screen/media controls and incoming audio-focus interruptions. Local renderer interruption must not masquerade as a global Pause/Stop button press.
 - Run the same launch/basic output checks on the S8 and, if used, the Android 8 J3. API compatibility lint alone is insufficient hardware evidence.
 
-Build/test/lint and artifact evidence belongs in [RELEASE_0.1.1.md](RELEASE_0.1.1.md). Do not revive cross-app handoff tests: transfer was removed from the product.
+Build/test/lint and artifact evidence belongs in [RELEASE_0.2.0.md](RELEASE_0.2.0.md). Do not revive cross-app handoff tests: transfer was removed from the product.
 
 ## Reported field issues — 2026-10-02
 
-These are observations, not implemented fixes. SMB Music v0.5.1 does not change the House app.
+These are historical observations that motivated v0.1.1. The fixes and automated evidence are recorded in [RELEASE_0.1.1.md](RELEASE_0.1.1.md); they are not new v0.2.0 physical passes. SMB Music changes do not change the House app.
 
 - New files added to Shared Music do not appear in the browser; refresh/indexing cause uninvestigated.
 - No visible mute/output icon in the supplied Now Playing screenshot. The earlier instruction to hold that icon is unusable on the delivered screen. Keep Bluetooth automation when restoring a working manual control, including wired output.
 - Tapping the gear appears to do nothing; cause uninvestigated.
 - Now Playing displayed `ACK [55@0] {next} Not playing; refresh before ...`, “Boulevard of Broken Dreams”, `00:00 / 04:22`, and a dimmed Play button. The user confirmed that it did not recover and required Quit/reopen. Restore usable controls from fresh server state after a rejected command and provide a readable status; root cause remains unproven.
 
-## v0.1.1 regression acceptance — pending on phones
+## Retained v0.1.1 regression checks
 
 - Confirm mute sits on the bottom bar beside Shuffle and Repeat; the gear on that bar directly opens the current route’s −1000 to +1000 ms sync dialog. Check small screens and larger text settings. Apply 410/385 ms only to the phones that previously used those values; reopen and confirm retention.
-- Add a file to Shared Music with server v0.9.1 installed. Pull down on the file list: verify scan status and eventual new entry. Repeat with the browser left open for automatic refresh, with two phones, and while music is playing. The queue/transport should remain unchanged. Retain search/sort/scroll; returning from Now Playing should refresh. No new buttons were added.
+- Add a file to Shared Music with server v0.9.1 or newer installed. Pull down on the file list: verify scan status and eventual new entry. Repeat with the browser left open for automatic refresh, with two phones, and while music is playing. The queue/transport should remain unchanged. Retain search/sort/scroll; returning from Now Playing should refresh.
 - With a retained stopped queue, Play must be enabled and Next/Previous disabled. Trigger a rejected command or interrupt control access; restore it and confirm the same screen recovers without Quit, guessing a new track, or sending Next twice. Hold status text if logs are needed.
 - Verify mute/unmute via headphone jack, Bluetooth automation, S8 compatibility, lock-screen controls, and audible synchronization on real hardware. JVM/UI and server tests are not these hardware passes.

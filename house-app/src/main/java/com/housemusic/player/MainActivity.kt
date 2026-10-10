@@ -197,6 +197,11 @@ class MainActivity : AppCompatActivity() {
             openNowPlaying()
         }
 
+        findViewById<Button>(R.id.radioButton).setOnClickListener {
+            hideSearchKeyboard()
+            startActivity(Intent(this, RadioActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+        }
+
         sortButton.setOnClickListener {
             sortMode = sortMode.next()
             SortModeStore.save(this, sortMode)

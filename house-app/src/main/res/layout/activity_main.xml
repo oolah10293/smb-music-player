@@ -25,6 +25,13 @@
             android:textSize="20sp" />
 
         <Button
+            android:id="@+id/radioButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Radio"
+            android:textSize="12sp" />
+
+        <Button
             android:id="@+id/serverSettingsButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
