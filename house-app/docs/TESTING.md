@@ -86,3 +86,31 @@ These are historical observations that motivated v0.1.1. The fixes and automated
 - Add a file to Shared Music with server v0.9.1 or newer installed. Pull down on the file list: verify scan status and eventual new entry. Repeat with the browser left open for automatic refresh, with two phones, and while music is playing. The queue/transport should remain unchanged. Retain search/sort/scroll; returning from Now Playing should refresh.
 - With a retained stopped queue, Play must be enabled and Next/Previous disabled. Trigger a rejected command or interrupt control access; restore it and confirm the same screen recovers without Quit, guessing a new track, or sending Next twice. Hold status text if logs are needed.
 - Verify mute/unmute via headphone jack, Bluetooth automation, S8 compatibility, lock-screen controls, and audible synchronization on real hardware. JVM/UI and server tests are not these hardware passes.
+
+
+## v0.3.0 radio details and spacing acceptance
+
+Install server v0.11.0 and app v0.3.0. Retain the existing swipe, focus-recovery,
+stopped-startup, phone mute/sync and local-queue checks above.
+
+1. Play a station that supplies song metadata. Now Playing should show station,
+   song, artist/album when supplied, broadcast name and stream quality. Wait for
+   a song change without changing stations; details must refresh. Longer details
+   scroll while playback/mute/sync controls stay in place. Missing metadata must
+   not look like an invented song. Switch to a local folder and check normal
+   artwork/metadata and seek/skip/shuffle/repeat controls return.
+2. Let an identified song play more than ten seconds, then wait for the next song.
+   Last played should show the outgoing title/artist, station and local date/time.
+   The current song passing ten seconds must not replace it prematurely. A brief
+   station snippet must not replace the previous qualifying song. With an audible
+   S3 left on, close the phone app, let a song change, and reopen: history should
+   be there. Restart the server and check history survives but old radio intent
+   does not resume. No earlier pre-update songs can be recovered.
+3. On Library, the gray folder panel should be shorter; the visible black gap
+   below it should match the gap above Search. Short folder names stay centered;
+   long ones retain their left-aligned second row. Folder buttons remain tappable.
+4. Compare Radio's URL entry to Library's filename search: both are 40dp high.
+   Test text entry, paste, horizontal page swipes and vertical scrolling/refresh.
+
+The user confirmed v0.2.1 swiping and station add/save/play. These are retained
+field observations, not physical validation of the new v0.3.0 changes.

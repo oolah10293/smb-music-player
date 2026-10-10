@@ -198,6 +198,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         putString(EXTRA_RADIO_STATION_NAME, state.radioStationName)
         putString(EXTRA_RADIO_STATUS, state.radioStatus)
         putString(EXTRA_RADIO_ERROR, state.radioError)
+        putBundle(EXTRA_RADIO_DETAILS, state.radioDetailsBundle())
     }
 
     private fun announce() {
@@ -522,6 +523,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         const val EXTRA_SYNC_APPLIED = "house.syncApplied"
         const val EXTRA_STREAM_BUFFER = "house.streamBuffer"
         const val EXTRA_SERVER_LATENCY = "house.serverLatency"
+        const val EXTRA_RADIO_DETAILS = "house.radioDetails"
         const val EXTRA_RADIO = "house.radio"
         const val EXTRA_RADIO_STATION_ID = "house.radioStationId"
         const val EXTRA_RADIO_STATION_NAME = "house.radioStationName"

@@ -44,7 +44,7 @@ class HousePlayer(private val house: HousePlaybackState) : SimpleBasePlayer(Loop
             val artist = if (state.isRadio) listOf(track.artist, state.radioStationName)
                 .filter { it.isNotBlank() && it != title }.distinct().joinToString(" · ") else track.artist
             val metadata = MediaMetadata.Builder()
-                .setTitle(title).setArtist(artist).setAlbumTitle(if (state.isRadio) "" else track.album)
+                .setTitle(title).setArtist(artist).setAlbumTitle(track.album)
                 .setExtras(Bundle().apply {
                     putString(MainActivity.EXTRA_FILENAME, if (state.isRadio) "" else filename)
                     putLong(MainActivity.EXTRA_MODIFIED, track.modified)

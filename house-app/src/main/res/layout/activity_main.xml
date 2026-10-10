@@ -115,7 +115,7 @@
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:paddingHorizontal="4dp"
-            android:paddingVertical="8dp"
+            android:paddingVertical="2dp"
             android:background="@color/panel2">
 
             <Button
@@ -147,7 +147,7 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:paddingHorizontal="4dp"
-            android:paddingTop="8dp">
+            android:paddingTop="2dp">
 
             <Button
                 android:id="@+id/sortButton"

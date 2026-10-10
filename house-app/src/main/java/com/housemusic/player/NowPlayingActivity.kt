@@ -269,17 +269,12 @@ class NowPlayingActivity : HousePageActivity() {
     private fun updateMetadata(metadata: MediaMetadata?) {
         val itemMetadata = controller?.currentMediaItem?.mediaMetadata
         val sessionExtras = controller?.sessionExtras
-        if (sessionExtras?.getBoolean(HouseRuntime.EXTRA_CONNECTED) == true && sessionExtras.getBoolean(HouseRuntime.EXTRA_RADIO)) {
-            val radioExtras = itemMetadata?.extras
-            val station = sessionExtras.getString(HouseRuntime.EXTRA_RADIO_STATION_NAME).orEmpty()
-                .ifBlank { radioExtras?.getString(HouseRuntime.EXTRA_RADIO_STATION_NAME).orEmpty() }
-                .ifBlank { "Live radio" }
-            val broadcast = listOf(radioExtras?.getString(HousePlayer.EXTRA_RADIO_TRACK_ARTIST).orEmpty(),
-                radioExtras?.getString(HousePlayer.EXTRA_RADIO_TRACK_TITLE).orEmpty())
-                .map { it.trim() }.filter { it.isNotBlank() && it != station }.distinct().joinToString(" — ")
-            titleText.text = station
-            setOptionalText(albumArtistText, broadcast)
-            setOptionalText(albumText, "")
+        val radio = sessionExtras?.getBoolean(HouseRuntime.EXTRA_CONNECTED) == true && sessionExtras.getBoolean(HouseRuntime.EXTRA_RADIO)
+        findViewById<View>(R.id.localMetadataPanel).visibility = if (radio) View.GONE else View.VISIBLE
+        playerView.visibility = if (radio) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.radioDetailsScroll).visibility = if (radio) View.VISIBLE else View.GONE
+        if (radio) {
+            RadioNowPlayingView.bind(findViewById(R.id.radioDetailsScroll), sessionExtras!!)
             return
         }
         val filename = itemMetadata?.extras?.getString(MainActivity.EXTRA_FILENAME).orEmpty()

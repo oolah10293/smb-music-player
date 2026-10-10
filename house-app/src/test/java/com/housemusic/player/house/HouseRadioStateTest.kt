@@ -30,6 +30,40 @@ class HouseRadioStateTest {
         assertFalse(next.repeat)
     }
 
+    @Test fun richDetailsAndHistoryComeFromEachStateResponseAndAreOptional() {
+        val json = response("playing", "play")
+        json.getJSONObject("mpd").put("bitrate", 192).put("audio", "44100:24:2")
+            .getJSONObject("song").put("album", "The Album").put("stationName", "Official station name")
+        json.put("radioHistory", JSONObject("""{"lastPlayed":{"title":"Previous song","artist":"Previous artist",
+          "album":"Previous album","station":{"name":"Other station"},"startedAtEpoch":1791638000,"playedSeconds":11},"persistenceError":null}"""))
+        val first = HouseState.parse(json, queue)
+        assertEquals("New title", first.radioTitle)
+        assertEquals("New artist", first.radioArtist)
+        assertEquals("The Album", first.radioAlbum)
+        assertEquals("The Album", first.tracks.single().album)
+        assertEquals("Official station name", first.radioBroadcastName)
+        assertEquals(192, first.radioBitrate)
+        assertEquals("44100:24:2", first.radioAudio)
+        assertEquals("Previous song", first.lastRadioSong?.title)
+        assertEquals("Other station", first.lastRadioSong?.stationName)
+        assertEquals(1791638000.0, first.lastRadioSong!!.startedAtEpoch, 0.0)
+        assertTrue(first.radioHistorySupported)
+        json.getJSONObject("mpd").getJSONObject("song").put("title", "Next song")
+        val next = HouseState.parse(json, queue)
+        assertEquals(first.queueVersion, next.queueVersion)
+        assertEquals("Next song", next.radioTitle)
+        assertEquals(first.lastRadioSong, next.lastRadioSong)
+        json.getJSONObject("mpd").put("song", JSONObject.NULL)
+        val blank = HouseState.parse(json, queue)
+        assertEquals("", blank.radioTitle)
+        assertEquals("", blank.radioArtist)
+        assertEquals(first.lastRadioSong, blank.lastRadioSong)
+        json.remove("radioHistory")
+        val oldServer = HouseState.parse(json, queue)
+        assertFalse(oldServer.radioHistorySupported)
+        assertNull(oldServer.lastRadioSong)
+    }
+
     @Test fun radioPauseUsesSourceIntentWhileRawMpdIsStopped() {
         val paused = HouseState.parse(response("paused", "pause"), queue)
         assertEquals("stop", paused.transport)

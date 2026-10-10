@@ -26,11 +26,17 @@ class RadioLayoutTest {
             layout(root, widthDp, 640, density)
             val url = root.findViewById<EditText>(R.id.radioUrlEdit)
             assertFalse("URL field must wait for a tap", url.hasFocus())
+            val browser = LayoutInflater.from(context).inflate(R.layout.activity_main, null) as ViewGroup
+            browser.findViewById<View>(R.id.browserPanel).visibility = View.VISIBLE
+            layout(browser, widthDp, 640, density)
+            val search = browser.findViewById<EditText>(R.id.searchEdit)
+            assertEquals("Station URL must match the existing filename search", search.height, url.height)
+            assertTrue(url.height >= (40 * density).toInt())
             for (id in listOf(R.id.radioUrlEdit, R.id.radioAddButton)) {
                 val view = root.findViewById<View>(id)
                 val bounds = bounds(root, view)
                 assertTrue("$widthDp dp clipped control $id: $bounds", bounds.left >= 0 && bounds.right <= root.width)
-                assertTrue("$widthDp dp short tap target $id", view.height >= (48 * density).toInt())
+                if (id == R.id.radioAddButton) assertTrue("$widthDp dp short tap target $id", view.height >= (48 * density).toInt())
             }
             assertTrue(root.findViewById<View>(R.id.radioStationList).height > 100 * density)
         }

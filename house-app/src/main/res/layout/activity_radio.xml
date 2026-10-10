@@ -40,7 +40,7 @@
             android:id="@+id/radioUrlEdit"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minHeight="48dp"
+            android:minHeight="40dp"
             android:paddingHorizontal="10dp"
             android:background="@color/white"
             android:hint="Paste a station stream URL"

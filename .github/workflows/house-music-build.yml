@@ -79,19 +79,19 @@ jobs:
       - name: Package corresponding source archive
         run: |
           git rev-parse HEAD > SOURCE_COMMIT.txt
-          zip -qr HouseMusic-v0.2.1-source.zip . \
+          zip -qr HouseMusic-v0.3.0-source.zip . \
             -x '.gradle/*' '.kotlin/*' '.idea/*' '.cxx/*' 'build/*' \
                'gradle/wrapper/gradle-wrapper.jar' 'local.properties' '*.iml' \
-               'HouseMusic-v0.2.1-source.zip'
+               'HouseMusic-v0.3.0-source.zip'
 
       - name: Upload House Music APK
         uses: actions/upload-artifact@v4
         with:
-          name: HouseMusic-v0.2.1
+          name: HouseMusic-v0.3.0
           path: house-app/build/outputs/apk/debug/*.apk
 
       - name: Upload matching source and native dependencies
         uses: actions/upload-artifact@v4
         with:
-          name: HouseMusic-v0.2.1-source
-          path: house-app/HouseMusic-v0.2.1-source.zip
+          name: HouseMusic-v0.3.0-source
+          path: house-app/HouseMusic-v0.3.0-source.zip
