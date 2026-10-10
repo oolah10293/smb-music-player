@@ -6,6 +6,8 @@ The project accumulated several fixes where a seemingly harmless UI or performan
 
 ## v0.5.1 targeted device acceptance
 
+**Field status, 2026-10-09:** Bluetooth and Tailscale connectivity are user-confirmed fixed; data/battery use is acceptable in reported use. The cases below remain regression procedures, not a blanket claim that every lifecycle variant passed. [VALIDATION_STATE.md](VALIDATION_STATE.md) owns current outcomes. **Cellular-outage auto-resume is still failing** ([Issue #7](https://github.com/oolah10293/smb-music-player/issues/7)).
+
 Allow **Nearby devices** (Android 12+) and notifications when requested. Tailscale must already be installed, signed in, and have Android VPN approval. Hold the status text in Browser or Now Playing to inspect the bounded connection log (timestamps, events and exception classes; no SMB addresses/credentials).
 
 1. With Tailscale disconnected and the SMB share reachable only through it, cold-open SMB Music. Verify Tailscale connects and the folder loads. A log entry saying "requested" is not a pass; the share must actually load.
@@ -46,6 +48,8 @@ Allow **Nearby devices** (Android 12+) and notifications when requested. Tailsca
 - API-26 compatibility lint and standalone APK exclusion checks pass in CI.
 
 ## SMB outage recovery
+
+**Priority reproduction for Issue #7:** while stationary, keep the output connected and the phone locked; interrupt and restore the actual network/SMB path without reopening the app, unlocking or pressing Play. Repeat through multiple outages and an extended screen-off interval. Recovery must preserve queue/track/position, rebuild the normal buffer and resume automatically. An intentional Pause/Stop/Quit must still cancel automatic resume. The 2026-10-09 failures were recovery only after unlocking and, separately, recovery only after Play. Do not require road testing or phone interaction while driving.
 
 1. Start a track and note its position.
 2. Make the SMB route unavailable long enough to exhaust the local playback buffer.

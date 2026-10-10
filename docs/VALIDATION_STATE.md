@@ -4,12 +4,28 @@ This file separates behavior exercised in real use from source changes that stil
 
 ## SMB Music v0.5.1 — field corrections
 
+### User follow-up — 2026-10-09
+
+The user reports using SMB Music during a three-hour drive and confirms **Bluetooth and Tailscale connectivity are fixed**. The two post-split connectivity reports below are now user-accepted, rather than awaiting confirmation. This is feedback on the current installed SMB Music generation; the exact installed version/hash was not re-read during this report.
+
+Usage feedback is positive:
+
+- **Mobile data: 688 MB since October 1.**
+- **Battery: 10% since the last full charge.**
+- The user considers both figures "great". The earlier concern about excessive mobile data is no longer an active concern in this reported use.
+
+These counters have different reporting windows. Neither is a controlled measurement solely of the three-hour drive, and no per-hour rate or before/after efficiency improvement is inferred.
+
+**OPEN / high priority — unattended cellular-outage recovery:** during the same day's use, return to cellular service required unlocking the phone despite the app already being open; a second occurrence required pressing Play. The user reports a driving-safety impact from repeated phone interaction. Bluetooth/Tailscale connectivity acceptance does not close this separate failure. [Issue #7](https://github.com/oolah10293/smb-music-player/issues/7) owns the reproduction details, investigation and acceptance criteria; validate recovery while stationary with the screen locked. Other unreported regression cases remain pending.
+
+### Original reports and v0.5.1 corrections
+
 Reported against standalone SMB Music after the split:
 
 - **FAIL, 2026-10-03:** Tailscale stopped automatically connecting when HOUSE was removed. Review of v0.5.0 confirms the connect code was retained in MainActivity; removal of the broadcast itself is not the demonstrated cause. Service-only playback/resume/recovery had no connect request, and broadcast exceptions were swallowed.
 - **FAIL, 2026-10-03:** Bluetooth resume required unlocking the phone and bringing SMB Music forward. v0.5.0 used only a live service AudioDeviceCallback; foreground-promotion failure silently abandoned resume. No device log proves the initiating failure.
 
-v0.5.1 adds service/browser connect requests through one paced explicit Tailscale receiver path, a permission-gated Bluetooth broadcast wake path, a started foreground playback service, retained/retried resume intent and bounded diagnostics. Build evidence is in [RELEASE_0.5.1.md](RELEASE_0.5.1.md). **Device acceptance remains pending**; use the targeted checks in [TESTING.md](TESTING.md). Neither a successful broadcast nor a successful build establishes a working VPN or locked-screen resume.
+v0.5.1 adds service/browser connect requests through one paced explicit Tailscale receiver path, a permission-gated Bluetooth broadcast wake path, a started foreground playback service, retained/retried resume intent and bounded diagnostics. Build evidence is in [RELEASE_0.5.1.md](RELEASE_0.5.1.md). At release, phone acceptance was pending. The dated user follow-up above now confirms the reported Bluetooth and Tailscale connectivity corrections; it leaves cellular-outage recovery open. Keep [TESTING.md](TESTING.md) as the regression procedure. Build results alone are not device acceptance.
 
 ## House Music v0.1.0 independent checkpoint
 

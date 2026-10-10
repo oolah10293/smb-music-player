@@ -12,7 +12,7 @@ Holding Browser or Now Playing status opens the last 50 diagnostic events. Foreg
 
 ## Validation
 
-Local APK assembly and all **12 unit tests pass** (10 standalone-intent cases, 2 shared connect-throttle cases). API-26/NewApi lint passed. APK signature and manifest are verified, and the artifact contains no HOUSE package or native Snapclient. Full lint also passes with **0 errors and 73 warnings** (predominantly existing style/resource warnings); the pre-existing SMB data-source opt-in annotation was added, without changing transport behavior. Phone Bluetooth/VPN behavior remains **pending** in [TESTING.md](TESTING.md). These changes address concrete source gaps; they do not prove which gap caused every field failure.
+Local APK assembly and all **12 unit tests pass** (10 standalone-intent cases, 2 shared connect-throttle cases). API-26/NewApi lint passed. APK signature and manifest are verified, and the artifact contains no HOUSE package or native Snapclient. Full lint also passes with **0 errors and 73 warnings** (predominantly existing style/resource warnings); the pre-existing SMB data-source opt-in annotation was added, without changing transport behavior. Phone Bluetooth/VPN acceptance was pending at release. On **2026-10-09**, the user confirmed Bluetooth and Tailscale connectivity are fixed and reported acceptable data/battery use. Cellular-outage automatic resume remains an open field failure ([Issue #7](https://github.com/oolah10293/smb-music-player/issues/7)); see [VALIDATION_STATE.md](VALIDATION_STATE.md) for the dated evidence and exact usage-counter windows, and [TESTING.md](TESTING.md) for regression procedures. These changes address concrete source gaps; they do not prove which gap caused every field failure.
 
 ## Installation
 
