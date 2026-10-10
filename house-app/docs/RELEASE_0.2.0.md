@@ -15,7 +15,11 @@ Radio uses **house-audio-server v0.10.0 or newer**. The Pi remains the sole sour
 
 ## Verification
 
-Build, automated test, lint, signature and artifact checks are pending the final build. Record the completed results here before distributing the APK. The expected native receiver ABIs remain `arm64-v8a` and `armeabi-v7a`, with Snapcast, FLAC and Boost notices and matching sources.
+Local `assembleDebug testDebugUnitTest lintDebug --max-workers=2` passes: **44 tests in 12 suites, zero failures/errors/skips**. Full Android lint reports **zero errors and 153 warnings**. The [GitHub implementation build](https://github.com/oolah10293/smb-music-player/actions/runs/38057006033) also passes, including the API-26 compatibility gate.
+
+The delivered APK verifies with APK v2/v3 signatures and the same certificate as the delivered v0.1.1 APK. Manifest identity is `com.housemusic.player`, version 0.2.0/code 3, min API 26, target API 36. Both `arm64-v8a` and `armeabi-v7a` receiver binaries, Snapcast/FLAC/Boost notices and ZIP alignment pass verification. The APK contains no SMB engine or handoff API.
+
+New tests cover live paused/raw-stopped playback, retry pause, stopped/error restart, metadata updates without queue changes, return to local capabilities, delayed-autoplay cancellation after navigation, and Radio controls at 320/360/411 dp. Existing phone output and sync policy tests remain passing.
 
 The user installed server **v0.10.0** and confirmed hearing Radio Paradise, hearing WXDX, and returning to local music through the existing House Music app. These are server integration results; they do not establish acceptance of the v0.2.0 Radio page, station editing/deletion, notification changes, pause/retry behavior or hardware synchronization. The server-side field record is [house-audio-server PR #8](https://github.com/oolah10293/house-audio-server/pull/8#issuecomment-6098027152).
 
@@ -33,4 +37,6 @@ House Music **v0.1.0** used a different CI key that was not retained. If upgradi
 
 Distribute `HouseMusic-v0.2.0-source.zip` with `HouseMusic-v0.2.0.apk`. The source archive contains this independent Gradle project, pinned Snapcast/FLAC/Boost corresponding sources, license notices and native build scripts. It is not the SMB Music app.
 
-Artifact sizes, SHA-256 checksums and the implementation commit are pending the final build and publication. Record them here once those artifacts are fixed.
+Implementation commit: `bc33b88e6c6352bbf32e87dcd33952f79e617387`. This verification record is a later documentation-only update. The source archive records its exact checkout in `SOURCE_COMMIT.txt`; its application code matches the tested implementation.
+
+The delivered APK is **8,223,734 bytes**, SHA-256 `a886b8f85272548648753d80c8a2458631586dd859a99bb1d0310a6107809bc8`. Final source-archive size and checksum are recorded in [PR #8](https://github.com/oolah10293/smb-music-player/pull/8) after packaging, avoiding a self-referential archive checksum.
