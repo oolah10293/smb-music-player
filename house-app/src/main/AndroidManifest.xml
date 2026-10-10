@@ -24,6 +24,12 @@
         android:theme="@style/Theme.HouseMusic">
 
         <activity
+            android:name=".RadioActivity"
+            android:exported="false"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustResize"
+            android:screenOrientation="portrait" />
+
+        <activity
             android:name=".NowPlayingActivity"
             android:exported="false"
             android:screenOrientation="portrait" />

@@ -11,7 +11,6 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.text.InputType
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -26,12 +25,16 @@ import androidx.media3.session.SessionToken
 import androidx.media3.session.SessionCommand
 import androidx.media3.common.util.RepeatModeUtil
 import com.housemusic.player.house.HouseRuntime
+import com.housemusic.player.house.HousePlayer
 import androidx.media3.ui.PlayerView
 import com.google.common.util.concurrent.ListenableFuture
+import com.housemusic.player.house.HouseTransportControl
 import com.housemusic.player.media.AudioFormats
 
 @UnstableApi
-class NowPlayingActivity : AppCompatActivity() {
+class NowPlayingActivity : HousePageActivity() {
+    override val housePage = 1
+    private lateinit var houseTransport: HouseTransportControl
     private lateinit var playerView: PlayerView
     private lateinit var controlsPlayerView: PlayerView
     private lateinit var titleText: TextView
@@ -53,6 +56,7 @@ class NowPlayingActivity : AppCompatActivity() {
 
         override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
             updateMetadata(mediaMetadata)
+            updateStatus()
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -71,7 +75,11 @@ class NowPlayingActivity : AppCompatActivity() {
     private val controllerListener = object : MediaController.Listener {
         override fun onExtrasChanged(controller: MediaController, extras: Bundle) {
             if (isFinishing || isDestroyed) return
+            updateMetadata(controller.mediaMetadata)
             updateStatus()
+        }
+        override fun onDisconnected(controller: MediaController) {
+            if (::houseTransport.isInitialized) houseTransport.refresh()
         }
     }
 
@@ -82,6 +90,8 @@ class NowPlayingActivity : AppCompatActivity() {
 
         playerView = findViewById(R.id.playerView)
         controlsPlayerView = findViewById(R.id.controlsPlayerView)
+        houseTransport = HouseTransportControl(
+            controlsPlayerView.findViewById(R.id.housePlayPauseButton)) { controller }
         titleText = findViewById(R.id.nowPlayingText)
         albumArtistText = findViewById(R.id.albumArtistText)
         albumText = findViewById(R.id.albumText)
@@ -93,13 +103,6 @@ class NowPlayingActivity : AppCompatActivity() {
         muteOutputButton.setOnLongClickListener { showSyncAdjustment(); true }
         muteOutputButton.setOnClickListener {
             controller?.sendCustomCommand(SessionCommand(HouseRuntime.MUTE, Bundle.EMPTY), Bundle.EMPTY)
-        }
-
-        findViewById<Button>(R.id.browseButton).setOnClickListener {
-            val intent = Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-            startActivity(intent)
-            finish()
         }
 
         findViewById<Button>(R.id.quitButton).setOnClickListener {
@@ -182,11 +185,12 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun sortCurrentQueue(mode: SortMode) {
         val mediaController = controller ?: return
+        if (mediaController.sessionExtras.getBoolean(HouseRuntime.EXTRA_RADIO)) return
         queueSortButton.isEnabled = false
         val future = mediaController.sendCustomCommand(SessionCommand(HouseRuntime.SORT, Bundle.EMPTY), Bundle().apply { putString("mode", mode.name) })
         future.addListener({
             if (isFinishing || isDestroyed) return@addListener
-            queueSortButton.isEnabled = true
+            queueSortButton.isEnabled = !mediaController.sessionExtras.getBoolean(HouseRuntime.EXTRA_RADIO)
             if (runCatching { future.get().resultCode == 0 }.getOrDefault(false)) {
                 queueSortMode = mode
                 SortModeStore.save(this, mode)
@@ -197,7 +201,10 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private fun updateSortButton() {
-        queueSortButton.text = queueSortMode.label
+        val extras = controller?.sessionExtras
+        val radio = extras?.getBoolean(HouseRuntime.EXTRA_CONNECTED) == true && extras.getBoolean(HouseRuntime.EXTRA_RADIO)
+        queueSortButton.text = if (radio) "LIVE" else queueSortMode.label
+        queueSortButton.isEnabled = !radio
     }
 
     private fun quitCleanly() {
@@ -261,6 +268,15 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun updateMetadata(metadata: MediaMetadata?) {
         val itemMetadata = controller?.currentMediaItem?.mediaMetadata
+        val sessionExtras = controller?.sessionExtras
+        val radio = sessionExtras?.getBoolean(HouseRuntime.EXTRA_CONNECTED) == true && sessionExtras.getBoolean(HouseRuntime.EXTRA_RADIO)
+        findViewById<View>(R.id.localMetadataPanel).visibility = if (radio) View.GONE else View.VISIBLE
+        playerView.visibility = if (radio) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.radioDetailsScroll).visibility = if (radio) View.VISIBLE else View.GONE
+        if (radio) {
+            RadioNowPlayingView.bind(findViewById(R.id.radioDetailsScroll), sessionExtras!!)
+            return
+        }
         val filename = itemMetadata?.extras?.getString(MainActivity.EXTRA_FILENAME).orEmpty()
 
         // Use the server's track metadata, falling back to the queue filename when needed.
@@ -296,13 +312,29 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private fun updateStatus() {
+        houseTransport.refresh()
         val mediaController = controller ?: return
-        controlsPlayerView.setRepeatToggleModes(RepeatModeUtil.REPEAT_TOGGLE_MODE_ALL)
-        val muted = mediaController.sessionExtras.getBoolean(HouseRuntime.EXTRA_MUTED, true)
+        val extras = mediaController.sessionExtras
+        val radio = extras.getBoolean(HouseRuntime.EXTRA_CONNECTED) && extras.getBoolean(HouseRuntime.EXTRA_RADIO)
+        controlsPlayerView.showLiveRadioControls(radio)
+        updateSortButton()
+        val muted = extras.getBoolean(HouseRuntime.EXTRA_MUTED, true)
         muteOutputButton.setImageResource(if (muted) R.drawable.ic_output_muted else R.drawable.ic_output_on)
         muteOutputButton.contentDescription = getString(if (muted) R.string.unmute_output else R.string.mute_output)
         muteOutputButton.tooltipText = "${muteOutputButton.contentDescription}; hold for sync adjustment"
-        playbackStatus.text = mediaController.sessionExtras.getString(HouseRuntime.EXTRA_STATUS, "House Music — connecting")
+        val status = extras.getString(HouseRuntime.EXTRA_STATUS, "House Music — connecting").orEmpty()
+        val liveStatus = when (extras.getString(HouseRuntime.EXTRA_RADIO_STATUS)) {
+            "connecting" -> "Connecting"
+            "retrying" -> "Reconnecting"
+            "paused" -> "Paused · Play rejoins live"
+            "stopped" -> "Stopped"
+            "error" -> "Station unavailable"
+            else -> "Playing"
+        }
+        val radioError = extras.getString(HouseRuntime.EXTRA_RADIO_ERROR).orEmpty().take(160)
+        playbackStatus.text = if (radio) listOf("LIVE · $liveStatus", status,
+            radioError.takeIf { extras.getString(HouseRuntime.EXTRA_RADIO_STATUS) in setOf("error", "retrying") }.orEmpty())
+            .filter { it.isNotBlank() }.joinToString("\n") else status
     }
 
     private fun friendlyError(t: Throwable): String {
@@ -326,4 +358,17 @@ class NowPlayingActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+}
+
+/** Render both source modes, so returning to a folder restores every local control. */
+@UnstableApi
+internal fun PlayerView.showLiveRadioControls(radio: Boolean) {
+    setShowPreviousButton(!radio)
+    setShowNextButton(!radio)
+    setShowShuffleButton(!radio)
+    setRepeatToggleModes(if (radio) RepeatModeUtil.REPEAT_TOGGLE_MODE_NONE else RepeatModeUtil.REPEAT_TOGGLE_MODE_ALL)
+    // Keep the lower row's phone mute/sync positions, while live radio has no
+    // elapsed/duration display or seek bar that could imply time shifting.
+    findViewById<View>(androidx.media3.ui.R.id.exo_time)?.visibility = if (radio) View.INVISIBLE else View.VISIBLE
+    findViewById<View>(androidx.media3.ui.R.id.exo_progress)?.visibility = if (radio) View.INVISIBLE else View.VISIBLE
 }

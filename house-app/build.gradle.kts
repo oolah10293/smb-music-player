@@ -10,8 +10,8 @@ android {
         applicationId = "com.housemusic.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 5
+        versionName = "0.3.0"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         externalNativeBuild {
             cmake { arguments += "-DANDROID_STL=c++_static" }

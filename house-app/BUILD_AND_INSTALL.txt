@@ -1,18 +1,21 @@
-HOUSE MUSIC v0.1.1 — BUILD AND INSTALL
+HOUSE MUSIC v0.3.0 — BUILD AND INSTALL
 
 Application: House Music
 Application ID: com.housemusic.player
-Version name/code: 0.1.1 / 2
+Version name/code: 0.3.0 / 5
 Minimum Android: 8.0 (API 26)
 Compile/target SDK: 36
 
 INSTALL THE SUPPLIED APK
 
-Record the House server address and current route sync corrections before uninstalling
-House Music v0.1.0. Its CI signing key was not retained. Uninstall only House Music,
-then install HouseMusic-v0.1.1.apk; leave SMB Music installed. Re-enter the server
-address and use the gear for each route's -1000 to +1000 ms sync correction.
-The new signing key is retained privately for future in-place delivered updates.
+Install HouseMusic-v0.3.0.apk over the delivered v0.2.1, v0.2.0 or v0.1.1 APK. It uses the same
+retained signing key, so the update preserves the server address, route sync
+corrections and other app settings. Leave SMB Music installed.
+
+If still using House Music v0.1.0, record the server address and route sync
+corrections before uninstalling only House Music. Its CI signing key was not
+retained, so it cannot update in place. Install v0.3.0, re-enter the server address
+and use the gear for each route's -1000 to +1000 ms sync correction.
 
 On first launch, enter the Pi's LAN host. On the Browser page, Server opens
 the connection setting. Enter only the Pi hostname or IPv4 address. There
@@ -20,10 +23,20 @@ is no bundled deployment address.
 
 No smb:// prefix, port, folder, SMB username or SMB password belongs in this
 field. House Music uses HTTP 8787, MPD identity port 6600 and Snapcast 1704.
-Install house-audio-server v0.9.1 for library indexing. No S3 update is needed.
+Install house-audio-server v0.10.0 or newer for Radio. Library indexing requires
+v0.9.1 or newer. Last played requires server v0.11.0. No S3 update is needed.
 
-Bluetooth automation is retained. Manual Unmute now works with wired headphones
-and phone speakers too. Pull down on the browser file list to refresh its index.
+Swipe left/right through Library, Now Playing and Radio.
+On Radio, paste a direct HTTP(S) stream URL and tap Add & Play. The Pi saves and
+names the station for all controllers. Tap a saved station to play it, hold it to
+rename, or tap its X to remove the bookmark. Deleting the currently playing station
+does not stop its audio. Undo restores the bookmark. For local music, return to
+the library browser and choose a song or PLAY LIST.
+
+Radio is live: Pause stops the stream and Play rejoins the current broadcast.
+Seeking, Previous/Next, Shuffle, Repeat and queue sorting are unavailable for radio.
+Bluetooth automation, manual mute and the sync gear retain their existing behavior.
+Pull down on the browser file list to refresh its local music index.
 
 BUILD FROM SOURCE
 
@@ -56,9 +69,11 @@ SHA-256. Native preparation downloads checksum-pinned Snapcast, FLAC and Boost
 sources. These generated sources are excluded from Git and included in the
 matching CI source archive; preserve them when distributing the receiver.
 
-See docs/RELEASE_0.1.1.md for the verified CI artifacts, APK manifest identity,
-checksums and signing information. Delivered APKs reuse the retained debug signing key. CI builds use their own
-debug key; do not distribute them as in-place upgrades without the retained key.
+See docs/RELEASE_0.3.0.md for build evidence, APK manifest identity, checksums and
+signing information. Delivered APKs reuse the retained private debug signing key.
+CI builds use their own debug key; do not distribute them as in-place upgrades
+without signing with the retained key. Never include the private keystore in Git
+or a source archive.
 
 See docs/TESTING.md for physical acceptance. A successful build and API-26 lint
 do not establish an S8/J3 hardware pass or verified audio synchronization.
