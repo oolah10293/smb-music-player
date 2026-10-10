@@ -2,13 +2,13 @@
 
 House Music is the independent Android controller and synchronized phone receiver for the Pi's MPD/Snapcast session. The Pi owns the music files, queue and playback. Folders remain playlists.
 
-Current source: **v0.2.0**, application ID `com.housemusic.player`, Android **8.0 / API 26** or newer. It installs alongside **SMB Music** (`com.smbmusic.player`). Each app has its own settings, service and media session. There is no handoff, shared queue, shared playback position, SMB fallback or app-to-app control.
+Current source: **v0.2.1**, application ID `com.housemusic.player`, Android **8.0 / API 26** or newer. It installs alongside **SMB Music** (`com.smbmusic.player`). Each app has its own settings, service and media session. There is no handoff, shared queue, shared playback position, SMB fallback or app-to-app control.
 
-Build verification and exact artifacts belong in [RELEASE_0.2.0.md](docs/RELEASE_0.2.0.md). This update has **not yet passed physical phone testing**. The deployed server's radio playback and return to local music have been confirmed by the user; those results do not establish acceptance of this new APK.
+Build verification and exact artifacts belong in [RELEASE_0.2.1.md](docs/RELEASE_0.2.1.md). This update has **not yet passed physical phone testing**. The user confirmed URL entry, saved-station selection and playback on v0.2.0. This revision's four fixes still need phone acceptance.
 
 ## Install and connect
 
-1. Install `HouseMusic-v0.2.0.apk` over the delivered House Music v0.1.1 APK. The retained signing key permits an in-place update that keeps the server address and sync corrections. If still using v0.1.0, first record those values, uninstall only House Music, then install v0.2.0 and re-enter them; v0.1.0 used a different, unavailable CI key. Leave SMB Music installed.
+1. Install `HouseMusic-v0.2.1.apk` over the delivered House Music v0.2.0 or v0.1.1 APK. The retained signing key permits an in-place update that keeps the server address and sync corrections. If still using v0.1.0, first record those values, uninstall only House Music, then install v0.2.1 and re-enter them; v0.1.0 used a different, unavailable CI key. Leave SMB Music installed.
 2. Connect the phone to the home network and open **House Music**. Allow its notification permission when requested so the foreground controller is visible.
 3. On first launch, enter the Pi's LAN hostname or IPv4 address in **Server**. Enter the host alone, without a port, protocol or folder. No deployment address is bundled. The app uses the house service on port **8787**, checks MPD identity on **6600**, and receives Snapcast audio on **1704**.
 4. Browse a folder and select a song or **PLAY LIST**, or open Now Playing to control music already playing in the house. Open **Radio** to add or play an internet station.
@@ -20,6 +20,10 @@ Before replacing the combined app, record each phone's synchronization correctio
 If an older combined app is still installed on this phone, **Quit it before using House Music** so it does not remain a second controller/receiver. House Music cannot close it automatically; the apps are independent.
 
 ## Controls and behavior
+
+- Swipe left/right between **Library → Now Playing → Radio**. Page changes preserve the browser position and do not issue playback commands. Vertical scrolling, pull-down refresh, URL/search editing and seeking retain their own gestures.
+- A short folder name is centered between MP3s/Rap and Parent Folder. A longer name gets a row beneath them, aligned with the visible left edge of MP3s/Rap; truncation keeps the beginning visible.
+- Play/Pause uses confirmed server readiness and controller registration even while the standard media-controller timeline catches up after startup. Explicit Play retries interrupted audio focus on an unmuted phone; manual mute and other apps’ focus ownership are respected.
 
 - Radio accepts a direct HTTP or HTTPS audio stream URL. Tap **Add & Play** to save it on the Pi and start it for the house. The Pi generates a name from station metadata, with a URL-based fallback. A station's website address is not necessarily a playable stream URL.
 - Saved stations are shared across House Music controllers. Tap a station to play it; the current station is highlighted. Hold a station to rename it. The row's **×** deletes its saved bookmark without stopping a broadcast that is already playing; the brief **Undo** restores the bookmark.
@@ -42,6 +46,6 @@ HOUSE availability requires a directly connected physical Wi-Fi/Ethernet route t
 
 `house-app` is a separate Gradle root; building it does not build or package SMB Music. See [BUILD_AND_INSTALL.txt](BUILD_AND_INSTALL.txt) and [native/README.md](native/README.md).
 
-The APK bundles Snapclient for `arm64-v8a` and `armeabi-v7a`, built from pinned Snapcast v0.31.0, FLAC 1.4.3 and Boost 1.85.0 sources. Distribute the matching **`HouseMusic-v0.2.0-source.zip`** with the APK: it includes the native sources, build scripts and notices required for the bundled components. License notices also ship in the APK. No license has been selected for the original app code; third-party components retain their own licenses.
+The APK bundles Snapclient for `arm64-v8a` and `armeabi-v7a`, built from pinned Snapcast v0.31.0, FLAC 1.4.3 and Boost 1.85.0 sources. Distribute the matching **`HouseMusic-v0.2.1-source.zip`** with the APK: it includes the native sources, build scripts and notices required for the bundled components. License notices also ship in the APK. No license has been selected for the original app code; third-party components retain their own licenses.
 
 The shared product contract is [CENTRAL_PLAYBACK.md](https://github.com/oolah10293/smb-music-player/blob/main/docs/CENTRAL_PLAYBACK.md). App-specific physical checks are in [TESTING.md](docs/TESTING.md), and network/storage details are in [PRIVACY_AND_SECURITY.md](docs/PRIVACY_AND_SECURITY.md). DSP, per-node crossover/volume controls and an always-visible diagnostic mini-log remain separate work.

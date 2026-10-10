@@ -16,7 +16,6 @@ import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -39,7 +38,8 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 @UnstableApi
-class MainActivity : AppCompatActivity() {
+class MainActivity : HousePageActivity() {
+    override val housePage = 0
     private lateinit var executor: ExecutorService
 
     private lateinit var connectionPanel: LinearLayout
@@ -193,14 +193,7 @@ class MainActivity : AppCompatActivity() {
             playCurrentFolder(null)
         }
 
-        findViewById<Button>(R.id.nowPlayingButton).setOnClickListener {
-            openNowPlaying()
-        }
 
-        findViewById<Button>(R.id.radioButton).setOnClickListener {
-            hideSearchKeyboard()
-            startActivity(Intent(this, RadioActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-        }
 
         sortButton.setOnClickListener {
             sortMode = sortMode.next()
@@ -510,7 +503,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openNowPlaying() {
-        startActivity(Intent(this, NowPlayingActivity::class.java))
+        startActivity(Intent(this, NowPlayingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
     }
 
     private fun showHouseDefault(extras: Bundle) {

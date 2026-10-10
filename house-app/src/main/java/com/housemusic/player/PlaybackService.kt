@@ -161,7 +161,7 @@ class PlaybackService : MediaLibraryService() {
             }
             val result = MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
                 .setAvailableSessionCommands(commands.build())
-            if (controller.packageName == GARMIN_CONNECT_PACKAGE) {
+            if (controller.packageName == packageName || controller.packageName == GARMIN_CONNECT_PACKAGE) {
                 result.setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS)
             }
             return result.build()

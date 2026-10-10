@@ -117,8 +117,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
     private var defaultFolder = ""
     @Volatile private var commandError: String? = null
     private var pendingCommand: SettableFuture<SessionResult>? = null
-    private var focusAllowed = false
-    private var requestFocusWhenReady = !muted
+    private val focusRecovery = HouseFocusRecovery(muted)
     private fun bluetoothDevices(): Set<Int> = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
         .filter { it.isSink && it.type in setOf(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
             AudioDeviceInfo.TYPE_BLE_HEADSET, AudioDeviceInfo.TYPE_BLE_SPEAKER,
@@ -155,8 +154,8 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
         .setOnAudioFocusChangeListener({ change ->
             if (closed.get()) return@setOnAudioFocusChangeListener
-            focusAllowed = !muted && change == AudioManager.AUDIOFOCUS_GAIN
-            if (!focusAllowed) receiver.close()
+            focusRecovery.focusChanged(change == AudioManager.AUDIOFOCUS_GAIN)
+            if (!focusRecovery.allowed) receiver.close()
             reconcileOutput()
         }, main).build()
     private val noisy = object : BroadcastReceiver() {
@@ -186,6 +185,8 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         putString(EXTRA_STATUS, commandError ?: status)
         putString(EXTRA_DEFAULT, if (connected) defaultFolder else "")
         putBoolean(EXTRA_CONNECTED, connected && registered && homePresent)
+        putBoolean(EXTRA_CAN_PLAY, canControl && (state.tracks.isNotEmpty() || state.isRadio))
+        putBoolean(EXTRA_PLAYING, transportPlaying())
         putLong(EXTRA_CONNECTION_REVISION, connectionRevision)
         putBoolean(EXTRA_BLUETOOTH, bluetoothConnected)
         putInt(EXTRA_SYNC_OFFSET, requestedOffset())
@@ -321,10 +322,9 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         if (closed.get()) return
         outputPolicy.requestMute(value)
         muted = outputPolicy.muted
-        requestFocusWhenReady = !muted
+        focusRecovery.setMuted(muted)
         if (muted) {
             receiver.close()
-            focusAllowed = false
             audio.abandonAudioFocusRequest(focus)
         }
         reconcileOutput()
@@ -332,11 +332,10 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
 
     private fun reconcileOutput() {
         if (closed.get()) return
-        if (requestFocusWhenReady && !muted && homePresent && connected && registered && state.ready) {
-            requestFocusWhenReady = false
-            focusAllowed = audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        focusRecovery.requestIfReady(homePresent && connected && registered && state.ready) {
+            audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         }
-        if (!homePresent || muted || !focusAllowed || !state.ready) receiver.close()
+        if (!homePresent || muted || !focusRecovery.allowed || !state.ready) receiver.close()
         else if (registered) receiver.start(api.endpoint, rendererId,
             receiver.timing.effectiveOffset(requestedOffset()))
         outputChanged()
@@ -353,7 +352,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             !state.ready -> "HOUSE — server starting"
             !registered -> "HOUSE — controller reconnecting"
             muted -> "HOUSE — output muted"
-            !focusAllowed -> "HOUSE — output interrupted"
+            !focusRecovery.allowed -> "HOUSE — output interrupted"
             !receiver.ready -> "HOUSE — ${receiver.error ?: "audio connecting"}"
             else -> "HOUSE — output on"
         }
@@ -382,6 +381,13 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         pendingCommand = result
         commandError = null
         outputPolicy.transportChanged()
+        // A deliberate Play is a fresh request to hear audio, including after a
+        // denied or lost Android focus request. Never change the manual mute choice.
+        if (path == "/play" || path == "/radio/play" ||
+            (path == "/queue/replace" && body.optBoolean("play"))) {
+            focusRecovery.explicitPlay()
+            reconcileOutput()
+        }
         val epoch = generation.get()
         controls.execute {
             var code = SessionError.ERROR_INVALID_STATE
@@ -416,7 +422,11 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         return result
     }
 
+    private fun transportPlaying() = if (state.isRadio) state.radioPlayIntent == "play" &&
+        state.radioStatus in setOf("playing", "connecting", "retrying") else state.transport == "play"
+
     fun custom(sessionCommand: SessionCommand, args: Bundle): ListenableFuture<SessionResult> = when (sessionCommand.customAction) {
+        TOGGLE_PLAY -> command(if (transportPlaying()) "/pause" else "/play", JSONObject())
         MUTE -> { setMuted(!muted); Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS)) }
         SYNC -> {
             val offset = args.getInt("offsetMs", Int.MAX_VALUE)
@@ -477,7 +487,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         connected = false
         registered = false
         muted = true
-        requestFocusWhenReady = false
+        focusRecovery.setMuted(true)
         state = HouseState()
         pendingCommand?.set(SessionResult(SessionError.ERROR_INVALID_STATE))
         pendingCommand = null
@@ -504,6 +514,8 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         const val EXTRA_STATUS = "house.status"
         const val EXTRA_DEFAULT = "house.default"
         const val EXTRA_CONNECTED = "house.connected"
+        const val EXTRA_CAN_PLAY = "house.canPlay"
+        const val EXTRA_PLAYING = "house.playing"
         const val EXTRA_CONNECTION_REVISION = "house.connectionRevision"
         const val EXTRA_BLUETOOTH = "house.bluetooth"
         const val EXTRA_SYNC_OFFSET = "house.syncOffset"
@@ -521,6 +533,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         const val SORT = "house.sort"
         const val DEFAULT = "house.defaultFolder"
         const val RADIO_PLAY = "house.radioPlay"
-        val CUSTOM_COMMANDS = listOf(MUTE, PLAY_LIST, SORT, DEFAULT, SYNC, RADIO_PLAY)
+        const val TOGGLE_PLAY = "house.togglePlay"
+        val CUSTOM_COMMANDS = listOf(MUTE, PLAY_LIST, SORT, DEFAULT, SYNC, RADIO_PLAY, TOGGLE_PLAY)
     }
 }

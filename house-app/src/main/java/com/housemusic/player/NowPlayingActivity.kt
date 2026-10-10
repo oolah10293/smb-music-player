@@ -11,7 +11,6 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.text.InputType
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -29,10 +28,13 @@ import com.housemusic.player.house.HouseRuntime
 import com.housemusic.player.house.HousePlayer
 import androidx.media3.ui.PlayerView
 import com.google.common.util.concurrent.ListenableFuture
+import com.housemusic.player.house.HouseTransportControl
 import com.housemusic.player.media.AudioFormats
 
 @UnstableApi
-class NowPlayingActivity : AppCompatActivity() {
+class NowPlayingActivity : HousePageActivity() {
+    override val housePage = 1
+    private lateinit var houseTransport: HouseTransportControl
     private lateinit var playerView: PlayerView
     private lateinit var controlsPlayerView: PlayerView
     private lateinit var titleText: TextView
@@ -76,6 +78,9 @@ class NowPlayingActivity : AppCompatActivity() {
             updateMetadata(controller.mediaMetadata)
             updateStatus()
         }
+        override fun onDisconnected(controller: MediaController) {
+            if (::houseTransport.isInitialized) houseTransport.refresh()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,6 +90,8 @@ class NowPlayingActivity : AppCompatActivity() {
 
         playerView = findViewById(R.id.playerView)
         controlsPlayerView = findViewById(R.id.controlsPlayerView)
+        houseTransport = HouseTransportControl(
+            controlsPlayerView.findViewById(R.id.housePlayPauseButton)) { controller }
         titleText = findViewById(R.id.nowPlayingText)
         albumArtistText = findViewById(R.id.albumArtistText)
         albumText = findViewById(R.id.albumText)
@@ -96,13 +103,6 @@ class NowPlayingActivity : AppCompatActivity() {
         muteOutputButton.setOnLongClickListener { showSyncAdjustment(); true }
         muteOutputButton.setOnClickListener {
             controller?.sendCustomCommand(SessionCommand(HouseRuntime.MUTE, Bundle.EMPTY), Bundle.EMPTY)
-        }
-
-        findViewById<Button>(R.id.browseButton).setOnClickListener {
-            val intent = Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-            startActivity(intent)
-            finish()
         }
 
         findViewById<Button>(R.id.quitButton).setOnClickListener {
@@ -317,6 +317,7 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private fun updateStatus() {
+        houseTransport.refresh()
         val mediaController = controller ?: return
         val extras = mediaController.sessionExtras
         val radio = extras.getBoolean(HouseRuntime.EXTRA_CONNECTED) && extras.getBoolean(HouseRuntime.EXTRA_RADIO)

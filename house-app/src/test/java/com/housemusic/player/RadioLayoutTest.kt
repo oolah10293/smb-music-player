@@ -26,7 +26,7 @@ class RadioLayoutTest {
             layout(root, widthDp, 640, density)
             val url = root.findViewById<EditText>(R.id.radioUrlEdit)
             assertFalse("URL field must wait for a tap", url.hasFocus())
-            for (id in listOf(R.id.radioLibraryButton, R.id.radioNowPlayingButton, R.id.radioUrlEdit, R.id.radioAddButton)) {
+            for (id in listOf(R.id.radioUrlEdit, R.id.radioAddButton)) {
                 val view = root.findViewById<View>(id)
                 val bounds = bounds(root, view)
                 assertTrue("$widthDp dp clipped control $id: $bounds", bounds.left >= 0 && bounds.right <= root.width)

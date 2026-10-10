@@ -7,6 +7,16 @@
     android:focusableInTouchMode="true"
     android:background="@color/black">
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="6dp"
+        android:gravity="center"
+        android:text="Library  ·  Now Playing  ·  Radio  →"
+        android:contentDescription="Swipe left or right between Library, Now Playing, and Radio"
+        android:textSize="11sp"
+        android:textColor="@color/text_secondary" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -19,17 +29,11 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="House Music"
+            android:text="House Music · Library"
             android:textStyle="bold"
             android:textColor="@color/white"
             android:textSize="20sp" />
 
-        <Button
-            android:id="@+id/radioButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Radio"
-            android:textSize="12sp" />
 
         <Button
             android:id="@+id/serverSettingsButton"
@@ -105,7 +109,7 @@
         android:visibility="gone">
 
         <!-- AppCompat backgrounds inset 4dp; visible button edges align with Search at 8dp. -->
-        <LinearLayout
+        <com.housemusic.player.ui.FolderHeaderLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
@@ -123,11 +127,9 @@
 
             <TextView
                 android:id="@+id/pathText"
-                android:layout_width="0dp"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginHorizontal="6dp"
-                android:ellipsize="start"
+                android:ellipsize="end"
                 android:singleLine="true"
                 android:textColor="@color/white"
                 android:textSize="13sp" />
@@ -138,7 +140,7 @@
                 android:layout_height="wrap_content"
                 android:text="Parent Folder"
                 android:textSize="12sp" />
-        </LinearLayout>
+        </com.housemusic.player.ui.FolderHeaderLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -164,14 +166,6 @@
                 android:text="Play List"
                 android:textSize="11sp" />
 
-            <Button
-                android:id="@+id/nowPlayingButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="6dp"
-                android:text="Now Playing"
-                android:textSize="11sp" />
         </LinearLayout>
 
         <FrameLayout

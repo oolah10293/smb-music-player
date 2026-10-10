@@ -1,12 +1,19 @@
-# House Music v0.2.0 physical acceptance
+# House Music v0.2.1 physical acceptance
 
-All checks below are **pending on the v0.2.0 APK**. Record phone model, Android version, output route, server version and the APK version with results. Prior combined-app observations are preserved in [HOUSE_VALIDATION.md](../../docs/HOUSE_VALIDATION.md), not promoted to new-build passes. Server v0.10.0 playback of Radio Paradise and WXDX and return to local music were confirmed by the user through the pre-existing app/API workflow. Those results do not validate the new Radio page.
+The user confirmed URL entry, saved-station selection and playback in v0.2.0 (issue #9). The checks below are **pending on v0.2.1**; automated evidence is recorded separately in [RELEASE_0.2.1.md](RELEASE_0.2.1.md). Record phone, Android version, output route and server version.
+
+## Four required fixes
+
+1. **#4 Folder alignment:** open short and long folder names. Short names center in the MP3s/Rap–Parent Folder gap; long names move below the buttons with their beginning aligned to the visible MP3s/Rap left edge. Check 320dp and larger-text layouts.
+2. **#5 Output interrupted:** with Bluetooth attached and a stopped session, let another audio app take focus. Open House Music and press Play. An unmuted phone requests focus again without Quit/reopen. A denied request remains interrupted until Android grants it or the user retries. No background polling may repeatedly steal focus. Repeat after manually muting; Play must leave that phone muted.
+3. **#6 Startup Play:** finish passive-node listening so MPD retains a stopped queue, then launch House Music. Once the server is ready and this controller is attached, Play must enable on the same screen. Tap once to start the retained session. Repeat after temporary network/lease loss, without Quit/reopen, and confirm controls stay disabled while authority is unavailable.
+4. **#9 Swipes:** swipe left Library → Now Playing → Radio and right back. Confirm browser folder/search/scroll are retained. Swipe across a file/station row without playing it. Vertical list scrolling and pull-down refresh must work; URL/search editing, control taps and seek dragging must not change pages. At the first/last page an outward swipe does nothing. Return from Radio during an Add & Play lookup; the delayed lookup must not start playback after leaving.
 
 ## Radio page
 
-Use house-audio-server v0.10.0 or newer. Update the delivered v0.1.1 APK in place and confirm the server address, route sync corrections and existing browser settings survive. No S3 firmware update is required.
+Use house-audio-server v0.10.0 or newer. Update the delivered v0.2.0 or v0.1.1 APK in place and confirm the server address, route sync corrections and existing browser settings survive. No S3 firmware update is required.
 
-1. Open **Radio** from the library browser. Confirm station loading, an empty-list explanation when appropriate, and usable navigation back to the library and Now Playing. The keyboard should open when the URL field is tapped, not merely when the page opens.
+1. Swipe left through Now Playing to **Radio**. Confirm station loading, an empty-list explanation when appropriate, and usable navigation back to the library and Now Playing. The keyboard should open when the URL field is tapped, not merely when the page opens.
 2. Paste `https://stream.radioparadise.com/rock-192` and tap **Add & Play**. Confirm a generated name, one saved row, the current-station indication, and audible playback on the house receivers. Station lookup may take several seconds; repeated taps must not create duplicate writes.
 3. Add `https://stream.revma.ihrhls.com/zc2033` (WXDX / 105.9 The X). Confirm playback switches to it. Tap the Radio Paradise row and confirm it switches back. Open another House Music controller and confirm it sees the shared stations and current selection.
 4. Submit an already-saved URL. Confirm it reuses the saved station instead of adding a duplicate. Hold a station, rename it, then reload the page on both phones and confirm the shared name. Empty or whitespace-only names must not be saved.
@@ -62,11 +69,11 @@ Manual Unmute must now work without Bluetooth, including the headphone jack. Ver
 - Exercise lock-screen/media controls and incoming audio-focus interruptions. Local renderer interruption must not masquerade as a global Pause/Stop button press.
 - Run the same launch/basic output checks on the S8 and, if used, the Android 8 J3. API compatibility lint alone is insufficient hardware evidence.
 
-Build/test/lint and artifact evidence belongs in [RELEASE_0.2.0.md](RELEASE_0.2.0.md). Do not revive cross-app handoff tests: transfer was removed from the product.
+Build/test/lint and artifact evidence belongs in [RELEASE_0.2.1.md](RELEASE_0.2.1.md). Do not revive cross-app handoff tests: transfer was removed from the product.
 
 ## Reported field issues — 2026-10-02
 
-These are historical observations that motivated v0.1.1. The fixes and automated evidence are recorded in [RELEASE_0.1.1.md](RELEASE_0.1.1.md); they are not new v0.2.0 physical passes. SMB Music changes do not change the House app.
+These are historical observations that motivated v0.1.1. The fixes and automated evidence are recorded in [RELEASE_0.1.1.md](RELEASE_0.1.1.md); they are not new v0.2.1 physical passes. SMB Music changes do not change the House app.
 
 - New files added to Shared Music do not appear in the browser; refresh/indexing cause uninvestigated.
 - No visible mute/output icon in the supplied Now Playing screenshot. The earlier instruction to hold that icon is unusable on the delivered screen. Keep Bluetooth automation when restoring a working manual control, including wired output.

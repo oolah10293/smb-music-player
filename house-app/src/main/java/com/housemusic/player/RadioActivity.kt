@@ -17,7 +17,6 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -40,7 +39,8 @@ import java.util.concurrent.Executors
 
 /** Station bookmarks live on the Pi. Playback always goes through the house session. */
 @UnstableApi
-class RadioActivity : AppCompatActivity() {
+class RadioActivity : HousePageActivity() {
+    override val housePage = 2
     private val executor = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var urlEdit: EditText
@@ -100,15 +100,6 @@ class RadioActivity : AppCompatActivity() {
         }
         refresh.setOnRefreshListener { loadStations() }
         findViewById<Button>(R.id.radioUndoButton).setOnClickListener { undoDelete() }
-        findViewById<Button>(R.id.radioLibraryButton).setOnClickListener {
-            hideKeyboard()
-            startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-            finish()
-        }
-        findViewById<Button>(R.id.radioNowPlayingButton).setOnClickListener {
-            hideKeyboard()
-            startActivity(Intent(this, NowPlayingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
-        }
         updateControls()
         ContextCompat.startForegroundService(this, Intent(this, PlaybackService::class.java))
         controllerFuture = MediaController.Builder(this,
