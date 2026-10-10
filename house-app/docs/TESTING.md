@@ -90,7 +90,7 @@ These are historical observations that motivated v0.1.1. The fixes and automated
 
 ## v0.3.0 radio details and spacing acceptance
 
-Install server v0.11.0 and app v0.3.0. Retain the existing swipe, focus-recovery,
+Install server v0.11.2 and app v0.3.0. Retain the existing swipe, focus-recovery,
 stopped-startup, phone mute/sync and local-queue checks above.
 
 1. Play a station that supplies song metadata. Now Playing should show station,
@@ -112,5 +112,9 @@ stopped-startup, phone mute/sync and local-queue checks above.
 4. Compare Radio's URL entry to Library's filename search: both are 40dp high.
    Test text entry, paste, horizontal page swipes and vertical scrolling/refresh.
 
-The user confirmed v0.2.1 swiping and station add/save/play. These are retained
-field observations, not physical validation of the new v0.3.0 changes.
+The user confirmed v0.2.1 swiping and station add/save/play. On 2026-10-10, after
+server v0.11.2 fixed both observed WXDX metadata formats, the user reported:
+“ok, that seems to work pretty well. The UI looks really good.” This is positive
+field feedback for the metadata fix and UI. Do not treat that general confirmation
+as individual execution of every timing, restart, app-closed or focus/startup case
+above; retain those detailed checks for targeted verification if needed.

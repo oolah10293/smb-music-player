@@ -4,7 +4,7 @@ House Music is the independent Android controller and synchronized phone receive
 
 Current source: **v0.3.0**, application ID `com.housemusic.player`, Android **8.0 / API 26** or newer. It installs alongside **SMB Music** (`com.smbmusic.player`). Each app has its own settings, service and media session. There is no handoff, shared queue, shared playback position, SMB fallback or app-to-app control.
 
-Build verification and exact artifacts belong in [RELEASE_0.3.0.md](docs/RELEASE_0.3.0.md). The user confirmed swiping and station add/save/play on v0.2.1. This revision's richer details, Last played, and spacing changes still need physical phone acceptance. Earlier focus/startup recovery fixes remain covered by regression tests, with physical acceptance still pending.
+Build verification and exact artifacts belong in [RELEASE_0.3.0.md](docs/RELEASE_0.3.0.md). The user confirmed swiping and station add/save/play on v0.2.1. **Field confirmation, 2026-10-10:** after the companion server v0.11.2 WXDX fix, the user reports it works well and the UI looks really good. Keep the same v0.3.0 APK. Detailed history timing/restart and earlier focus/startup checks have automated coverage but no separate physical confirmation yet.
 
 ## Install and connect
 

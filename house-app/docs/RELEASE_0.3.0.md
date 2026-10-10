@@ -1,7 +1,8 @@
 # House Music v0.3.0
 
 Version **0.3.0**, code **5**, package `com.housemusic.player`, Android **8.0 / API 26+**,
-target SDK **36**. Companion server: **house-audio-server v0.11.0**.
+target SDK **36**. Current companion server: **house-audio-server v0.11.2**;
+v0.11.0 was the original history release. The APK is unchanged by the server fixes.
 
 ## All four requested changes
 
@@ -35,8 +36,16 @@ recognition or retrospective recovery of songs played before this update.
   without a phone, short/blank metadata, station/local switching, persistence,
   checkpoint recovery, paused/stalled intervals and disk failures.
 
-The user confirmed v0.2.1 swiping and station add/save/play. This revision's new
-features still need phone/Pi acceptance; no physical hardware pass is claimed.
+The user confirmed v0.2.1 swiping and station add/save/play. Initial v0.3.0 field
+testing exposed raw WXDX metadata; server v0.11.1 addressed the first format but
+missed another. Server v0.11.2 handles both, with **192 server tests passing** and
+successful GitHub CI, including exact live song and station-announcement captures.
+
+**Field confirmation, 2026-10-10:** after the v0.11.2 fix, the user reported:
+“ok, that seems to work pretty well. The UI looks really good.” Record this as
+good observed behavior after the metadata fix and positive UI acceptance. Detailed
+history timing/app-closed/restart cases and earlier focus/startup checks have no
+separate physical confirmation yet.
 See [TESTING.md](TESTING.md#v030-radio-details-and-spacing-acceptance).
 
 ## Signed artifact and source
@@ -52,6 +61,6 @@ See [TESTING.md](TESTING.md#v030-radio-details-and-spacing-acceptance).
   It includes all app sources, pinned native dependencies and build scripts.
   `SOURCE_COMMIT.txt` identifies the exact revision. Private signing keys are excluded.
 
-Install the server v0.11.0 update first, then install this APK over the delivered
+Install the server v0.11.2 update first, then install this APK over the delivered
 v0.2.1 APK. Saved stations, phone settings and sync corrections are retained.
 No S3 firmware update is required. Source/checksum provenance is recorded on PR #8.
