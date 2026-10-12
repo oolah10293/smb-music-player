@@ -14,17 +14,28 @@ import androidx.media3.common.util.UnstableApi
 import androidx.viewpager2.widget.ViewPager2
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Before
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.LooperMode
+import org.robolectric.shadows.ShadowChoreographer
 import java.time.Duration
 
 @UnstableApi
 @RunWith(RobolectricTestRunner::class)
+@LooperMode(LooperMode.Mode.PAUSED)
 @Config(sdk = [28], qualifiers = "w500dp-h800dp-mdpi")
 class HousePagerTest {
+    @Before fun useControlledAnimationFrames() {
+        // Default Robolectric vsync auto-advances time and can complete an entire
+        // fling in a single looper drain, hiding the interruption boundary.
+        ShadowChoreographer.setPaused(true)
+        ShadowChoreographer.setFrameDelay(Duration.ofMillis(16))
+    }
+
     @Test fun draggingMovesThePageBeforeReleaseAndCanBeReversed() {
         val activity = host()
         val pager = activity.pager
@@ -56,8 +67,11 @@ class HousePagerTest {
             }
         })
         swipe(pager, 460f, 30f)
-        // Do not advance the test looper: Robolectric can drain the entire fling
-        // in that step. The next DOWN must reach the still-settling pager.
+        // Allow the snap helper to start, but never drain the whole animation.
+        repeat(3) {
+            if (pager.scrollState == ViewPager2.SCROLL_STATE_DRAGGING)
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+        }
         assertEquals("width=${pager.width}, states=$states, positions=$positions",
             ViewPager2.SCROLL_STATE_SETTLING, pager.scrollState)
         // Do not wait for the first animation: reproduce the user's rapid second swipe.
@@ -113,7 +127,7 @@ class HousePagerTest {
             View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY))
         view.layout(0, 0, 500, 800)
     }
-    private fun settle() { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2)) }
+    private fun settle() { repeat(100) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16)) } }
     private fun swipe(pager: ViewPager2, from: Float, to: Float) {
         val down = SystemClock.uptimeMillis()
         send(pager, down, MotionEvent.ACTION_DOWN, from, 300f)
