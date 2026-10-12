@@ -56,11 +56,10 @@ class HousePagerTest {
             }
         })
         swipe(pager, 460f, 30f)
-        // ViewPager2 publishes the fling target on its next scroll frame.
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+        // Do not advance the test looper: Robolectric can drain the entire fling
+        // in that step. The next DOWN must reach the still-settling pager.
         assertEquals("width=${pager.width}, states=$states, positions=$positions",
             ViewPager2.SCROLL_STATE_SETTLING, pager.scrollState)
-        assertEquals(1, pager.currentItem)
         // Do not wait for the first animation: reproduce the user's rapid second swipe.
         swipe(pager, 460f, 30f)
         settle()
@@ -122,7 +121,8 @@ class HousePagerTest {
         send(pager, down, MotionEvent.ACTION_UP, to, 301f)
     }
     private fun send(view: View, down: Long, action: Int, x: Float, y: Float) {
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+        if (action != MotionEvent.ACTION_DOWN)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
         val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0)
         try { view.dispatchTouchEvent(event) } finally { event.recycle() }
     }
