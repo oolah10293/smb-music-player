@@ -41,6 +41,20 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug testDebugUnitTest --stacktrace --max-workers=2
 
+      - name: Print failing unit test details
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for path in Path("build/test-results/testDebugUnitTest").glob("TEST-*.xml"):
+              root = ET.parse(path).getroot()
+              for case in root.findall("testcase"):
+                  for failure in list(case.findall("failure")) + list(case.findall("error")):
+                      print(case.get("classname"), case.get("name"), failure.get("message"))
+                      print(failure.text)
+          PY
+
       - name: Check API 26 compatibility
         run: ./gradlew lintDebug -PapiCompatibilityCheck --stacktrace --max-workers=2
 

@@ -48,6 +48,9 @@ class HousePagerTest {
         val activity = host()
         val pager = activity.pager
         swipe(pager, 460f, 30f)
+        // ViewPager2 publishes the fling target on its next scroll frame.
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
+        assertEquals(ViewPager2.SCROLL_STATE_SETTLING, pager.scrollState)
         assertEquals(1, pager.currentItem)
         // Do not wait for the first animation: reproduce the user's rapid second swipe.
         swipe(pager, 460f, 30f)
