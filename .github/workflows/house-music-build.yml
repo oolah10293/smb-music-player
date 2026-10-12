@@ -41,6 +41,20 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug testDebugUnitTest --stacktrace --max-workers=2
 
+      - name: Print failing unit test details
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for path in Path("build/test-results/testDebugUnitTest").glob("TEST-*.xml"):
+              root = ET.parse(path).getroot()
+              for case in root.findall("testcase"):
+                  for failure in list(case.findall("failure")) + list(case.findall("error")):
+                      print(case.get("classname"), case.get("name"), failure.get("message"))
+                      print(failure.text)
+          PY
+
       - name: Check API 26 compatibility
         run: ./gradlew lintDebug -PapiCompatibilityCheck --stacktrace --max-workers=2
 
@@ -79,19 +93,34 @@ jobs:
       - name: Package corresponding source archive
         run: |
           git rev-parse HEAD > SOURCE_COMMIT.txt
-          zip -qr HouseMusic-v0.3.0-source.zip . \
+          zip -qr HouseMusic-v0.3.1-source.zip . \
             -x '.gradle/*' '.kotlin/*' '.idea/*' '.cxx/*' 'build/*' \
                'gradle/wrapper/gradle-wrapper.jar' 'local.properties' '*.iml' \
-               'HouseMusic-v0.3.0-source.zip'
+               'HouseMusic-v0.3.1-source.zip'
 
       - name: Upload House Music APK
         uses: actions/upload-artifact@v4
         with:
-          name: HouseMusic-v0.3.0
+          name: HouseMusic-v0.3.1
           path: house-app/build/outputs/apk/debug/*.apk
 
       - name: Upload matching source and native dependencies
         uses: actions/upload-artifact@v4
         with:
-          name: HouseMusic-v0.3.0-source
-          path: house-app/HouseMusic-v0.3.0-source.zip
+          name: HouseMusic-v0.3.1-source
+          path: house-app/HouseMusic-v0.3.1-source.zip
+
+
+      - name: Package public Android signing and verification utilities
+        run: |
+          mkdir -p signing-tools/lib64
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" signing-tools/
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" signing-tools/
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib64/libc++.so" signing-tools/lib64/
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging build/outputs/apk/debug/*.apk > signing-tools/apk-badging.txt
+
+      - name: Upload public signing utilities (no keys)
+        uses: actions/upload-artifact@v4
+        with:
+          name: HouseMusic-signing-tools
+          path: house-app/signing-tools/

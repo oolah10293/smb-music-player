@@ -36,6 +36,7 @@
 
         <activity
             android:name=".MainActivity"
+            android:launchMode="singleTop"
             android:exported="true"
             android:screenOrientation="portrait">
             <intent-filter>
@@ -56,3 +57,4 @@
     </application>
 
 </manifest>
+

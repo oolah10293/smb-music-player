@@ -1,0 +1,63 @@
+package com.housemusic.player
+
+import android.content.Context
+import android.graphics.Rect
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.ImageButton
+import androidx.fragment.app.Fragment
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.TimeBar
+
+/** Small page-local bridge: lookups never reach a neighbouring page's controls. */
+@UnstableApi
+abstract class HousePageFragment(private val layout: Int, internal val pageIndex: Int) : Fragment() {
+    protected val isSelectedPage get() = (activity as? HousePageActivity)?.pager?.currentItem == pageIndex
+    internal open fun onPagerSelectionChanged(selected: Boolean) = Unit
+    protected val pageContext: Context get() = requireContext()
+    protected val applicationContext: Context get() = requireContext().applicationContext
+    protected val window get() = requireActivity().window
+    protected val isFinishing get() = activity?.isFinishing != false
+    protected val isDestroyed get() = view == null || activity?.isDestroyed != false
+    protected fun <T : View> findViewById(id: Int): T = requireView().findViewById(id)
+    protected fun getSystemService(name: String): Any? = requireContext().getSystemService(name)
+    protected fun runOnUiThread(action: () -> Unit) { activity?.runOnUiThread(action) }
+
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
+        HouseGestureFrame(requireContext()).apply {
+            addView(inflater.inflate(layout, this, false))
+        }
+}
+
+/** Controls own their whole gesture; normal content uses the pager's native arbitration. */
+@UnstableApi
+internal class HouseGestureFrame(context: Context) : FrameLayout(context) {
+    private var controlGesture = false
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            controlGesture = isGestureControl(this, event.rawX.toInt(), event.rawY.toInt())
+        }
+        val handled = super.dispatchTouchEvent(event)
+        // Do this after child dispatch, because nested scrolling views may reset the flag on DOWN.
+        if (controlGesture) parent?.requestDisallowInterceptTouchEvent(true)
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            controlGesture = false
+        }
+        return handled
+    }
+
+    private fun isGestureControl(view: View, x: Int, y: Int): Boolean {
+        val bounds = Rect()
+        if (!view.getGlobalVisibleRect(bounds) || !bounds.contains(x, y)) return false
+        if (view is EditText || view is TimeBar || view is Button || view is ImageButton ||
+            view.id == R.id.controlsPlayerView) return true
+        return view is ViewGroup && (0 until view.childCount).any { isGestureControl(view.getChildAt(it), x, y) }
+    }
+}

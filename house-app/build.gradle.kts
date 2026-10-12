@@ -10,8 +10,8 @@ android {
         applicationId = "com.housemusic.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.3.0"
+        versionCode = 6
+        versionName = "0.3.1"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         externalNativeBuild {
             cmake { arguments += "-DANDROID_STL=c++_static" }
@@ -49,6 +49,7 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("org.json:json:20240303")
     implementation("androidx.appcompat:appcompat:1.8.0")
+    implementation("androidx.viewpager2:viewpager2:1.1.0")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.2.0")
 
@@ -56,3 +57,4 @@ dependencies {
     implementation("androidx.media3:media3-session:1.11.0")
 
 }
+
