@@ -40,6 +40,9 @@ open class HousePageActivity : AppCompatActivity() {
                 if (state == ViewPager2.SCROLL_STATE_DRAGGING) hideKeyboard()
             }
         })
+        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 30)
+        }
         if (savedInstanceState == null) pager.setCurrentItem(intent.getIntExtra(EXTRA_PAGE, 0).coerceIn(0, 2), false)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {

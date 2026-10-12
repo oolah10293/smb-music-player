@@ -80,16 +80,19 @@ class HousePagerTest {
     @Test fun activityRecreationRestoresSelectedPage() {
         val controller = Robolectric.buildActivity(PagerHost::class.java).setup()
         val activity = controller.get()
+        layout(activity.window.decorView)
         layout(activity.pager)
         activity.pager.setCurrentItem(2, false)
         settle()
         controller.recreate()
+        layout(controller.get().window.decorView)
         layout(controller.get().pager)
         settle()
         assertEquals(2, controller.get().pager.currentItem)
     }
 
     private fun host(): PagerHost = Robolectric.buildActivity(PagerHost::class.java).setup().get().also {
+        layout(it.window.decorView)
         layout(it.pager)
         settle()
         layout(it.pager)

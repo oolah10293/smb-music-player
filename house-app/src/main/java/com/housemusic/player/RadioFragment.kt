@@ -72,8 +72,6 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         executor = Executors.newSingleThreadExecutor()
-        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or
-            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         val root = findViewById<View>(R.id.radioRoot)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
@@ -82,7 +80,6 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio) {
             insets
         }
         ViewCompat.requestApplyInsets(root)
-        root.requestFocus()
         urlEdit = findViewById(R.id.radioUrlEdit)
         addButton = findViewById(R.id.radioAddButton)
         status = findViewById(R.id.radioStatus)

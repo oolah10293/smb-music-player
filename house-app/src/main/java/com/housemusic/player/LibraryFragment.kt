@@ -85,7 +85,6 @@ class LibraryFragment : HousePageFragment(R.layout.activity_main) {
         bindViews()
         sortMode = SortModeStore.load(pageContext)
         sortButton.text = sortMode.label
-        findViewById<View>(R.id.mainRoot).requestFocus()
         setupBrowser()
         setupConnection()
 
@@ -375,9 +374,6 @@ class LibraryFragment : HousePageFragment(R.layout.activity_main) {
     override fun onResume() {
         super.onResume()
         browserVisible = true
-        if (android.os.Build.VERSION.SDK_INT >= 33 && pageContext.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 30)
-        }
         if (!browseLoading) browse(currentUrl)
         syncSortModeFromStore()
         // Browse should never throw the keyboard up merely because the Activity was opened or
