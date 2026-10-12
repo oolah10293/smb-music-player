@@ -23,7 +23,7 @@ import java.time.Duration
 
 @UnstableApi
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(sdk = [28], qualifiers = "w500dp-h800dp-mdpi")
 class HousePagerTest {
     @Test fun draggingMovesThePageBeforeReleaseAndCanBeReversed() {
         val activity = host()
@@ -47,10 +47,19 @@ class HousePagerTest {
     @Test fun nextGestureInterruptsSettlingAndBothDirectionsReachTheNextPage() {
         val activity = host()
         val pager = activity.pager
+        val states = mutableListOf<Int>()
+        val positions = mutableListOf<String>()
+        pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageScrollStateChanged(state: Int) { states += state }
+            override fun onPageScrolled(position: Int, offset: Float, pixels: Int) {
+                positions += "$position:$offset"
+            }
+        })
         swipe(pager, 460f, 30f)
         // ViewPager2 publishes the fling target on its next scroll frame.
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16))
-        assertEquals(ViewPager2.SCROLL_STATE_SETTLING, pager.scrollState)
+        assertEquals("width=${pager.width}, states=$states, positions=$positions",
+            ViewPager2.SCROLL_STATE_SETTLING, pager.scrollState)
         assertEquals(1, pager.currentItem)
         // Do not wait for the first animation: reproduce the user's rapid second swipe.
         swipe(pager, 460f, 30f)

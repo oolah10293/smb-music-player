@@ -110,3 +110,17 @@ jobs:
           name: HouseMusic-v0.3.1-source
           path: house-app/HouseMusic-v0.3.1-source.zip
 
+
+      - name: Package public Android signing and verification utilities
+        run: |
+          mkdir -p signing-tools/lib64
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" signing-tools/
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" signing-tools/
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib64/libc++.so" signing-tools/lib64/
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging build/outputs/apk/debug/*.apk > signing-tools/apk-badging.txt
+
+      - name: Upload public signing utilities (no keys)
+        uses: actions/upload-artifact@v4
+        with:
+          name: HouseMusic-signing-tools
+          path: house-app/signing-tools/

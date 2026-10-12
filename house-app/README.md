@@ -2,13 +2,13 @@
 
 House Music is the independent Android controller and synchronized phone receiver for the Pi's MPD/Snapcast session. The Pi owns the music files, queue and playback. Folders remain playlists.
 
-Current source: **v0.3.0**, application ID `com.housemusic.player`, Android **8.0 / API 26** or newer. It installs alongside **SMB Music** (`com.smbmusic.player`). Each app has its own settings, service and media session. There is no handoff, shared queue, shared playback position, SMB fallback or app-to-app control.
+Current source: **v0.3.1**, application ID `com.housemusic.player`, Android **8.0 / API 26** or newer. It installs alongside **SMB Music** (`com.smbmusic.player`). Each app has its own settings, service and media session. There is no handoff, shared queue, shared playback position, SMB fallback or app-to-app control.
 
-Build verification and exact artifacts belong in [RELEASE_0.3.0.md](docs/RELEASE_0.3.0.md). The user confirmed swiping and station add/save/play on v0.2.1. **Field confirmation, 2026-10-10:** after the companion server v0.11.2 WXDX fix, the user reports it works well and the UI looks really good. Keep the same v0.3.0 APK. Detailed history timing/restart and earlier focus/startup checks have automated coverage but no separate physical confirmation yet.
+The native pager change is documented in [RELEASE_0.3.1.md](docs/RELEASE_0.3.1.md). It replaces activity transitions with finger-following pages and interruptible settling. Physical smoothness on the user's phones remains pending. The earlier v0.3.0 radio details/UI were field-confirmed on 2026-10-10; that acceptance does not establish this new pager's behavior. Station visit ordering (#12) remains planned separately.
 
 ## Install and connect
 
-1. Install `HouseMusic-v0.3.0.apk` over the delivered House Music v0.2.1, v0.2.0 or v0.1.1 APK. The retained signing key permits an in-place update that keeps the server address and sync corrections. If still using v0.1.0, first record those values, uninstall only House Music, then install v0.3.0 and re-enter them; v0.1.0 used a different, unavailable CI key. Leave SMB Music installed.
+1. Install `HouseMusic-v0.3.1.apk` over the delivered House Music v0.3.0, v0.2.1, v0.2.0 or v0.1.1 APK. The retained signing key permits an in-place update that keeps the server address and sync corrections. If still using v0.1.0, first record those values, uninstall only House Music, then install v0.3.1 and re-enter them; v0.1.0 used a different, unavailable CI key. Leave SMB Music installed.
 2. Connect the phone to the home network and open **House Music**. Allow its notification permission when requested so the foreground controller is visible.
 3. On first launch, enter the Pi's LAN hostname or IPv4 address in **Server**. Enter the host alone, without a port, protocol or folder. No deployment address is bundled. The app uses the house service on port **8787**, checks MPD identity on **6600**, and receives Snapcast audio on **1704**.
 4. Browse a folder and select a song or **PLAY LIST**, or open Now Playing to control music already playing in the house. Open **Radio** to add or play an internet station.
@@ -46,6 +46,7 @@ HOUSE availability requires a directly connected physical Wi-Fi/Ethernet route t
 
 `house-app` is a separate Gradle root; building it does not build or package SMB Music. See [BUILD_AND_INSTALL.txt](BUILD_AND_INSTALL.txt) and [native/README.md](native/README.md).
 
-The APK bundles Snapclient for `arm64-v8a` and `armeabi-v7a`, built from pinned Snapcast v0.31.0, FLAC 1.4.3 and Boost 1.85.0 sources. Distribute the matching **`HouseMusic-v0.3.0-source.zip`** with the APK: it includes the native sources, build scripts and notices required for the bundled components. License notices also ship in the APK. No license has been selected for the original app code; third-party components retain their own licenses.
+The APK bundles Snapclient for `arm64-v8a` and `armeabi-v7a`, built from pinned Snapcast v0.31.0, FLAC 1.4.3 and Boost 1.85.0 sources. Distribute the matching **`HouseMusic-v0.3.1-source.zip`** with the APK: it includes the native sources, build scripts and notices required for the bundled components. License notices also ship in the APK. No license has been selected for the original app code; third-party components retain their own licenses.
 
 The shared product contract is [CENTRAL_PLAYBACK.md](https://github.com/oolah10293/smb-music-player/blob/main/docs/CENTRAL_PLAYBACK.md). App-specific physical checks are in [TESTING.md](docs/TESTING.md), and network/storage details are in [PRIVACY_AND_SECURITY.md](docs/PRIVACY_AND_SECURITY.md). DSP, per-node crossover/volume controls and an always-visible diagnostic mini-log remain separate work.
+
