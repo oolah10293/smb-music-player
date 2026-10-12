@@ -32,7 +32,7 @@ import com.housemusic.player.house.HouseTransportControl
 import com.housemusic.player.media.AudioFormats
 
 @UnstableApi
-class NowPlayingFragment : HousePageFragment(R.layout.activity_now_playing) {
+class NowPlayingFragment : HousePageFragment(R.layout.activity_now_playing, 1) {
     private lateinit var houseTransport: HouseTransportControl
     private lateinit var playerView: PlayerView
     private lateinit var controlsPlayerView: PlayerView

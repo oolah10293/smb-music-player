@@ -36,6 +36,11 @@ open class HousePageActivity : AppCompatActivity() {
         }
         setContentView(pager)
         pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                supportFragmentManager.fragments.filterIsInstance<HousePageFragment>().forEach {
+                    it.onPagerSelectionChanged(it.pageIndex == position)
+                }
+            }
             override fun onPageScrollStateChanged(state: Int) {
                 if (state == ViewPager2.SCROLL_STATE_DRAGGING) hideKeyboard()
             }

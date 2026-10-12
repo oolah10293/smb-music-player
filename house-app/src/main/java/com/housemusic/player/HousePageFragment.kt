@@ -17,7 +17,9 @@ import androidx.media3.ui.TimeBar
 
 /** Small page-local bridge: lookups never reach a neighbouring page's controls. */
 @UnstableApi
-abstract class HousePageFragment(private val layout: Int) : Fragment() {
+abstract class HousePageFragment(private val layout: Int, internal val pageIndex: Int) : Fragment() {
+    protected val isSelectedPage get() = (activity as? HousePageActivity)?.pager?.currentItem == pageIndex
+    internal open fun onPagerSelectionChanged(selected: Boolean) = Unit
     protected val pageContext: Context get() = requireContext()
     protected val applicationContext: Context get() = requireContext().applicationContext
     protected val window get() = requireActivity().window

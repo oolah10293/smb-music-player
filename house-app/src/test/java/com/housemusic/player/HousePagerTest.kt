@@ -103,6 +103,8 @@ class HousePagerTest {
     }
 
     @Test fun activityRecreationRestoresSelectedPage() {
+        // Recreate needs normal window attachment; no in-flight animation is tested here.
+        ShadowChoreographer.setPaused(false)
         val controller = Robolectric.buildActivity(PagerHost::class.java).setup()
         val activity = controller.get()
         layout(activity.window.decorView)

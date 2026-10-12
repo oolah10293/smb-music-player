@@ -38,7 +38,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 @UnstableApi
-class LibraryFragment : HousePageFragment(R.layout.activity_main) {
+class LibraryFragment : HousePageFragment(R.layout.activity_main, 0) {
     private lateinit var executor: ExecutorService
 
     private lateinit var connectionPanel: LinearLayout
@@ -378,7 +378,9 @@ class LibraryFragment : HousePageFragment(R.layout.activity_main) {
         syncSortModeFromStore()
         // Browse should never throw the keyboard up merely because the Activity was opened or
         // brought back from Now Playing. Tapping the search typing area still focuses it normally.
-        if (::searchEdit.isInitialized) searchEdit.post { hideSearchKeyboard() }
+        if (::searchEdit.isInitialized) searchEdit.post {
+            if (browserVisible && isSelectedPage && !isDestroyed) hideSearchKeyboard()
+        }
     }
 
     override fun onPause() {

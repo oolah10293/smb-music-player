@@ -39,7 +39,7 @@ import java.util.concurrent.Executors
 
 /** Station bookmarks live on the Pi. Playback always goes through the house session. */
 @UnstableApi
-class RadioFragment : HousePageFragment(R.layout.activity_radio) {
+class RadioFragment : HousePageFragment(R.layout.activity_radio, 2) {
     private lateinit var executor: java.util.concurrent.ExecutorService
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var urlEdit: EditText
@@ -383,13 +383,20 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio) {
         (getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(urlEdit.windowToken, 0)
     }
 
+    internal override fun onPagerSelectionChanged(selected: Boolean) {
+        // ViewPager2 may keep the old fragment RESUMED until settling ends.
+        // Invalidate delayed Add & Play as soon as navigation selects another page.
+        if (!selected) addPlayGuard.leavePage()
+        else if (visible) addPlayGuard.enterPage()
+    }
+
     override fun onResume() {
         super.onResume()
         visible = true
         addPlayGuard.enterPage()
         controller?.let { syncConnection(it.sessionExtras) }
         if (connected && !loading && !busy) loadStations()
-        urlEdit.post { if (!isFinishing && !isDestroyed) hideKeyboard() }
+        urlEdit.post { if (visible && isSelectedPage && !isFinishing && !isDestroyed) hideKeyboard() }
     }
 
     override fun onPause() {
