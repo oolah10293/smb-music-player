@@ -98,6 +98,13 @@ with tempfile.TemporaryDirectory() as folder:
             time.sleep(1)
         raise AssertionError('Station refresh did not converge: '+str(rows))
     try:
+        # This app uses no Play services. On a fresh image, their bulk provisioning
+        # caused a verified Pixel Launcher ANR that covered the app before tests began.
+        packages=shell('pm','list','packages')
+        for package in ['com.google.android.gms','com.android.vending']:
+            if 'package:'+package+'\n' in packages:
+                shell('pm','disable-user','--user','0',package)
+        shell('am','force-stop','com.google.android.apps.nexuslauncher')
         adb('install','-r','app/build/outputs/apk/debug/app-debug.apk')
         for permission in ['BLUETOOTH_CONNECT','POST_NOTIFICATIONS']: shell('pm','grant',PKG,'android.permission.'+permission)
         shell('settings','put','system','screen_off_timeout',600000)
