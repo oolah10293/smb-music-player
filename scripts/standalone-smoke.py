@@ -46,6 +46,18 @@ def text_button(label):
         if e.get('text','').lower()==label.lower():
             x1,y1,x2,y2=map(int,re.findall(r'\d+',e.get('bounds')));shell('input','tap',(x1+x2)//2,(y1+y2)//2);return
     raise AssertionError('Missing '+label)
+def dialog_text(value):
+    # Opening a dialog is asynchronous. Input sent immediately after the launch tap can
+    # lose its first key before the focused editor is attached (10.0.2.2 became 0.0.2.2).
+    end=time.monotonic()+10
+    while time.monotonic()<end:
+        editors=[e for e in tree().iter('node') if e.get('class')=='android.widget.EditText' and e.get('focused')=='true']
+        if editors: break
+        time.sleep(.25)
+    assert editors,'Dialog editor did not receive focus'
+    shell('input','text',value)
+    actual=[e.get('text') for e in tree().iter('node') if e.get('class')=='android.widget.EditText' and e.get('focused')=='true']
+    assert actual==[value],('Injected text mismatch',actual)
 with tempfile.TemporaryDirectory() as folder:
     with wave.open(str(Path(folder)/'fixture.wav'),'wb') as audio:
         audio.setnchannels(1);audio.setsampwidth(2);audio.setframerate(22050);audio.writeframes(b'\0\0'*(22050*120))
@@ -118,7 +130,7 @@ with tempfile.TemporaryDirectory() as folder:
         # Configure once, then verify unattended initial, periodic and network-return refreshes.
         launch(2);tap('radioStationPlay');launch(1);wait_text('playbackStatus','LIVE')
         before=json.loads(shell('run-as',PKG,'cat','no_backup/standalone-session.json'))
-        launch(2);tap('radioHouseStatus');shell('input','text','10.0.2.2');text_button('Save')
+        launch(2);tap('radioHouseStatus');dialog_text('10.0.2.2');text_button('Save')
         config=ET.fromstring(shell('run-as',PKG,'cat','shared_prefs/house_radio_sync.xml'))
         assert next(e.text for e in config if e.get('name')=='host')=='10.0.2.2',ET.tostring(config)
         (OUT/'connectivity-before-house.txt').write_text(shell('dumpsys','connectivity'))
