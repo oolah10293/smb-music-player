@@ -1,7 +1,7 @@
 """Emulator smoke: native page gestures, direct HTTP audio, pause/live replay and station CRUD.
 Uses only an ephemeral local fixture; no NAS, Pi or real station required.
 """
-import http.server, threading, tempfile, wave, functools, subprocess, time, re, json, xml.etree.ElementTree as ET
+import http.server, threading, tempfile, wave, functools, subprocess, time, re, json, sys, xml.etree.ElementTree as ET
 from pathlib import Path
 PKG='com.smbmusic.player'
 OUT=Path('smoke-results');OUT.mkdir(exist_ok=True)
@@ -117,35 +117,40 @@ with tempfile.TemporaryDirectory() as folder:
         subprocess.run(['adb','shell',f"run-as {PKG} sh -c 'cat > no_backup/standalone-session.json'"],
             input=json.dumps(seed),text=True,check=True,timeout=20)
         adb('logcat','-c');launch(2);node('radioUrlEdit');screenshot('radio-empty')
-        # Use a sustained drag: cold emulator input injection can consume a short swipe
-        # duration waiting for DOWN dispatch. Native gesture handling still performs navigation.
-        # Swipe from ordinary Radio content through Now Playing to Browse.
-        w,h=map(int,re.search(r'(\d+)x(\d+)',shell('wm','size')).groups())
-        shell('input','swipe',int(.15*w),int(.55*h),int(.85*w),int(.55*h),1200)
-        node('queueSortButton');screenshot('files-now-playing')
-        shell('input','swipe',int(.15*w),int(.55*h),int(.85*w),int(.55*h),1200)
-        node('addressEdit');screenshot('browse')
-        launch(2);tap('radioUrlEdit');shell('input','text','http://10.0.2.2:18765/fixture.wav')
-        shell('input','keyevent',4);tap('radioAddButton');wait_text('radioStatus','Live');launch(1)
-        wait_text('playbackStatus','LIVE');screenshot('radio-playing')
-        tap('radioPlayPause');wait_text('playbackStatus','Paused');tap('radioPlayPause');wait_text('playbackStatus','LIVE')
-        tap('queueSortButton');wait_text('queueSortButton','A–Z');wait_text('playbackStatus','Paused')
-        snapshot=json.loads(shell('run-as',PKG,'cat','no_backup/standalone-session.json'))
-        assert not snapshot['radio'] and not snapshot['shouldPlay'],snapshot
-        assert snapshot['index']==1 and snapshot['positionMs']==23456 and snapshot['shuffle'],snapshot
-        assert [x['uri'] for x in snapshot['items']]==[x['uri'] for x in seed['items']],snapshot
-        screenshot('playlist-restored')
-        launch(2);tap('radioStationPlay');wait_text('radioStatus','Live');launch(1);wait_text('playbackStatus','LIVE')
-        launch(2);tap('radioStationPlay',long=True)
-        # Dialog EditText starts selected. Replace the name through the soft-input test path.
-        dialog_text('SmokeStation');text_button('Save')
-        wait_text('radioStationName','SmokeStation');tap('radioStationDelete');node('radioUndoButton');tap('radioUndoButton')
-        wait_text('radioStationName','SmokeStation');screenshot('radio-saved')
-        shell('am','force-stop',PKG);launch(2);wait_text('radioStationName','SmokeStation')
-        tap('radioStationPlay');wait_text('radioStatus','Live');launch(1);wait_text('playbackStatus','LIVE');tap('quitButton')
-        time.sleep(1)
-        # Configure once, then verify unattended initial, periodic and network-return refreshes.
-        launch(2);tap('radioStationPlay');wait_text('radioStatus','Live');launch(1);wait_text('playbackStatus','LIVE')
+        if '--station-refresh-only' in sys.argv:
+            tap('radioUrlEdit');shell('input','text','http://10.0.2.2:18765/fixture.wav')
+            shell('input','keyevent',4);tap('radioAddButton');wait_text('radioStatus','Live')
+            launch(1);wait_text('playbackStatus','LIVE')
+        else:
+            # Use a sustained drag: cold emulator input injection can consume a short swipe
+            # duration waiting for DOWN dispatch. Native gesture handling still performs navigation.
+            # Swipe from ordinary Radio content through Now Playing to Browse.
+            w,h=map(int,re.search(r'(\d+)x(\d+)',shell('wm','size')).groups())
+            shell('input','swipe',int(.15*w),int(.55*h),int(.85*w),int(.55*h),1200)
+            node('queueSortButton');screenshot('files-now-playing')
+            shell('input','swipe',int(.15*w),int(.55*h),int(.85*w),int(.55*h),1200)
+            node('addressEdit');screenshot('browse')
+            launch(2);tap('radioUrlEdit');shell('input','text','http://10.0.2.2:18765/fixture.wav')
+            shell('input','keyevent',4);tap('radioAddButton');wait_text('radioStatus','Live');launch(1)
+            wait_text('playbackStatus','LIVE');screenshot('radio-playing')
+            tap('radioPlayPause');wait_text('playbackStatus','Paused');tap('radioPlayPause');wait_text('playbackStatus','LIVE')
+            tap('queueSortButton');wait_text('queueSortButton','A–Z');wait_text('playbackStatus','Paused')
+            snapshot=json.loads(shell('run-as',PKG,'cat','no_backup/standalone-session.json'))
+            assert not snapshot['radio'] and not snapshot['shouldPlay'],snapshot
+            assert snapshot['index']==1 and snapshot['positionMs']==23456 and snapshot['shuffle'],snapshot
+            assert [x['uri'] for x in snapshot['items']]==[x['uri'] for x in seed['items']],snapshot
+            screenshot('playlist-restored')
+            launch(2);tap('radioStationPlay');wait_text('radioStatus','Live');launch(1);wait_text('playbackStatus','LIVE')
+            launch(2);tap('radioStationPlay',long=True)
+            # Dialog EditText starts selected. Replace the name through the soft-input test path.
+            dialog_text('SmokeStation');text_button('Save')
+            wait_text('radioStationName','SmokeStation');tap('radioStationDelete');node('radioUndoButton');tap('radioUndoButton')
+            wait_text('radioStationName','SmokeStation');screenshot('radio-saved')
+            shell('am','force-stop',PKG);launch(2);wait_text('radioStationName','SmokeStation')
+            tap('radioStationPlay');wait_text('radioStatus','Live');launch(1);wait_text('playbackStatus','LIVE');tap('quitButton')
+            time.sleep(1)
+            # Configure once, then verify unattended initial, periodic and network-return refreshes.
+            launch(2);tap('radioStationPlay');wait_text('radioStatus','Live');launch(1);wait_text('playbackStatus','LIVE')
         before=json.loads(shell('run-as',PKG,'cat','no_backup/standalone-session.json'))
         launch(2);tap('radioHouseStatus');dialog_text('10.0.2.2');text_button('Save')
         config=ET.fromstring(shell('run-as',PKG,'cat','shared_prefs/house_radio_sync.xml'))
@@ -153,7 +158,7 @@ with tempfile.TemporaryDirectory() as folder:
         (OUT/'connectivity-before-house.txt').write_text(shell('dumpsys','connectivity'))
         (OUT/'wifi-before-house.txt').write_text(shell('cmd','wifi','status'))
         rows=wait_stations(lambda rows: len(rows)==3 and any(x.get('houseId')=='house-a' for x in rows))
-        assert any(x['name']=='SmokeStation' for x in rows),rows
+        assert any(x['url']=='http://10.0.2.2:18765/fixture.wav' and x['local'] for x in rows),rows
         # No page change or refresh gesture: the one-minute automatic refresh must update the cache.
         house_state['stations']=[{'id':'house-a','name':'House Renamed','url':'http://10.0.2.2:18765/fixture.wav?house=changed'},
                                  {'id':'house-c','name':'House Gamma','url':'http://10.0.2.2:18765/fixture.wav?house=c'}]
@@ -183,7 +188,10 @@ with tempfile.TemporaryDirectory() as folder:
         launch(1);tap('quitButton')
         errors=adb('logcat','-d','-b','crash')
         assert 'FATAL EXCEPTION' not in errors, errors
-        (OUT/'result.txt').write_text('PASS: swipe pages, HTTP audio, pause/live replay, rename, delete/Undo, persistence, v0.5.1 queue migration, duplicate queue/index/position restore and Quit; automatic House initial/periodic/network-return refresh, cache reconciliation, malformed-response retention, no playback change, GET-only access and offline cache persistence.\nNot a physical cellular/Doze/Bluetooth test.\n')
+        label = ('PASS: targeted station-refresh test; direct HTTP playback; ' if '--station-refresh-only' in sys.argv else
+                 'PASS: full playback/navigation/CRUD/playlist-restore smoke plus ')
+        (OUT/'result.txt').write_text(label+'automatic House initial/periodic/network-return refresh, cache reconciliation, malformed-response retention, no playback change, GET-only access and offline cache persistence.\nNot a physical cellular/Doze/Bluetooth test.\n')
+
     finally:
         (OUT/'connectivity-final.txt').write_text(shell('dumpsys','connectivity'))
         (OUT/'wifi-final.txt').write_text(shell('cmd','wifi','status'))

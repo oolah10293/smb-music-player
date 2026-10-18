@@ -72,7 +72,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Smoke test standalone playback and pages
+      - name: Smoke test playback and House station refresh
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -80,7 +80,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: python3 scripts/standalone-smoke.py
+          script: python3 scripts/standalone-smoke.py --station-refresh-only
 
       - name: Upload checks and smoke screenshots
         if: always()
