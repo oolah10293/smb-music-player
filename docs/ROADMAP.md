@@ -2,6 +2,14 @@
 
 This file contains **open work and future features only**. Completed implementation history belongs in release/validation documents, and normative behavior belongs in [CENTRAL_PLAYBACK.md](CENTRAL_PLAYBACK.md).
 
+## Next SMB Music iteration — planned 2026-10-18 (no implementation/build authorization)
+
+**Canonical new-work plan:** [SMB Music hands-free recovery + standalone internet radio](SMB_NEXT_ITERATION_PLAN_2026-10-18.md). This is a planning checkpoint, **not** a code change, successful device test or permission to build/package an APK.
+
+1. **Priority 1:** resolve [Issue #7 — unattended cellular-outage playback recovery](https://github.com/oolah10293/smb-music-player/issues/7), preserving previous Bluetooth/Tailscale field successes. Recovery after long locked-screen outages must be **hands-free**, preserve same SMB queue/song/position, and honor deliberate Pause/Stop/Quit and output/focus restrictions. Existing likely sleep scheduling and intent-loss causes remain hypotheses, **not verified diagnoses**; physical locked-screen acceptance is mandatory.
+2. **Priority 2:** [Issue #16 — direct internet radio for SMB Music](https://github.com/oolah10293/smb-music-player/issues/16), after Issue #7 has been corrected and physically validated. Reuse House Music v0.4.0 *radio UI/behavior concepts* from the `house-v0.4.0-radio-controls` branch, but stream **directly on the phone** using HTTP/HLS, local bookmarks, live metadata, separate radio recovery, and a local **Resume Playlist** snapshot of the prior SMB queue. The server/ESP32/House session must remain untouched.
+3. **Authorization gate:** this approved repository documentation is **not** authorization to implement, run an APK-generating build, sign, package, or distribute software. Obtain explicit go-ahead for the relevant work; **separate explicit approval is required for any build/package/release**. The acceptance details and implementation sequence live only in the canonical plan.
+
 ## Current Android priorities
 
 1. **Validate standalone SMB Music v0.5.1 and House Music v0.1.0**
