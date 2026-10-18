@@ -496,7 +496,7 @@ class PlaybackService : MediaLibraryService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = NotificationCompat.Builder(this, PLAYBACK_CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher)
-            .setContentTitle(player.mediaMetadata.title ?: "SMB Music")
+            .setContentTitle(session.player.mediaMetadata.title ?: "SMB Music")
             .setContentText(status ?: if (recovering && !recoveryPaused)
                 if (radio) "Reconnecting radio — session retained" else "Waiting for SMB — session retained" else "Paused — session retained")
             .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
