@@ -18,7 +18,7 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.ForwardingSimpleBasePlayer
 import androidx.media3.common.Metadata
 import androidx.media3.common.MediaMetadata
 import androidx.media3.extractor.metadata.icy.IcyInfo
@@ -94,6 +94,7 @@ class PlaybackService : MediaLibraryService() {
     private lateinit var retained: StandaloneSessionStore
     private lateinit var audio: AudioManager
     private lateinit var player: ExoPlayer
+    private lateinit var sessionPlayer: SourceSessionPlayer
     private lateinit var session: MediaLibrarySession
     private lateinit var smb: SmbClient
     private lateinit var executor: ExecutorService
@@ -433,18 +434,8 @@ class PlaybackService : MediaLibraryService() {
             }
         })
 
-        session = MediaLibrarySession.Builder(
-            this,
-            object : ForwardingPlayer(player) {
-                override fun play() = userPlay()
-                override fun pause() = userPause()
-                override fun setPlayWhenReady(playWhenReady: Boolean) { if (playWhenReady) userPlay() else userPause() }
-                override fun stop() {
-                    userPause(); playbackIntent.stop(); cancelRecovery(); player.stop(); saveStandalone()
-                }
-            },
-            SessionCallback()
-        ).build()
+        sessionPlayer = SourceSessionPlayer()
+        session = MediaLibrarySession.Builder(this, sessionPlayer, SessionCallback()).build()
 
         sourceSwitching = true
         retained.load()?.let { saved ->
@@ -1167,6 +1158,30 @@ class PlaybackService : MediaLibraryService() {
         super.onDestroy()
     }
 
+    /** The standard state adapter keeps source-specific metadata, commands and listeners consistent. */
+    private inner class SourceSessionPlayer : ForwardingSimpleBasePlayer(this@PlaybackService.player) {
+        override fun getState(): State {
+            val state = super.getState()
+            if (!radio) return state
+            val metadata = MediaMetadata.Builder()
+                .setTitle(radioSong.title.ifBlank { station?.name ?: "Live radio" })
+                .setArtist(radioSong.artist.takeIf(String::isNotBlank))
+                .setAlbumTitle(radioSong.album.takeIf(String::isNotBlank))
+                .setSubtitle(station?.name).build()
+            return state.buildUpon().setAvailableCommands(commandsForSource(player.availableCommands))
+                .setPlaylist(player.currentTimeline, player.currentTracks, metadata).build()
+        }
+        override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+            if (playWhenReady) userPlay() else userPause()
+            return Futures.immediateVoidFuture()
+        }
+        override fun handleStop(): ListenableFuture<*> {
+            userPause(); playbackIntent.stop(); cancelRecovery(); player.stop(); saveStandalone()
+            return Futures.immediateVoidFuture()
+        }
+        fun refresh() = invalidateState()
+    }
+
     private fun snapshot(): StandaloneSnapshot {
         val order = mutableListOf<Int>()
         val timeline = player.currentTimeline
@@ -1378,6 +1393,7 @@ class PlaybackService : MediaLibraryService() {
 
     private fun publishRadio() {
         if (released || !::session.isInitialized) return
+        if (::sessionPlayer.isInitialized) sessionPlayer.refresh()
         val state = when {
             !wanted || holdReason.isNotBlank() -> "Paused"
             player.isPlaying -> "Live"
