@@ -47,14 +47,24 @@ def text_button(label):
             x1,y1,x2,y2=map(int,re.findall(r'\d+',e.get('bounds')));shell('input','swipe',(x1+x2)//2,(y1+y2)//2,(x1+x2)//2,(y1+y2)//2,120);return
     raise AssertionError('Missing '+label)
 def dialog_text(value):
-    # Opening a dialog is asynchronous. Input sent immediately after the launch tap can
-    # lose its first key before the focused editor is attached (10.0.2.2 became 0.0.2.2).
+    # Touch-mode dialogs do not automatically focus an editor. Tap it first, then
+    # wait for focus before injecting keys; otherwise the first key can be lost.
     end=time.monotonic()+10
     while time.monotonic()<end:
-        editors=[e for e in tree().iter('node') if e.get('class')=='android.widget.EditText' and e.get('focused')=='true']
+        editors=[e for e in tree().iter('node') if e.get('class')=='android.widget.EditText']
         if editors: break
         time.sleep(.25)
-    assert editors,'Dialog editor did not receive focus'
+    assert editors,'Dialog editor did not appear'
+    x1,y1,x2,y2=map(int,re.findall(r'\d+',editors[0].get('bounds')))
+    shell('input','swipe',(x1+x2)//2,(y1+y2)//2,(x1+x2)//2,(y1+y2)//2,120)
+    end=time.monotonic()+10
+    while time.monotonic()<end:
+        focused=[e for e in tree().iter('node') if e.get('class')=='android.widget.EditText' and e.get('focused')=='true']
+        if focused: break
+        time.sleep(.25)
+    assert focused,'Dialog editor did not receive focus'
+    old=focused[0].get('text','')
+    shell('input','keyevent','KEYCODE_MOVE_END',*(['KEYCODE_DEL']*len(old)))
     shell('input','text',value)
     actual=[e.get('text') for e in tree().iter('node') if e.get('class')=='android.widget.EditText' and e.get('focused')=='true']
     assert actual==[value],('Injected text mismatch',actual)
