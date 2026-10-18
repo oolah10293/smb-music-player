@@ -30,7 +30,7 @@ def node(id, timeout=20):
 def tap(id, long=False):
     e=node(id); x1,y1,x2,y2=map(int,re.findall(r'\d+',e.get('bounds')));x=(x1+x2)//2;y=(y1+y2)//2
     if long: shell('input','swipe',x,y,x,y,1200)
-    else: shell('input','tap',x,y)
+    else: shell('input','swipe',x,y,x,y,120)
 def wait_text(id,text,timeout=30):
     end=time.monotonic()+timeout
     while time.monotonic()<end:
@@ -44,7 +44,7 @@ def screenshot(name):
 def text_button(label):
     for e in tree().iter('node'):
         if e.get('text','').lower()==label.lower():
-            x1,y1,x2,y2=map(int,re.findall(r'\d+',e.get('bounds')));shell('input','tap',(x1+x2)//2,(y1+y2)//2);return
+            x1,y1,x2,y2=map(int,re.findall(r'\d+',e.get('bounds')));shell('input','swipe',(x1+x2)//2,(y1+y2)//2,(x1+x2)//2,(y1+y2)//2,120);return
     raise AssertionError('Missing '+label)
 def dialog_text(value):
     # Opening a dialog is asynchronous. Input sent immediately after the launch tap can
@@ -109,7 +109,7 @@ with tempfile.TemporaryDirectory() as folder:
         shell('input','swipe',int(.15*w),int(.55*h),int(.85*w),int(.55*h),1200)
         node('addressEdit');screenshot('browse')
         launch(2);tap('radioUrlEdit');shell('input','text','http://10.0.2.2:18765/fixture.wav')
-        shell('input','keyevent',4);tap('radioAddButton');launch(1)
+        shell('input','keyevent',4);tap('radioAddButton');wait_text('radioStatus','Live');launch(1)
         wait_text('playbackStatus','LIVE');screenshot('radio-playing')
         tap('radioPlayPause');wait_text('playbackStatus','Paused');tap('radioPlayPause');wait_text('playbackStatus','LIVE')
         tap('queueSortButton');wait_text('queueSortButton','A–Z');wait_text('playbackStatus','Paused')
@@ -118,17 +118,17 @@ with tempfile.TemporaryDirectory() as folder:
         assert snapshot['index']==1 and snapshot['positionMs']==23456 and snapshot['shuffle'],snapshot
         assert [x['uri'] for x in snapshot['items']]==[x['uri'] for x in seed['items']],snapshot
         screenshot('playlist-restored')
-        launch(2);tap('radioStationPlay');launch(1);wait_text('playbackStatus','LIVE')
+        launch(2);tap('radioStationPlay');wait_text('radioStatus','Live');launch(1);wait_text('playbackStatus','LIVE')
         launch(2);tap('radioStationPlay',long=True)
         # Dialog EditText starts selected. Replace the name through the soft-input test path.
-        shell('input','text','SmokeStation');text_button('Save')
+        dialog_text('SmokeStation');text_button('Save')
         wait_text('radioStationName','SmokeStation');tap('radioStationDelete');node('radioUndoButton');tap('radioUndoButton')
         wait_text('radioStationName','SmokeStation');screenshot('radio-saved')
         shell('am','force-stop',PKG);launch(2);wait_text('radioStationName','SmokeStation')
-        tap('radioStationPlay');launch(1);wait_text('playbackStatus','LIVE');tap('quitButton')
+        tap('radioStationPlay');wait_text('radioStatus','Live');launch(1);wait_text('playbackStatus','LIVE');tap('quitButton')
         time.sleep(1)
         # Configure once, then verify unattended initial, periodic and network-return refreshes.
-        launch(2);tap('radioStationPlay');launch(1);wait_text('playbackStatus','LIVE')
+        launch(2);tap('radioStationPlay');wait_text('radioStatus','Live');launch(1);wait_text('playbackStatus','LIVE')
         before=json.loads(shell('run-as',PKG,'cat','no_backup/standalone-session.json'))
         launch(2);tap('radioHouseStatus');dialog_text('10.0.2.2');text_button('Save')
         config=ET.fromstring(shell('run-as',PKG,'cat','shared_prefs/house_radio_sync.xml'))
