@@ -119,6 +119,10 @@ with tempfile.TemporaryDirectory() as folder:
         launch(2);tap('radioStationPlay');launch(1);wait_text('playbackStatus','LIVE')
         before=json.loads(shell('run-as',PKG,'cat','no_backup/standalone-session.json'))
         launch(2);tap('radioHouseStatus');shell('input','text','10.0.2.2');text_button('Save')
+        config=ET.fromstring(shell('run-as',PKG,'cat','shared_prefs/house_radio_sync.xml'))
+        assert next(e.text for e in config if e.get('name')=='host')=='10.0.2.2',ET.tostring(config)
+        (OUT/'connectivity-before-house.txt').write_text(shell('dumpsys','connectivity'))
+        (OUT/'wifi-before-house.txt').write_text(shell('cmd','wifi','status'))
         rows=wait_stations(lambda rows: len(rows)==3 and any(x.get('houseId')=='house-a' for x in rows))
         assert any(x['name']=='SmokeStation' for x in rows),rows
         # No page change or refresh gesture: the one-minute automatic refresh must update the cache.
@@ -152,6 +156,8 @@ with tempfile.TemporaryDirectory() as folder:
         assert 'FATAL EXCEPTION' not in errors, errors
         (OUT/'result.txt').write_text('PASS: swipe pages, HTTP audio, pause/live replay, rename, delete/Undo, persistence, v0.5.1 queue migration, duplicate queue/index/position restore and Quit; automatic House initial/periodic/network-return refresh, cache reconciliation, malformed-response retention, no playback change, GET-only access and offline cache persistence.\nNot a physical cellular/Doze/Bluetooth test.\n')
     finally:
+        (OUT/'connectivity-final.txt').write_text(shell('dumpsys','connectivity'))
+        (OUT/'wifi-final.txt').write_text(shell('cmd','wifi','status'))
         (OUT/'logcat.txt').write_text(adb('logcat','-d'))
         try: screenshot('final')
         except Exception: pass

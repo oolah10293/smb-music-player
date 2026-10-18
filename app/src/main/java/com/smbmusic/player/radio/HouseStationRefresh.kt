@@ -55,7 +55,7 @@ class HouseStationRefresh private constructor(context: Context) {
                     .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
                     .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET).build(), callback)
                 true
-            }.getOrDefault(false)
+            }.onFailure { android.util.Log.w(TAG, "LAN callback unavailable: ${it.javaClass.simpleName}") }.getOrDefault(false)
         }
         requestRefresh(force = true)
     }
@@ -166,26 +166,35 @@ class HouseStationRefresh private constructor(context: Context) {
                     !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
             } == true
         }
-        if (networks.isEmpty()) return null
+        if (networks.isEmpty()) {
+            android.util.Log.i(TAG, "No physical LAN candidate")
+            return null
+        }
         for (address in InetAddress.getAllByName(host)) {
             for (network in networks) if (qualifies(network, address)) return Target(network, address)
         }
+        android.util.Log.i(TAG, "Physical LAN present; configured server has no qualifying direct route")
         return null
     }
 
     private fun qualifies(network: Network, address: InetAddress): Boolean {
         val caps = manager.getNetworkCapabilities(network) ?: return false
         val links = manager.getLinkProperties(network) ?: return false
-        return StationLanPolicy.qualifies(
+        val routes = links.routes.map { route ->
+            val unicast = if (Build.VERSION.SDK_INT >= 33) route.type == RouteInfo.RTN_UNICAST
+            else links.linkAddresses.any { local -> StationLanPolicy.hasMatchingLinkPrefix(
+                route.destination.address, route.destination.prefixLength, local.address, local.prefixLength) }
+            StationLanRoute(route.destination.address, route.destination.prefixLength,
+                StationLanPolicy.hasGateway(route.gateway), unicast)
+        }
+        val qualified = StationLanPolicy.qualifies(
             caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET),
             caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN), caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN),
-            address, links.routes.map { route ->
-                val unicast = if (Build.VERSION.SDK_INT >= 33) route.type == RouteInfo.RTN_UNICAST
-                else links.linkAddresses.any { local -> StationLanPolicy.hasMatchingLinkPrefix(
-                    route.destination.address, route.destination.prefixLength, local.address, local.prefixLength) }
-                StationLanRoute(route.destination.address, route.destination.prefixLength,
-                    StationLanPolicy.hasGateway(route.gateway), unicast)
-            })
+            address, routes)
+        android.util.Log.i(TAG, "LAN check: vpn=${caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)} " +
+            "notVpn=${caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)} " +
+            "routes=${routes.size} direct=${routes.count { !it.hasGateway && it.unicast }} match=$qualified")
+        return qualified
     }
 
     private fun fetch(address: InetAddress): List<HouseStationBookmark> {
@@ -216,6 +225,7 @@ class HouseStationRefresh private constructor(context: Context) {
     }
 
     companion object {
+        private const val TAG = "HouseStationRefresh"
         private const val INTERVAL_MS = 60_000L
         private const val MIN_GAP_MS = 5_000L
         @Volatile private var instance: HouseStationRefresh? = null
