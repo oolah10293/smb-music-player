@@ -1,545 +1,102 @@
 package com.smbmusic.player
 
-import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.os.Parcelable
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
-import android.widget.Button
-import android.widget.EditText
-import android.widget.ImageButton
-import android.widget.LinearLayout
-import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import androidx.media3.common.Player
+import androidx.fragment.app.Fragment
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.session.MediaController
-import androidx.media3.session.SessionToken
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import com.google.common.util.concurrent.ListenableFuture
-import com.smbmusic.player.model.RemoteEntry
-import com.smbmusic.player.smb.SmbClient
-import com.smbmusic.player.smb.SmbUrl
-import com.smbmusic.player.storage.CredentialStore
-import com.smbmusic.player.storage.SmbCredentials
-import com.smbmusic.player.ui.FileAdapter
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import androidx.viewpager2.adapter.FragmentStateAdapter
+import androidx.viewpager2.widget.ViewPager2
 
+/** Native touch tracking, velocity-based settling and interruptible consecutive swipes. */
 @UnstableApi
-class MainActivity : AppCompatActivity() {
-    private lateinit var store: CredentialStore
-    private lateinit var smb: SmbClient
-    private lateinit var executor: ExecutorService
-
-    private lateinit var connectionPanel: LinearLayout
-    private lateinit var browserPanel: LinearLayout
-    private lateinit var addressEdit: EditText
-    private lateinit var userEdit: EditText
-    private lateinit var passwordEdit: EditText
-    private lateinit var connectionStatus: TextView
-    private lateinit var pathText: TextView
-    private lateinit var browserStatus: TextView
-    private lateinit var sortButton: Button
-    private lateinit var searchEdit: EditText
-    private lateinit var searchClearButton: ImageButton
-    private lateinit var recycler: RecyclerView
-    private lateinit var layoutManager: LinearLayoutManager
-    private lateinit var adapter: FileAdapter
-
-    private lateinit var controllerFuture: ListenableFuture<MediaController>
-    private var controller: MediaController? = null
-
-    private val browserHandler = Handler(Looper.getMainLooper())
-    private var browseRetryIndex = 0
-    private var browseRequestGeneration = 0
-    private var browseRetryEnabled = true
-
-    private var rootUrl: String = ""
-    private var currentUrl: String = ""
-    private var entries: List<RemoteEntry> = emptyList()
-    private var sortMode = SortMode.NAME_ASC
-    private var pendingListState: Parcelable? = null
-    private var pendingListUrl: String? = null
+open class MainActivity : AppCompatActivity() {
+    internal lateinit var pager: ViewPager2
+        private set
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
-        applySystemBarInsets()
-
-        store = CredentialStore(this)
-        smb = SmbClient(store)
-        executor = Executors.newSingleThreadExecutor()
-
-        bindViews()
-        sortMode = SortModeStore.load(this)
-        sortButton.text = sortMode.label
-        findViewById<View>(R.id.mainRoot).requestFocus()
-        setupBrowser()
-        setupConnection()
-
-        if (savedInstanceState != null) {
-            pendingListState = savedInstanceState.getParcelable(STATE_LIST)
-            pendingListUrl = savedInstanceState.getString(STATE_URL)
-        }
-
-        requestTailscaleConnect()
-        setupController()
-        restoreSavedConnection()
-        val permissions = mutableListOf<String>()
-        if (android.os.Build.VERSION.SDK_INT >= 31 && checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            permissions += android.Manifest.permission.BLUETOOTH_CONNECT
-        }
-        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            permissions += android.Manifest.permission.POST_NOTIFICATIONS
-        }
-        if (permissions.isNotEmpty()) requestPermissions(permissions.toTypedArray(), 30)
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 30) permissions.forEachIndexed { i, permission ->
-            if (permission == "android.permission.BLUETOOTH_CONNECT") {
-                val granted = grantResults.getOrNull(i) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                PlaybackDiagnostics.record(this, "Bluetooth wake permission: ${if (granted) "granted" else "denied"}")
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        pager = ViewPager2(this).apply {
+            id = R.id.smbPager
+            orientation = ViewPager2.ORIENTATION_HORIZONTAL
+            // Keep all three existing view trees ready. Only the selected page is RESUMED.
+            offscreenPageLimit = 2
+            adapter = object : FragmentStateAdapter(this@MainActivity) {
+                override fun getItemCount() = 3
+                override fun createFragment(position: Int): Fragment = createPage(position)
             }
         }
-    }
-
-    private fun applySystemBarInsets() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        val root = findViewById<View>(R.id.mainRoot)
-        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+        setContentView(pager)
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(pager) { view, insets ->
+            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
-        ViewCompat.requestApplyInsets(root)
-    }
-
-    private fun bindViews() {
-        connectionPanel = findViewById(R.id.connectionPanel)
-        browserPanel = findViewById(R.id.browserPanel)
-        addressEdit = findViewById(R.id.addressEdit)
-        userEdit = findViewById(R.id.userEdit)
-        passwordEdit = findViewById(R.id.passwordEdit)
-        connectionStatus = findViewById(R.id.connectionStatus)
-        pathText = findViewById(R.id.pathText)
-        browserStatus = findViewById(R.id.browserStatus)
-        browserStatus.setOnLongClickListener { PlaybackDiagnostics.show(this); true }
-        sortButton = findViewById(R.id.sortButton)
-        searchEdit = findViewById(R.id.searchEdit)
-        searchClearButton = findViewById(R.id.searchClearButton)
-        recycler = findViewById(R.id.fileList)
-    }
-
-    private fun setupController() {
-        val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
-        controllerFuture = MediaController.Builder(this, token).buildAsync()
-        controllerFuture.addListener(
-            {
-                if (isFinishing || isDestroyed) return@addListener
-                try {
-                    controller = controllerFuture.get().also {
-                        it.repeatMode = Player.REPEAT_MODE_ALL
-                    }
-                } catch (e: Exception) {
-                    browserStatus.text = "Playback service failed: ${friendlyError(e)}"
+        androidx.core.view.ViewCompat.requestApplyInsets(pager)
+        pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                getSharedPreferences(PREFS_UI, MODE_PRIVATE).edit().putInt("page", position).apply()
+                supportFragmentManager.fragments.filterIsInstance<SmbPageFragment>().forEach {
+                    it.onPagerSelectionChanged(it.pageIndex == position)
                 }
-            },
-            ContextCompat.getMainExecutor(this)
-        )
-    }
-
-    private fun setupBrowser() {
-        adapter = FileAdapter { entry ->
-            if (entry.isDirectory) browse(entry.url) else playCurrentFolder(entry.url)
-        }
-        layoutManager = LinearLayoutManager(this)
-        recycler.layoutManager = layoutManager
-        recycler.adapter = adapter
-
-        findViewById<Button>(R.id.upButton).setOnClickListener {
-            if (currentUrl.isNotBlank() && rootUrl.isNotBlank()) {
-                SmbUrl.parent(currentUrl, rootUrl)?.let { browse(it) }
             }
-        }
-
-        findViewById<Button>(R.id.settingsButton).setOnClickListener {
-            browseRetryEnabled = false
-            browseRequestGeneration++
-            cancelBrowseRetry()
-            connectionPanel.visibility = View.VISIBLE
-        }
-
-        findViewById<Button>(R.id.playFolderButton).setOnClickListener {
-            playCurrentFolder(null)
-        }
-
-        findViewById<Button>(R.id.nowPlayingButton).setOnClickListener {
-            openNowPlaying()
-        }
-
-        sortButton.setOnClickListener {
-            sortMode = sortMode.next()
-            SortModeStore.save(this, sortMode)
-            sortButton.text = sortMode.label
-            showSortedEntries()
-        }
-
-        searchClearButton.setOnClickListener {
-            // The clear control is a separate, non-focusable target. Clearing never requests
-            // keyboard focus: if the keyboard is hidden it stays hidden; if the user is already
-            // typing, the EditText keeps its existing focus and keyboard state.
-            if (searchEdit.text.isNotEmpty()) searchEdit.text.clear()
-        }
-
-        searchEdit.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                updateSearchClearButton()
-                showSortedEntries()
+            override fun onPageScrollStateChanged(state: Int) {
+                if (state == ViewPager2.SCROLL_STATE_DRAGGING) hideKeyboard()
             }
-
-            override fun afterTextChanged(s: Editable?) = Unit
         })
-        updateSearchClearButton()
-    }
-
-    private fun setupConnection() {
-        findViewById<Button>(R.id.testButton).setOnClickListener {
-            val credentials = enteredCredentials() ?: return@setOnClickListener
-            connectionStatus.text = "Testing…"
-            executor.execute {
-                try {
-                    val count = smb.test(credentials)
-                    runOnUiThread {
-                        if (isFinishing || isDestroyed) return@runOnUiThread
-                        connectionStatus.text = "Connected. $count item(s) visible at root."
-                    }
-                } catch (e: Exception) {
-                    runOnUiThread {
-                        if (isFinishing || isDestroyed) return@runOnUiThread
-                        connectionStatus.text = "Test failed: ${friendlyError(e)}"
-                    }
-                }
+        val permissions = mutableListOf<String>()
+        if (android.os.Build.VERSION.SDK_INT >= 31 && checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            permissions += android.Manifest.permission.BLUETOOTH_CONNECT
+        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+            permissions += android.Manifest.permission.POST_NOTIFICATIONS
+        if (permissions.isNotEmpty()) requestPermissions(permissions.toTypedArray(), 30)
+        if (savedInstanceState == null) pager.setCurrentItem(intent.getIntExtra(EXTRA_PAGE,
+            getSharedPreferences(PREFS_UI, MODE_PRIVATE).getInt("page", 0)).coerceIn(0, 2), false)
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (pager.currentItem > 0) showPage(pager.currentItem - 1)
+                else { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
             }
-        }
-
-        findViewById<Button>(R.id.saveButton).setOnClickListener {
-            val credentials = enteredCredentials() ?: return@setOnClickListener
-            try {
-                val normalized = SmbUrl.normalize(credentials.address)
-                store.save(credentials.copy(address = normalized))
-                smb.invalidate()
-                rootUrl = normalized
-                currentUrl = rootUrl
-                connectionPanel.visibility = View.GONE
-                browserPanel.visibility = View.VISIBLE
-                browse(currentUrl)
-            } catch (e: Exception) {
-                connectionStatus.text = "Bad address: ${friendlyError(e)}"
-            }
-        }
+        })
     }
 
-    private fun restoreSavedConnection() {
-        val credentials = store.load()
-        addressEdit.setText(SmbUrl.display(credentials.address).trimEnd('/'))
-        userEdit.setText(credentials.username)
-        passwordEdit.setText(credentials.password)
-
-        if (credentials.address.isNotBlank()) {
-            try {
-                rootUrl = SmbUrl.normalize(credentials.address)
-                val savedStateUrl = pendingListUrl
-                val last = when {
-                    !savedStateUrl.isNullOrBlank() && savedStateUrl.startsWith(rootUrl) -> savedStateUrl
-                    else -> store.loadLastFolder()
-                }
-                currentUrl = if (last.startsWith(rootUrl)) last else rootUrl
-                connectionPanel.visibility = View.GONE
-                browserPanel.visibility = View.VISIBLE
-                browse(currentUrl)
-            } catch (_: Exception) {
-                connectionPanel.visibility = View.VISIBLE
-            }
-        }
+    protected open fun createPage(position: Int): Fragment = when (position) {
+        0 -> LibraryFragment()
+        1 -> NowPlayingFragment()
+        else -> RadioFragment()
     }
 
-    private fun enteredCredentials(): SmbCredentials? {
-        val address = addressEdit.text.toString().trim()
-        val username = userEdit.text.toString().trim()
-        val password = passwordEdit.text.toString()
-        if (address.isBlank()) {
-            connectionStatus.text = "Enter the SMB host/share path."
-            return null
-        }
-        return SmbCredentials(address, username, password)
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.hasExtra(EXTRA_PAGE)) showPage(intent.getIntExtra(EXTRA_PAGE, 0))
     }
 
-    private fun browse(url: String, resetRetry: Boolean = true) {
-        if (isFinishing || isDestroyed) return
-        if (resetRetry) {
-            browseRetryEnabled = true
-            browseRetryIndex = 0
-            cancelBrowseRetry()
-        }
-
-        currentUrl = url
-        pathText.text = SmbUrl.display(url).trimEnd('/').substringAfterLast('/')
-        browserStatus.text = if (resetRetry) "Loading…" else "Retrying SMB…"
-        val requestGeneration = ++browseRequestGeneration
-
-        executor.execute {
-            try {
-                val result = smb.list(url)
-                runOnUiThread {
-                    if (isFinishing || isDestroyed ||
-                        currentUrl != url || requestGeneration != browseRequestGeneration) return@runOnUiThread
-                    cancelBrowseRetry()
-                    browseRetryIndex = 0
-                    entries = result
-                    store.saveLastFolder(url)
-                    showSortedEntries()
-
-                    if (pendingListUrl == url && pendingListState != null) {
-                        layoutManager.onRestoreInstanceState(pendingListState)
-                        pendingListState = null
-                        pendingListUrl = null
-                    }
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    if (isFinishing || isDestroyed ||
-                        currentUrl != url || requestGeneration != browseRequestGeneration) return@runOnUiThread
-                    entries = emptyList()
-                    adapter.submit(emptyList())
-                    scheduleBrowseRetry(url, e)
-                }
-            }
-        }
+    fun showPage(page: Int) {
+        hideKeyboard()
+        pager.setCurrentItem(page.coerceIn(0, 2), true)
     }
 
-    private fun scheduleBrowseRetry(url: String, error: Throwable) {
-        if (!browseRetryEnabled) return
-        cancelBrowseRetry()
-
-        if (browseRetryIndex >= TAILSCALE_RECOVERY_AFTER_RETRIES) {
-            TailscaleConnector.request(this, "browser recovery")
-        }
-        val delay = BROWSE_RETRY_SCHEDULE_MS[minOf(browseRetryIndex, BROWSE_RETRY_SCHEDULE_MS.lastIndex)]
-        browseRetryIndex++
-        val seconds = delay / 1000
-        browserStatus.text = "SMB unavailable: ${friendlyError(error)}\nRetrying in ${seconds}s…"
-        browserHandler.postAtTime(
-            { if (currentUrl == url) browse(url, resetRetry = false) },
-            BROWSE_RETRY_TOKEN,
-            android.os.SystemClock.uptimeMillis() + delay
-        )
-    }
-
-    private fun cancelBrowseRetry() {
-        browserHandler.removeCallbacksAndMessages(BROWSE_RETRY_TOKEN)
-    }
-
-    private fun requestTailscaleConnect() = TailscaleConnector.request(this, "browser start")
-
-    private fun hideSearchKeyboard() {
-        searchEdit.clearFocus()
-        findViewById<View>(R.id.mainRoot).requestFocus()
-        val inputMethodManager = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        inputMethodManager.hideSoftInputFromWindow(searchEdit.windowToken, 0)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        syncSortModeFromStore()
-        // Browse should never throw the keyboard up merely because the Activity was opened or
-        // brought back from Now Playing. Tapping the search typing area still focuses it normally.
-        if (::searchEdit.isInitialized) searchEdit.post {
-            if (!isFinishing && !isDestroyed) hideSearchKeyboard()
-        }
-    }
-
-    private fun syncSortModeFromStore() {
-        if (!::sortButton.isInitialized) return
-        val sharedMode = SortModeStore.load(this)
-        if (sharedMode == sortMode) return
-        sortMode = sharedMode
-        sortButton.text = sortMode.label
-        if (::adapter.isInitialized) showSortedEntries()
-    }
-
-    private fun updateSearchClearButton() {
-        searchClearButton.visibility = if (searchEdit.text.isNullOrEmpty()) View.GONE else View.VISIBLE
-    }
-
-    private fun showSortedEntries() {
-        val visible = filteredEntries()
-        val sorted = when (sortMode) {
-            // Name sort keeps the familiar browser behavior: folders first, then tracks.
-            SortMode.NAME_ASC -> visible.sortedWith(compareBy<RemoteEntry>({ !it.isDirectory }, { it.name.lowercase() }))
-            SortMode.NAME_DESC -> visible.sortedWith(compareBy<RemoteEntry> { !it.isDirectory }.thenByDescending { it.name.lowercase() })
-
-            // Date sort is a true date sort across folders and tracks. Previously all folders were
-            // forced ahead of every track, which made a new track look "missing" in a mixed folder.
-            SortMode.DATE_ASC -> visible.sortedWith(compareBy<RemoteEntry>({ it.modified }, { it.name.lowercase() }))
-            SortMode.DATE_DESC -> visible.sortedWith(compareByDescending<RemoteEntry> { it.modified }.thenBy { it.name.lowercase() })
-        }
-        adapter.submit(sorted)
-
-        val tracks = visible.count { it.isAudio }
-        val dirs = visible.count { it.isDirectory }
-        val query = searchEdit.text.toString().trim()
-        browserStatus.text = if (query.isBlank()) {
-            "$dirs folder(s), $tracks track(s)"
-        } else {
-            "$dirs folder(s), $tracks track(s) matching"
-        }
-    }
-
-    private fun filteredEntries(): List<RemoteEntry> {
-        val query = searchEdit.text.toString().trim()
-        if (query.isBlank()) return entries
-
-        // Treat whitespace as an AND separator between search terms. Each term only
-        // needs to appear somewhere in the filename/folder name, so punctuation or
-        // the lack of punctuation between terms does not matter (for example,
-        // "blink 182" matches Blink-182, Blink_182, Blink$182, and Blink182).
-        val terms = query.split(Regex("\\s+")).filter { it.isNotBlank() }
-        return entries.filter { entry ->
-            terms.all { term -> entry.name.contains(term, ignoreCase = true) }
-        }
-    }
-
-    private fun playCurrentFolder(startUrl: String?) {
-        val mediaController = controller
-        if (mediaController == null) {
-            browserStatus.text = "Playback service is still connecting — tap again."
-            return
-        }
-
-        val sortedTracks = sortedTracks()
-        if (sortedTracks.isEmpty()) {
-            browserStatus.text = if (searchEdit.text.toString().trim().isBlank()) {
-                "No supported audio files in this folder."
-            } else {
-                "No matching audio files."
-            }
-            return
-        }
-
-        // A selected start track becomes queue item zero. The remaining sorted sequence wraps
-        // around from that track: D,E,F,A,B,C rather than starting at an interior queue index.
-        val selectedIndex = startUrl
-            ?.let { url -> sortedTracks.indexOfFirst { it.url == url } }
-            ?.takeIf { it >= 0 }
-            ?: 0
-        val tracks = rotateFrom(sortedTracks, selectedIndex)
-
-        val mediaItems = tracks.map { entry ->
-            val extras = Bundle().apply {
-                putString(EXTRA_FILENAME, entry.name)
-                putLong(EXTRA_MODIFIED, entry.modified)
-            }
-            MediaItem.Builder()
-                .setMediaId(entry.url)
-                .setUri(entry.url)
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setExtras(extras)
-                        .build()
-                )
-                .build()
-        }
-
-        SortModeStore.save(this, sortMode)
-
-        // setMediaItems replaces the prior folder/filter outright. If the prior song is not in
-        // this newly requested playlist, it is intentionally not retained.
-        mediaController.repeatMode = Player.REPEAT_MODE_ALL
-        mediaController.setMediaItems(mediaItems, 0, 0L)
-        mediaController.prepare()
-        mediaController.play()
-        openNowPlaying()
-    }
-
-    private fun sortedTracks(): List<RemoteEntry> {
-        // When search is active, playback is intentionally limited to the matching tracks.
-        val tracks = filteredEntries().filter { it.isAudio }
-        return when (sortMode) {
-            SortMode.NAME_ASC -> tracks.sortedBy { it.name.lowercase() }
-            SortMode.NAME_DESC -> tracks.sortedByDescending { it.name.lowercase() }
-            SortMode.DATE_ASC -> tracks.sortedBy { it.modified }
-            SortMode.DATE_DESC -> tracks.sortedByDescending { it.modified }
-        }
-    }
-
-    private fun <T> rotateFrom(items: List<T>, startIndex: Int): List<T> {
-        if (items.isEmpty() || startIndex <= 0) return items
-        return items.drop(startIndex) + items.take(startIndex)
-    }
-
-    private fun openNowPlaying() {
-        startActivity(Intent(this, NowPlayingActivity::class.java))
-    }
-
-    private fun friendlyError(t: Throwable): String {
-        var cur: Throwable? = t
-        var last = t.message ?: t.javaClass.simpleName
-        while (cur != null) {
-            if (!cur.message.isNullOrBlank()) last = cur.message!!
-            cur = cur.cause
-        }
-        return last.take(180)
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        outState.putString(STATE_URL, currentUrl)
-        outState.putParcelable(STATE_LIST, layoutManager.onSaveInstanceState())
-        super.onSaveInstanceState(outState)
-    }
-
-    override fun onDestroy() {
-        browseRequestGeneration++
-        browseRetryEnabled = false
-        cancelBrowseRetry()
-        if (::controllerFuture.isInitialized) {
-            MediaController.releaseFuture(controllerFuture)
-        }
-        controller = null
-        executor.shutdownNow()
-        super.onDestroy()
+    private fun hideKeyboard() {
+        getSystemService(InputMethodManager::class.java)
+            .hideSoftInputFromWindow(window.decorView.windowToken, 0)
+        currentFocus?.clearFocus()
     }
 
     companion object {
-        private const val STATE_URL = "browser_url"
-        private const val STATE_LIST = "list_state"
-
+        const val EXTRA_PAGE = "com.smbmusic.player.PAGE"
         const val EXTRA_FILENAME = "com.smbmusic.player.filename"
         const val EXTRA_MODIFIED = "com.smbmusic.player.modified"
         const val PREFS_UI = SortModeStore.PREFS_UI
         const val PREF_QUEUE_SORT = SortModeStore.PREF_SORT_MODE
-
-        private val BROWSE_RETRY_TOKEN = Any()
-        private val BROWSE_RETRY_SCHEDULE_MS = longArrayOf(1_000, 2_000, 5_000, 10_000, 15_000)
-
-        private const val TAILSCALE_RECOVERY_AFTER_RETRIES = 3
     }
 }
+

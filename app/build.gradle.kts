@@ -10,8 +10,8 @@ android {
         applicationId = "com.smbmusic.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 17
-        versionName = "0.5.1"
+        versionCode = 18
+        versionName = "0.6.0"
     }
 
     buildTypes {
@@ -40,6 +40,9 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
     implementation("androidx.appcompat:appcompat:1.8.0")
+    implementation("androidx.viewpager2:viewpager2:1.1.0")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.2.0")
+    implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
 
     implementation("androidx.media3:media3-exoplayer:1.11.0")

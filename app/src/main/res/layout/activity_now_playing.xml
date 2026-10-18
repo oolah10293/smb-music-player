@@ -57,26 +57,19 @@
             android:text="A–Z"
             android:textSize="12sp" />
 
-        <Button
-            android:id="@+id/browseButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1.35"
-            android:layout_marginStart="6dp"
-            android:text="Browse"
-            android:textSize="12sp" />
 
         <Button
             android:id="@+id/quitButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="0.8"
+            android:layout_weight="1"
             android:layout_marginStart="6dp"
             android:text="Quit"
             android:textSize="12sp" />
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/fileMetadata"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
@@ -150,4 +143,16 @@
         app:show_next_button="true"
         app:repeat_toggle_modes="none" />
 
+    <ScrollView android:id="@+id/radioDetailsScroll"
+        android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:fillViewport="true" android:visibility="gone">
+        <include layout="@layout/radio_now_playing_details" />
+    </ScrollView>
+    <FrameLayout android:id="@+id/radioTransport"
+        android:layout_width="match_parent" android:layout_height="200dp"
+        android:layout_marginBottom="10dp" android:visibility="gone">
+        <Button android:id="@+id/radioPlayPause"
+            android:layout_width="120dp" android:layout_height="64dp"
+            android:layout_gravity="center" android:text="Play" />
+    </FrameLayout>
 </LinearLayout>

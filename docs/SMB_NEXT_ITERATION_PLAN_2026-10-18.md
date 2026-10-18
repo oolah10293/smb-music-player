@@ -1,3 +1,5 @@
+> **Current decision:** The user corrected the earlier recovery-first wording and authorized a **combined recovery + radio + swipe-navigation build** on 2026-10-18. Section 4 supersedes the original sequence and planning-only/build-stop wording below. The original investigation remains evidence/hypotheses, not a verified diagnosis.
+
 # SMB Music next iteration — hands-free outage recovery + independent internet radio
 **Planning checkpoint: 2026-10-18. Status: PLAN ONLY; not implemented, built, packaged, installed, or released by this planning request.**
 
@@ -19,7 +21,7 @@ This is the **canonical handoff plan** for the next *standalone SMB Music* itera
 
 **Confirmed product rules:** folders are playlists; SMB Music and House Music remain **two independent apps** with no handoff, shared queue, playback transfer, or ability for SMB Music to reset HOUSE. Keep existing vehicle/lock-screen/Garmin/Android Auto/Bluetooth media controls, Tailscale SMB behavior, sort/search, Repeat All, explicit Quit, and radio/file source boundaries. The requested work comprises (A) *hands-free recovery as highest priority* and (B) *internet radio similar to House Music*. The precise radio UI layout and optional import workflow below are **proposals**, not separately approved designs.
 
-## 2. Priority A — resolve Issue #7 BEFORE adding radio
+## 2. Cellular recovery — part of the combined iteration
 
 **Original issue:** [#7 — cellular outage requires screen unlock or manual Play](https://github.com/oolah10293/smb-music-player/issues/7). The 2026-10-09 road report identifies **two distinct failures**: one recovery only after **unlocking** the phone with the app already open, and another requiring **manual Play**. Reproduction variables (installed APK hash, exact OS, audio focus, Bluetooth route events and Android process/service lifetime) were not measured in that report; do not claim a root cause was proven.
 
@@ -46,7 +48,7 @@ Android reference material: [ExoPlayer.Builder.setWakeMode](https://developer.an
 
 While **stationary**, start an SMB folder over the usual cellular/Tailscale path, leave Bluetooth audio connected and the screen **locked**, remove the actual network/SMB route until the Country Buffer is exhausted, then restore service. It must recover the **same track and position** after the usual buffer rebuild, **without unlocking, foregrounding SMB Music or pressing Play**. Repeat after a prolonged screen-off interval, through several outages, with return during refill, and without any new Bluetooth connection event. Verify no accidental speaker playback, no resume following explicit Pause/Stop/Quit, and no skip to the next file. Record phone/OS, timeline, diagnostic output, and battery/data deltas; use controlled stationary tests, never phone interaction while driving. **The issue remains OPEN until physical locked-screen acceptance passes.**
 
-## 3. Priority B — stand-alone internet radio analogous to House Music
+## 3. Stand-alone internet radio — part of the same iteration
 
 ### B1. Playback architecture
 
@@ -99,18 +101,16 @@ Reuse *behavior/design* from House Music v0.4.0 radio UI as a reference, **not i
 6. Reopen the app, repeat source switches while the network fails, and restore any retained v0.5.1 file queue. Validate Android API-26 gates and the previously accepted Android Auto, Garmin, notification, screen-off, Browse and Country Buffer regressions.
 7. Compare battery/data use in normal radio and prolonged SMB recovery; record exact counter windows and do not infer a per-hour rate from cumulative counters.
 
-## 4. Sequence and release gates
+## 4. Corrected scope and authorization (2026-10-18)
 
-0. **Planning only (this change):** commit this canonical plan, cross-reference it from roadmap/issues, then continue work in ChatGPT Work. No implementation/build authorization implied.
-1. **Recovery analysis & minimal fix:** start from current `main`, reproduce or instrument Issue #7, choose tested sleep/retry/intent strategy, add deterministic unit tests; keep transport/audio behavior stable. Do this **before** adding radio. A clean compile or unit test alone does not close #7.
-2. **Recovery physical gate:** stationary phone, screen locked, repeated outages with same Bluetooth output, automatic same-position resume; collect diagnostics and resource-use observations; only mark #7 resolved after actual device acceptance.
-3. **Radio engine & storage:** introduce source routing, HTTP/HLS, isolated retries and versioned station/session persistence without touching HOUSE. Unit/integration tests first.
-4. **Radio page & controls:** reuse accepted House radio UI patterns, station CRUD/ranking/metadata, and source-specific Now Playing behavior without HOUSE-only capabilities.
-5. **Source-switch/Resume Playlist:** protect saved SMB queue/position and explicit intent, prevent stale async work/overwrites, test process recreation.
-6. **Combined regression & field gate:** both modes, locked-screen cellular recovery, vehicle/Bluetooth controls, audio focus, privacy, battery/data, app separation, Android 8+ and large queues.
-7. **Build/package/delivery GATE:** **STOP AND ASK** for explicit build authorization before building, invoking APK-generating CI, signing, packaging sources, publishing/uploading, or sending an APK. Even if design, code or tests were approved, no release/installer is authorized implicitly. Record actual version, tests, signatures and device results only after performed.
+The user explicitly corrected the original handoff: **cellular recovery, standalone radio and swipe navigation belong in one combined update.** There is no recovery-first implementation or physical-test gate before adding radio. The user subsequently authorized implementation and build with **“proceed with the build.”** That authorization covers this combined v0.6.0 APK; it is not blanket authorization for later releases.
 
-**Do not widen the scope** to House server radio rewrites, Pi deploys, ESP32 firmware, an app handoff system, directory/database changes, or unrelated UI features. If new evidence contradicts the proposed approach, update this plan/issue with the evidence before redesigning.
+- Implement source-aware recovery and direct phone radio together, retaining the existing SMB transport/Country Buffer and HOUSE independence.
+- Browse ↔ Now Playing ↔ Radio uses the House native horizontal pager behavior. Remove redundant Now Playing/Browse navigation buttons. Browse has equal-width Sort / Play List. File Now Playing has equal-width Sort / Quit. Radio Now Playing has equal-width Resume Playlist / Quit. Preserve the height and gaps of those shared rows.
+- Implement station management, metadata, ranking, previous-song history, source cancellation, and exact saved playlist restoration in this same build.
+- Run combined unit/build/API-26 checks; sign with the existing SMB Music certificate for an in-place update. Record actual results in the release note.
+- Physical locked-screen, Bluetooth/audio-focus, repeated-outage and battery/data acceptance remain necessary after delivery. Issue #7 stays open until those device checks pass. Compile/unit tests are not field evidence.
+- Optional House station import remains excluded; no Pi deployment, firmware build, House session change or app merger is authorized.
 
 ## 5. Key links for a fresh Work chat
 
