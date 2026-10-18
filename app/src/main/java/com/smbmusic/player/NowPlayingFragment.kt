@@ -274,7 +274,8 @@ class NowPlayingFragment : SmbPageFragment(R.layout.activity_now_playing, 1) {
         updateSortButton()
         if (radio) {
             RadioNowPlayingView.bind(requireView(), mediaController.sessionExtras)
-            playbackStatus.text = "LIVE · " + mediaController.sessionExtras.getString("radioStatus", "Connecting")
+            val status = mediaController.sessionExtras.getString("radioStatus", "Connecting")
+            playbackStatus.text = if (status == "Live") "LIVE" else "LIVE · $status"
             findViewById<Button>(R.id.radioPlayPause).text = if (mediaController.sessionExtras.getBoolean("wanted")) "Pause" else "Play"
             return
         }

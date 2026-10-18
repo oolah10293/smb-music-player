@@ -1323,7 +1323,7 @@ class PlaybackService : MediaLibraryService() {
         val saved = savedPlaylist ?: return false
         if (!radio) return false
         stopRadioWork(); cancelRecovery(); cancelPendingResume()
-        sourceSwitching = true; player.stop(); radio = false; station = null; savedPlaylist = null
+        sourceSwitching = true; player.pause(); player.stop(); radio = false; station = null; savedPlaylist = null
         player.setMediaItems(saved.items, saved.index, saved.positionMs)
         player.shuffleModeEnabled = saved.shuffle
         if (saved.shuffleOrder.isNotEmpty()) player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(saved.shuffleOrder.toIntArray(), 0))

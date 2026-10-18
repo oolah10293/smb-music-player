@@ -35,7 +35,7 @@ def wait_text(id,text,timeout=30):
     end=time.monotonic()+timeout
     while time.monotonic()<end:
         e=node(id)
-        if text in e.get('text',''): return
+        if (e.get('text','') == text if text == 'LIVE' else text in e.get('text','')): return
         time.sleep(.5)
     raise AssertionError(f'{id}: expected {text}, got {e.get("text")}')
 def screenshot(name):
@@ -72,22 +72,22 @@ with tempfile.TemporaryDirectory() as folder:
         node('addressEdit');screenshot('browse')
         launch(2);tap('radioUrlEdit');shell('input','text','http://10.0.2.2:18765/fixture.wav')
         shell('input','keyevent',4);tap('radioAddButton');launch(1)
-        wait_text('playbackStatus','Live');screenshot('radio-playing')
-        tap('radioPlayPause');wait_text('playbackStatus','Paused');tap('radioPlayPause');wait_text('playbackStatus','Live')
-        tap('queueSortButton');wait_text('queueSortButton','A–Z')
+        wait_text('playbackStatus','LIVE');screenshot('radio-playing')
+        tap('radioPlayPause');wait_text('playbackStatus','Paused');tap('radioPlayPause');wait_text('playbackStatus','LIVE')
+        tap('queueSortButton');wait_text('queueSortButton','A–Z');wait_text('playbackStatus','Paused')
         snapshot=json.loads(shell('run-as',PKG,'cat','no_backup/standalone-session.json'))
         assert not snapshot['radio'] and not snapshot['shouldPlay'],snapshot
         assert snapshot['index']==1 and snapshot['positionMs']==23456 and snapshot['shuffle'],snapshot
         assert [x['uri'] for x in snapshot['items']]==[x['uri'] for x in seed['items']],snapshot
         screenshot('playlist-restored')
-        launch(2);tap('radioStationPlay');launch(1);wait_text('playbackStatus','Live')
+        launch(2);tap('radioStationPlay');launch(1);wait_text('playbackStatus','LIVE')
         launch(2);tap('radioStationPlay',long=True)
         # Dialog EditText starts selected. Replace the name through the soft-input test path.
         shell('input','text','SmokeStation');text_button('Save')
         wait_text('radioStationName','SmokeStation');tap('radioStationDelete');node('radioUndoButton');tap('radioUndoButton')
         wait_text('radioStationName','SmokeStation');screenshot('radio-saved')
         shell('am','force-stop',PKG);launch(2);wait_text('radioStationName','SmokeStation')
-        tap('radioStationPlay');launch(1);wait_text('playbackStatus','Live');tap('quitButton')
+        tap('radioStationPlay');launch(1);wait_text('playbackStatus','LIVE');tap('quitButton')
         time.sleep(1)
         errors=adb('logcat','-d','-b','crash')
         assert 'FATAL EXCEPTION' not in errors, errors
