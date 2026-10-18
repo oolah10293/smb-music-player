@@ -139,6 +139,8 @@ For the product-level reasons behind the app, see [docs/PROJECT_CONTEXT.md](docs
 
 ## Planned / possible future work
 
+**Next standalone SMB Music plan (2026-10-18):** [hands-free cellular-outage recovery first, then independent internet radio](docs/SMB_NEXT_ITERATION_PLAN_2026-10-18.md), tracked by [recovery #7](https://github.com/oolah10293/smb-music-player/issues/7) and [radio #16](https://github.com/oolah10293/smb-music-player/issues/16). Planning only; no code, build or APK release is authorized by this documentation change.
+
 Current priorities and later ideas are maintained only in [docs/ROADMAP.md](docs/ROADMAP.md) so this README does not become a second roadmap.
 
 The current philosophy is to keep the player simple and preserve proven playback behavior rather than add features that destabilize the transport stack.
