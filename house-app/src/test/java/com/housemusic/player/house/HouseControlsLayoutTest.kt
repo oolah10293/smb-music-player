@@ -45,6 +45,7 @@ class HouseControlsLayoutTest {
         layout()
         val mute = bounds(R.id.muteOutputButton)
         val sync = bounds(R.id.houseSettingsButton)
+        val localPlay = bounds(R.id.housePlayPauseButton)
         controls.showLiveRadioControls(true)
         layout()
         for (id in listOf(androidx.media3.ui.R.id.exo_prev, androidx.media3.ui.R.id.exo_next,
@@ -56,8 +57,17 @@ class HouseControlsLayoutTest {
         assertEquals(View.VISIBLE, controls.findViewById<View>(R.id.houseSettingsButton).visibility)
         assertEquals(mute, bounds(R.id.muteOutputButton))
         assertEquals(sync, bounds(R.id.houseSettingsButton))
+        assertEquals(View.VISIBLE, controls.findViewById<View>(R.id.radioPlayPauseButton).visibility)
+        assertEquals(View.INVISIBLE, controls.findViewById<View>(R.id.housePlayPauseButton).visibility)
+        val radioPlay = bounds(R.id.radioPlayPauseButton)
+        assertEquals(mute.centerY(), radioPlay.centerY())
+        assertEquals(sync.centerY(), radioPlay.centerY())
+        assertTrue("Radio play must not overlap mute", radioPlay.right <= mute.left)
+        assertTrue("Radio play tap target", radioPlay.width() >= (48 * density).toInt())
         controls.showLiveRadioControls(false)
         layout()
+        assertEquals(localPlay, bounds(R.id.housePlayPauseButton))
+        assertEquals(View.GONE, controls.findViewById<View>(R.id.radioPlayPauseButton).visibility)
         for (id in listOf(androidx.media3.ui.R.id.exo_prev, androidx.media3.ui.R.id.exo_next,
             androidx.media3.ui.R.id.exo_shuffle, androidx.media3.ui.R.id.exo_repeat_toggle,
             androidx.media3.ui.R.id.exo_time, androidx.media3.ui.R.id.exo_progress)) {

@@ -182,7 +182,9 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
     fun extras(): Bundle = Bundle().apply {
         putBoolean(EXTRA_HOUSE, true)
         putBoolean(EXTRA_MUTED, muted)
-        putString(EXTRA_STATUS, commandError ?: status)
+        putString(EXTRA_STATUS, if (state.playlistResume.status == "uncertain")
+            "Playlist restore could not be confirmed. Select a station or folder."
+            else commandError ?: status)
         putString(EXTRA_DEFAULT, if (connected) defaultFolder else "")
         putBoolean(EXTRA_CONNECTED, connected && registered && homePresent)
         putBoolean(EXTRA_CAN_PLAY, canControl && (state.tracks.isNotEmpty() || state.isRadio))
@@ -198,6 +200,10 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         putString(EXTRA_RADIO_STATION_NAME, state.radioStationName)
         putString(EXTRA_RADIO_STATUS, state.radioStatus)
         putString(EXTRA_RADIO_ERROR, state.radioError)
+        putBoolean(EXTRA_RESUME_AVAILABLE, canControl && pendingCommand == null &&
+            state.isRadio && state.playlistResume.canResume)
+        putString(EXTRA_RESUME_ID, state.playlistResume.snapshotId)
+        putString(EXTRA_RESUME_STATUS, state.playlistResume.status)
         putBundle(EXTRA_RADIO_DETAILS, state.radioDetailsBundle())
     }
 
@@ -384,7 +390,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         outputPolicy.transportChanged()
         // A deliberate Play is a fresh request to hear audio, including after a
         // denied or lost Android focus request. Never change the manual mute choice.
-        if (path == "/play" || path == "/radio/play" ||
+        if (path == "/play" || path == "/radio/play" || path == "/radio/resume-playlist" ||
             (path == "/queue/replace" && body.optBoolean("play"))) {
             focusRecovery.explicitPlay()
             reconcileOutput()
@@ -453,9 +459,10 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             if (stationId.isBlank()) Futures.immediateFuture(SessionResult(SessionError.ERROR_BAD_VALUE))
             else command("/radio/play", JSONObject().put("stationId", stationId))
         }
+        RESUME_PLAYLIST -> resumePlaylist(args.getString("snapshot_id").orEmpty())
         DEFAULT -> command("/settings", JSONObject().put("passiveDefaultFolder", args.getString("folder")))
         SORT -> {
-            if (state.isRadio) Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
+            if (state.isRadio || state.playlistResume.status == "uncertain") Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
             else {
                 val mode = SortMode.fromStorage(args.getString("mode"))
                 val snapshot = state
@@ -535,7 +542,11 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         const val SORT = "house.sort"
         const val DEFAULT = "house.defaultFolder"
         const val RADIO_PLAY = "house.radioPlay"
+        const val RESUME_PLAYLIST = "house.resumePlaylist"
+        const val EXTRA_RESUME_AVAILABLE = "house.resumeAvailable"
+        const val EXTRA_RESUME_ID = "house.resumeSnapshotId"
+        const val EXTRA_RESUME_STATUS = "house.resumeStatus"
         const val TOGGLE_PLAY = "house.togglePlay"
-        val CUSTOM_COMMANDS = listOf(MUTE, PLAY_LIST, SORT, DEFAULT, SYNC, RADIO_PLAY, TOGGLE_PLAY)
+        val CUSTOM_COMMANDS = listOf(MUTE, PLAY_LIST, SORT, DEFAULT, SYNC, RADIO_PLAY, RESUME_PLAYLIST, TOGGLE_PLAY)
     }
 }

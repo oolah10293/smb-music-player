@@ -34,6 +34,7 @@ import com.housemusic.player.media.AudioFormats
 @UnstableApi
 class NowPlayingFragment : HousePageFragment(R.layout.activity_now_playing, 1) {
     private lateinit var houseTransport: HouseTransportControl
+    private lateinit var radioTransport: HouseTransportControl
     private lateinit var playerView: PlayerView
     private lateinit var controlsPlayerView: PlayerView
     private lateinit var titleText: TextView
@@ -46,6 +47,8 @@ class NowPlayingFragment : HousePageFragment(R.layout.activity_now_playing, 1) {
     private lateinit var controllerFuture: ListenableFuture<MediaController>
     private var controller: MediaController? = null
     private var queueSortMode = SortMode.NAME_ASC
+    private var queueActionBusy = false
+    private var queueActionSerial = 0L
 
     private val playerListener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -79,6 +82,8 @@ class NowPlayingFragment : HousePageFragment(R.layout.activity_now_playing, 1) {
         }
         override fun onDisconnected(controller: MediaController) {
             if (::houseTransport.isInitialized) houseTransport.refresh()
+            if (::radioTransport.isInitialized) radioTransport.refresh()
+            if (::queueSortButton.isInitialized) updateSortButton()
         }
     }
 
@@ -90,6 +95,9 @@ class NowPlayingFragment : HousePageFragment(R.layout.activity_now_playing, 1) {
         controlsPlayerView = findViewById(R.id.controlsPlayerView)
         houseTransport = HouseTransportControl(
             controlsPlayerView.findViewById(R.id.housePlayPauseButton)) { controller }
+        radioTransport = HouseTransportControl(
+            controlsPlayerView.findViewById(R.id.radioPlayPauseButton)) { controller }
+        queueActionBusy = false
         titleText = findViewById(R.id.nowPlayingText)
         albumArtistText = findViewById(R.id.albumArtistText)
         albumText = findViewById(R.id.albumText)
@@ -110,7 +118,8 @@ class NowPlayingFragment : HousePageFragment(R.layout.activity_now_playing, 1) {
         queueSortMode = SortModeStore.load(pageContext)
         updateSortButton()
         queueSortButton.setOnClickListener {
-            sortCurrentQueue(queueSortMode.next())
+            if (controller?.sessionExtras?.getBoolean(HouseRuntime.EXTRA_RADIO) == true) resumePlaylist()
+            else sortCurrentQueue(queueSortMode.next())
         }
 
         // v0.2 used PlayerView's built-in controller. Keep that exact mechanism, but
@@ -183,12 +192,15 @@ class NowPlayingFragment : HousePageFragment(R.layout.activity_now_playing, 1) {
 
     private fun sortCurrentQueue(mode: SortMode) {
         val mediaController = controller ?: return
-        if (mediaController.sessionExtras.getBoolean(HouseRuntime.EXTRA_RADIO)) return
-        queueSortButton.isEnabled = false
+        if (queueActionBusy || mediaController.sessionExtras.getBoolean(HouseRuntime.EXTRA_RADIO)) return
+        queueActionBusy = true
+        val serial = ++queueActionSerial
+        updateSortButton()
         val future = mediaController.sendCustomCommand(SessionCommand(HouseRuntime.SORT, Bundle.EMPTY), Bundle().apply { putString("mode", mode.name) })
         future.addListener({
-            if (isFinishing || isDestroyed) return@addListener
-            queueSortButton.isEnabled = !mediaController.sessionExtras.getBoolean(HouseRuntime.EXTRA_RADIO)
+            if (isFinishing || isDestroyed || serial != queueActionSerial) return@addListener
+            queueActionBusy = false
+            updateSortButton()
             if (runCatching { future.get().resultCode == 0 }.getOrDefault(false)) {
                 queueSortMode = mode
                 SortModeStore.save(pageContext, mode)
@@ -199,10 +211,28 @@ class NowPlayingFragment : HousePageFragment(R.layout.activity_now_playing, 1) {
     }
 
     private fun updateSortButton() {
-        val extras = controller?.sessionExtras
-        val radio = extras?.getBoolean(HouseRuntime.EXTRA_CONNECTED) == true && extras.getBoolean(HouseRuntime.EXTRA_RADIO)
-        queueSortButton.text = if (radio) "LIVE" else queueSortMode.label
-        queueSortButton.isEnabled = !radio
+        val extras = controller?.takeIf { it.isConnected }?.sessionExtras ?: Bundle.EMPTY
+        queueSortButton.bindQueueAction(extras, queueSortMode.label, queueActionBusy)
+    }
+
+    private fun resumePlaylist() {
+        val mediaController = controller ?: return
+        val extras = mediaController.sessionExtras
+        if (queueActionBusy || !extras.getBoolean(HouseRuntime.EXTRA_RESUME_AVAILABLE)) return
+        val snapshotId = extras.getString(HouseRuntime.EXTRA_RESUME_ID).orEmpty()
+        queueActionBusy = true
+        val serial = ++queueActionSerial
+        updateSortButton()
+        val future = mediaController.sendCustomCommand(SessionCommand(HouseRuntime.RESUME_PLAYLIST, Bundle.EMPTY),
+            Bundle().apply { putString("snapshot_id", snapshotId) })
+        future.addListener({
+            if (isFinishing || isDestroyed || serial != queueActionSerial) return@addListener
+            queueActionBusy = false
+            updateStatus()
+            if (!runCatching { future.get().resultCode == 0 }.getOrDefault(false)) {
+                playbackStatus.text = "Playlist resume could not be confirmed. Check playback; select a station or folder if needed."
+            }
+        }, ContextCompat.getMainExecutor(pageContext))
     }
 
     private fun quitCleanly() {
@@ -311,6 +341,7 @@ class NowPlayingFragment : HousePageFragment(R.layout.activity_now_playing, 1) {
 
     private fun updateStatus() {
         houseTransport.refresh()
+        radioTransport.refresh()
         val mediaController = controller ?: return
         val extras = mediaController.sessionExtras
         val radio = extras.getBoolean(HouseRuntime.EXTRA_CONNECTED) && extras.getBoolean(HouseRuntime.EXTRA_RADIO)
@@ -346,6 +377,7 @@ class NowPlayingFragment : HousePageFragment(R.layout.activity_now_playing, 1) {
     }
 
     override fun onDestroyView() {
+        queueActionSerial++
         playerView.player = null
         controlsPlayerView.player = null
         controller?.removeListener(playerListener)
@@ -369,4 +401,17 @@ internal fun PlayerView.showLiveRadioControls(radio: Boolean) {
     // elapsed/duration display or seek bar that could imply time shifting.
     findViewById<View>(androidx.media3.ui.R.id.exo_time)?.visibility = if (radio) View.INVISIBLE else View.VISIBLE
     findViewById<View>(androidx.media3.ui.R.id.exo_progress)?.visibility = if (radio) View.INVISIBLE else View.VISIBLE
+    findViewById<View>(R.id.housePlayPauseButton).visibility = if (radio) View.INVISIBLE else View.VISIBLE
+    findViewById<View>(R.id.radioPlayPauseButton).visibility = if (radio) View.VISIBLE else View.GONE
+}
+
+/** Preserve the existing slot; no inactive LIVE button when no playlist was saved. */
+internal fun Button.bindQueueAction(extras: Bundle, sortLabel: String, busy: Boolean) {
+    val connected = extras.getBoolean(HouseRuntime.EXTRA_CONNECTED)
+    val radio = extras.getBoolean(HouseRuntime.EXTRA_RADIO)
+    val available = extras.getBoolean(HouseRuntime.EXTRA_RESUME_AVAILABLE)
+    val uncertain = extras.getString(HouseRuntime.EXTRA_RESUME_STATUS) == "uncertain"
+    text = if (radio) { if (busy) "Resuming…" else "Resume Playlist" } else sortLabel
+    visibility = if (uncertain || (radio && !available && !busy)) View.INVISIBLE else View.VISIBLE
+    isEnabled = connected && !busy && !uncertain && (!radio || available)
 }

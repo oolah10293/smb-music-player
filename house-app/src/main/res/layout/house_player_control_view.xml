@@ -55,6 +55,14 @@
 
     </LinearLayout>
 
+    <ImageButton android:id="@+id/radioPlayPauseButton"
+        style="@style/ExoStyledControls.Button.Bottom"
+        android:layout_gravity="center"
+        android:visibility="gone"
+        android:enabled="false"
+        android:contentDescription="Play"
+        android:src="@drawable/exo_styled_controls_play" />
+
     <LinearLayout android:id="@id/exo_basic_controls"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

@@ -22,6 +22,7 @@ data class HouseState(
     val radioHistoryError: String = "",
     val supportsSeek: Boolean = true, val supportsSkip: Boolean = true,
     val supportsShuffle: Boolean = true, val supportsRepeat: Boolean = true,
+    val playlistResume: PlaylistResume = PlaylistResume(),
 ) {
     // MPD rejects Next/Previous/Seek when stopped. Play remains available for a retained queue.
     val canNavigate: Boolean get() = !isRadio && tracks.isNotEmpty() && transport in setOf("play", "pause")
@@ -96,6 +97,7 @@ data class HouseState(
                 supportsSkip = source?.optBoolean("canSkip", true) ?: true,
                 supportsShuffle = source?.optBoolean("canShuffle", true) ?: true,
                 supportsRepeat = source?.optBoolean("canRepeat", true) ?: true,
+                playlistResume = PlaylistResume.parse(source),
             )
         }
 
