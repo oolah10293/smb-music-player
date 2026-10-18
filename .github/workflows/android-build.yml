@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'app/**'
+      - 'scripts/standalone-smoke.py'
       - 'gradle/**'
       - 'gradlew*'
       - '*.gradle.kts'
@@ -14,6 +15,7 @@ on:
       - main
     paths:
       - 'app/**'
+      - 'scripts/standalone-smoke.py'
       - 'gradle/**'
       - 'gradlew*'
       - '*.gradle.kts'
@@ -63,6 +65,32 @@ jobs:
                       assert b'Lcom/smbmusic/player/house/' not in apk.read(name)
           PYAPK
 
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Smoke test standalone playback and pages
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: python3 scripts/standalone-smoke.py
+
+      - name: Upload checks and smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SMBMusic-v0.6.0-checks
+          path: |
+            smoke-results/
+            app/build/test-results/
+            app/build/reports/lint-results-debug.*
+
       - name: Package source archive
         run: |
           zip -qr SMBMusic-v0.6.0-source.zip . \
@@ -74,6 +102,7 @@ jobs:
                'app/build/*' \
                'app/.cxx/*' \
                'house-app/*' \
+               'smoke-results/*' \
                'gradle/wrapper/gradle-wrapper.jar' \
                'local.properties' \
                '*.iml' \

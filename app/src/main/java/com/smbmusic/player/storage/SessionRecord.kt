@@ -10,12 +10,12 @@ data class SessionItem(val uri: String, val id: String = uri, val mime: String =
 data class SessionRecord(val items: List<SessionItem>, val index: Int, val positionMs: Long,
     val shuffle: Boolean, val stopped: Boolean, val shouldPlay: Boolean = !stopped,
     val radio: Boolean = false, val stationId: String = "", val stationName: String = "",
-    val playlist: SessionRecord? = null, val shuffleOrder: List<Int> = emptyList()) {
+    val playlist: SessionRecord? = null, val shuffleOrder: List<Int> = emptyList(), val bluetoothRequired: Boolean = false) {
     fun encode(): JSONObject = JSONObject().put("version", 2).put("items", JSONArray(items.map {
         JSONObject().put("uri", it.uri).put("id", it.id).put("mime", it.mime).put("title", it.title)
             .put("artist", it.artist).put("album", it.album).put("filename", it.filename).put("modified", it.modified)
     })).put("index", index).put("positionMs", positionMs).put("shuffle", shuffle).put("explicitlyStopped", stopped)
-        .put("shouldPlay", shouldPlay).put("radio", radio).put("stationId", stationId).put("stationName", stationName)
+        .put("bluetoothRequired", bluetoothRequired).put("shouldPlay", shouldPlay).put("radio", radio).put("stationId", stationId).put("stationName", stationName)
         .put("shuffleOrder", JSONArray(shuffleOrder)).apply { playlist?.let { put("playlist", it.copy(playlist = null).encode()) } }
 
     companion object {
@@ -37,7 +37,7 @@ data class SessionRecord(val items: List<SessionItem>, val index: Int, val posit
             return SessionRecord(items, json.optInt("index").coerceIn(items.indices), json.optLong("positionMs").coerceAtLeast(0),
                 json.optBoolean("shuffle"), stopped, json.optBoolean("shouldPlay", !stopped) && !stopped,
                 radio, json.optString("stationId"), json.optString("stationName"),
-                if (nested) null else json.optJSONObject("playlist")?.let { decode(it, true) }, validOrder)
+                if (nested) null else json.optJSONObject("playlist")?.let { decode(it, true) }, validOrder, json.optBoolean("bluetoothRequired"))
         }
     }
 }

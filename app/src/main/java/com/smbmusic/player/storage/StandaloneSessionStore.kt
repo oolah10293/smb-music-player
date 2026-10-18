@@ -15,7 +15,7 @@ import org.json.JSONObject
 data class StandaloneSnapshot(val items: List<MediaItem>, val index: Int, val positionMs: Long,
     val shuffle: Boolean, val explicitlyStopped: Boolean, val shouldPlay: Boolean = !explicitlyStopped,
     val radio: Boolean = false, val stationId: String = "", val stationName: String = "",
-    val playlist: StandaloneSnapshot? = null, val shuffleOrder: List<Int> = emptyList())
+    val playlist: StandaloneSnapshot? = null, val shuffleOrder: List<Int> = emptyList(), val bluetoothRequired: Boolean = false)
 
 @UnstableApi
 class StandaloneSessionStore(context: Context) {
@@ -36,7 +36,7 @@ class StandaloneSessionStore(context: Context) {
         }
         return StandaloneSnapshot(items, record.index, record.positionMs, record.shuffle, record.stopped,
             record.shouldPlay, record.radio, record.stationId, record.stationName,
-            record.playlist?.let(::fromRecord), record.shuffleOrder)
+            record.playlist?.let(::fromRecord), record.shuffleOrder, record.bluetoothRequired)
     }
     private fun toRecord(s: StandaloneSnapshot): SessionRecord = SessionRecord(s.items.map { item ->
         val meta = item.mediaMetadata
@@ -46,7 +46,7 @@ class StandaloneSessionStore(context: Context) {
             meta.extras?.getString(MainActivity.EXTRA_FILENAME).orEmpty(),
             meta.extras?.getLong(MainActivity.EXTRA_MODIFIED) ?: 0)
     }, s.index, s.positionMs, s.shuffle, s.explicitlyStopped, s.shouldPlay, s.radio,
-        s.stationId, s.stationName, s.playlist?.let(::toRecord), s.shuffleOrder)
+        s.stationId, s.stationName, s.playlist?.let(::toRecord), s.shuffleOrder, s.bluetoothRequired)
     private fun encode(s: StandaloneSnapshot): JSONObject = toRecord(s).encode()
     fun save(snapshot: StandaloneSnapshot) {
         if (snapshot.items.isEmpty()) { file.delete(); return }

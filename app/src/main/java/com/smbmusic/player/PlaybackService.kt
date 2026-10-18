@@ -446,6 +446,7 @@ class PlaybackService : MediaLibraryService() {
             playbackIntent.restore(saved.explicitlyStopped, bluetoothAvailable())
             radio = saved.radio; savedPlaylist = saved.playlist
             wanted = saved.shouldPlay; restoreAutoplay = saved.shouldPlay
+            if (saved.bluetoothRequired && !bluetoothAvailable()) holdReason = "output"
             if (radio) station = RadioStation(saved.stationId, saved.stationName,
                 saved.items.first().localConfiguration!!.uri.toString())
             player.setMediaItems(saved.items, saved.index, if (radio) 0 else saved.positionMs)
@@ -1169,7 +1170,8 @@ class PlaybackService : MediaLibraryService() {
             (if (recovering && !radio) resumeMediaIndex else player.currentMediaItemIndex).coerceAtLeast(0),
             (if (radio) 0L else if (recovering) resumePositionMs else player.currentPosition).coerceAtLeast(0),
             player.shuffleModeEnabled, playbackIntent.explicitlyStopped,
-            wanted && holdReason.isBlank(), shuffleOrder = order)
+            wanted && holdReason.isBlank(), shuffleOrder = order,
+            bluetoothRequired = playbackIntent.bluetoothConnected || holdReason == "output")
     }
 
     private fun userPlay() {
@@ -1297,6 +1299,7 @@ class PlaybackService : MediaLibraryService() {
         if (saved.shuffleOrder.isNotEmpty()) player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(saved.shuffleOrder.toIntArray(), 0))
         player.repeatMode = Player.REPEAT_MODE_ALL
         recoveryIntent.afterPlaylistRestore(saved.shouldPlay)
+        if (saved.bluetoothRequired && !bluetoothAvailable()) holdReason = "output"
         sourceSwitching = false
         playbackIntent.playbackRequested()
         refreshControllerCommands(); publishRadio(); saveStandalone()
@@ -1305,7 +1308,6 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun updateRadioMetadata(title: String, artist: String = "", album: String = "") {
-        if (title.isBlank()) return
         val parsed = RadioMetadata.parse(title, artist, album)
         if (parsed == radioSong) return
         radioSong = parsed

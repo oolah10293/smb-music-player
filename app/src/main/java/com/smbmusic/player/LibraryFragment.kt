@@ -77,7 +77,6 @@ class LibraryFragment : SmbPageFragment(R.layout.activity_main, 0) {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
 
         store = CredentialStore(pageContext)
         smb = SmbClient(store)

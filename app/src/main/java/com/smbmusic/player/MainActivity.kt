@@ -41,6 +41,7 @@ open class MainActivity : AppCompatActivity() {
             insets
         }
         androidx.core.view.ViewCompat.requestApplyInsets(pager)
+        val initialPage = intent.getIntExtra(EXTRA_PAGE, getSharedPreferences(PREFS_UI, MODE_PRIVATE).getInt("page", 0))
         pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 getSharedPreferences(PREFS_UI, MODE_PRIVATE).edit().putInt("page", position).apply()
@@ -58,8 +59,7 @@ open class MainActivity : AppCompatActivity() {
         if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
             permissions += android.Manifest.permission.POST_NOTIFICATIONS
         if (permissions.isNotEmpty()) requestPermissions(permissions.toTypedArray(), 30)
-        if (savedInstanceState == null) pager.setCurrentItem(intent.getIntExtra(EXTRA_PAGE,
-            getSharedPreferences(PREFS_UI, MODE_PRIVATE).getInt("page", 0)).coerceIn(0, 2), false)
+        if (savedInstanceState == null) pager.setCurrentItem(initialPage.coerceIn(0, 2), false)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (pager.currentItem > 0) showPage(pager.currentItem - 1)
@@ -99,4 +99,3 @@ open class MainActivity : AppCompatActivity() {
         const val PREF_QUEUE_SORT = SortModeStore.PREF_SORT_MODE
     }
 }
-

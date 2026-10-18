@@ -51,8 +51,16 @@ class RadioFragment : SmbPageFragment(R.layout.activity_radio, 2) {
             val input = findViewById<EditText>(R.id.radioUrlEdit)
             try {
                 val station = store.add(input.text.toString())
-                order.added(station.id); input.text.clear(); refresh(); play(station)
+                order.added(station.id); input.text.clear(); input.clearFocus()
+                (getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
+                    .hideSoftInputFromWindow(input.windowToken, 0)
+                refresh(); play(station)
             } catch (e: Exception) { status(e.message ?: "Could not save station.") }
+        }
+        findViewById<EditText>(R.id.radioUrlEdit).setOnEditorActionListener { _, action, _ ->
+            if (action == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                findViewById<Button>(R.id.radioAddButton).performClick(); true
+            } else false
         }
         findViewById<Button>(R.id.radioUndoButton).setOnClickListener {
             deleted?.let { station ->
@@ -90,8 +98,8 @@ class RadioFragment : SmbPageFragment(R.layout.activity_radio, 2) {
         result.addListener({
             if (isDestroyed) return@addListener
             if (isSelectedPage && runCatching { result.get().resultCode == androidx.media3.session.SessionResult.RESULT_SUCCESS }.getOrDefault(false))
-                (activity as? MainActivity)?.showPage(1)
-            else status("Could not play the selected station.")
+                refresh()
+            else if (isSelectedPage) status("Could not play the selected station.")
         }, ContextCompat.getMainExecutor(pageContext))
     }
     private fun rename(station: RadioStation) {
