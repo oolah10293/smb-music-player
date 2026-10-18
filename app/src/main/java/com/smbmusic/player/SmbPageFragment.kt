@@ -57,6 +57,8 @@ internal class SmbGestureFrame(context: Context) : FrameLayout(context) {
         // ViewPager2 still owns tracking, velocity and settling (no synthetic fling).
         when {
             controlGesture -> parent?.requestDisallowInterceptTouchEvent(true)
+            // Keep the first MOVE visible to the pager even if the list claimed DOWN.
+            event.actionMasked == MotionEvent.ACTION_DOWN -> parent?.requestDisallowInterceptTouchEvent(false)
             dx > slop && dx > dy -> parent?.requestDisallowInterceptTouchEvent(false)
             dy > slop && dy > dx -> parent?.requestDisallowInterceptTouchEvent(true)
         }
