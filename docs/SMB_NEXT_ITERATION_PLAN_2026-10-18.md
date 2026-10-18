@@ -19,7 +19,7 @@ This is the **canonical handoff plan** for the next *standalone SMB Music* itera
 - The independent House Music **v0.4.0 radio implementation** is visible on [`house-v0.4.0-radio-controls`](https://github.com/oolah10293/smb-music-player/tree/house-v0.4.0-radio-controls) in **this same GitHub repository**, particularly `house-app/src/main/java/com/housemusic/player/{HousePageActivity,RadioFragment,NowPlayingFragment,RadioNowPlayingView,RadioStationOrder}.kt` and `house-app/src/main/res/layout/activity_radio.xml`. It is a **UI/behavior reference**; its Pi-specific `HouseRuntime`, controller API, Snapcast client, audio sync, and phone renderer logic must **not** be copied into standalone SMB Music.
 - The separate [house-audio-server](https://github.com/oolah10293/house-audio-server) already serves shared HOUSE radio stations to House Music. **SMB Music radio must play directly on the Android phone** and have *no runtime dependence* on that server, the Pi, MPD, Snapserver, or HOUSE session state.
 
-**Confirmed product rules:** folders are playlists; SMB Music and House Music remain **two independent apps** with no handoff, shared queue, playback transfer, or ability for SMB Music to reset HOUSE. Keep existing vehicle/lock-screen/Garmin/Android Auto/Bluetooth media controls, Tailscale SMB behavior, sort/search, Repeat All, explicit Quit, and radio/file source boundaries. The authorized work combines *hands-free recovery*, *internet radio similar to House Music* and *swipe navigation* in the same build. Section 4 records the accepted button layout. Optional station import remains a proposal outside this build.
+**Confirmed product rules:** folders are playlists; SMB Music and House Music remain **two independent apps** with no handoff, shared queue, playback transfer, or ability for SMB Music to reset HOUSE. Keep existing vehicle/lock-screen/Garmin/Android Auto/Bluetooth media controls, Tailscale SMB behavior, sort/search, Repeat All, explicit Quit, and radio/file source boundaries. The authorized work combines *hands-free recovery*, *internet radio similar to House Music* and *swipe navigation* in the same build. Section 4 records the accepted button layout. The user subsequently authorized v0.6.1 with automatic read-only House station refresh while on the home network, superseding the earlier optional-import exclusion.
 
 ## 2. Cellular recovery — part of the combined iteration
 
@@ -60,7 +60,7 @@ While **stationary**, start an SMB folder over the usual cellular/Tailscale path
 
 ### B2. Familiar Radio page and station management (UI target)
 
-Reuse *behavior/design* from House Music v0.4.0 radio UI as a reference, **not its Pi integration**:
+Reuse *behavior/design* from House Music v0.4.0 radio UI as a reference, **not its Pi playback/control integration**. The read-only bookmark refresh specified below is included:
 
 - Approved navigation: **Browse ↔ Now Playing ↔ Radio**, using the accepted House Music horizontal swipe behavior. Preserve SMB Browser scroll position, current folder/search/sort, player lifetime, current Android layout controls, and keyboard gestures. The existing SMB application has two Activities rather than the House pager; choose a low-regression conversion strategy, not a gratuitous rewrite.
 - Radio page: direct URL entry at the current 40 dp search-field-style height; **Add & Play**; saved-station list; tap to play, long-press rename, × delete and temporary Undo; pull-down refresh if useful for local state. Highlight active station. New additions should appear at the top **for the current Radio visit**.
@@ -89,7 +89,7 @@ Reuse *behavior/design* from House Music v0.4.0 radio UI as a reference, **not i
 
 - Android `INTERNET` permission is already in the standalone manifest. Evaluate cleartext HTTP support: Android currently does not set `usesCleartextTraffic=true` for SMB Music, and some radio streams are HTTP-only. Choose and document an appropriate network-security/cleartext policy; retain HTTPS when offered.
 - Match the current Android 8+ baseline and Media3 version unless a tested dependency change is needed; add the HLS dependency if implementation actually needs it. Verify MIME/redirect/ICY header handling across Android versions and known real stations.
-- Do not leak stream URLs (which may embed query tokens), SMB credentials, NAS paths or station headers into notification diagnostics/issues. Station URLs are app-private bookmarks, not shared with House. No automatic Pi server changes, MPD/Snapserver changes, or ESP32 builds.
+- Do not leak stream URLs (which may embed query tokens), SMB credentials, NAS paths or station headers into notification diagnostics/issues. Phone-added station URLs and aliases remain app-private; House bookmarks are cached read-only and never written back by SMB Music. No automatic Pi server changes, MPD/Snapserver changes, or ESP32 builds.
 
 ### B6. Acceptance for the combined implementation
 

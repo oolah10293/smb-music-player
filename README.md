@@ -4,7 +4,7 @@ A native Android music player that streams audio directly from SMB shares using 
 
 Current source version: **0.6.1 — standalone SMB and internet radio**. Includes the combined v0.6.0 recovery changes, direct phone radio, saved stations, Resume Playlist and Browse ↔ Now Playing ↔ Radio swiping, plus automatic read-only House station refresh on the home LAN with an offline cache. See [v0.6.1 details and verification](docs/RELEASE_0.6.1.md). This app has no HOUSE controller, queue transfer or Snapcast receiver. Physical locked-phone cellular recovery is still unverified; [Issue #7](https://github.com/oolah10293/smb-music-player/issues/7) remains open. The separately accepted Bluetooth/Tailscale connectivity behavior is retained.
 
-The separate **[House Music v0.1.1](house-app/README.md)** controls/renders the Pi session independently and installs alongside SMB Music. It lives in `house-app`, an independent Gradle root; see its [release record](house-app/docs/RELEASE_0.1.1.md) for build verification. The combined v0.4.3 source remains preserved on [house-music-pre-split](https://github.com/oolah10293/smb-music-player/tree/house-music-pre-split). Installing or playing SMB Music never resets the house queue. House Music v0.1.1 needs server v0.9.1 for library indexing; no S3 update is needed. SMB Music is unchanged.
+The separate **House Music** app controls/renders the Pi session and installs alongside SMB Music. Its v0.4.0 radio reference is on [house-v0.4.0-radio-controls](https://github.com/oolah10293/smb-music-player/tree/house-v0.4.0-radio-controls). SMB Music's read-only station cache does not control or reset that session. No House app, Pi server or ESP32 update is included in v0.6.1.
 
 ## What it does
 

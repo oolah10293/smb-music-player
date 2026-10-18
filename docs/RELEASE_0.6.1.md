@@ -36,7 +36,38 @@ remains open.
 
 ## Verification
 
-Pending the exact v0.6.1 build: existing JVM regression suite plus station snapshot
-reconciliation/validation and physical-LAN eligibility tests; API-26 lint; emulator
-playback/navigation and automatic-refresh fixture checks. This section will be
-updated with the actual build outcome and signing checks before delivery.
+Built from `07b570aa7e445d0ef9e9ebec8b74e59ddb3b55bf` in
+[Actions run 39160808286](https://github.com/oolah10293/smb-music-player/actions/runs/39160808286),
+which completed successfully on 2026-10-18.
+
+- All 33 JVM tests passed, including snapshot reconciliation, invalid-response
+  retention, local overrides/deletion and physical-LAN qualification.
+- API-26 `NewApi` lint passed with no issues; standalone APK checks found no HOUSE
+  engine package or snapclient payload.
+- The targeted API-35 emulator test passed: direct HTTP playback; initial refresh;
+  automatic one-minute additions, renames, URL changes and removals without a
+  refresh gesture; retained playback selection and intent; malformed-response
+  retention; no new rows while Wi-Fi was disabled; refresh after Wi-Fi returned;
+  GET-only `/radio/stations` access; and cache persistence after app restart with
+  the fixture server unavailable. The test uses local fixtures, not the user's Pi.
+- Earlier full UI runs did not complete reliably. Failures included emulator
+  dialog-input/launcher interference and station selection after Resume Playlist.
+  The final run isolates the requested refresh feature; it is **not** a passing
+  full navigation/CRUD/Resume Playlist regression run. Physical-device
+  reproduction of the selection failure has not been established.
+- Physical home-LAN/Tailscale operation, locked-screen cellular-outage recovery,
+  Doze and Bluetooth remain unverified for this build.
+
+## Delivered APK
+
+`SMBMusic-v0.6.1.apk` was signed with the preserved SMB signing key and verified
+with APK signature schemes v2 and v3. It keeps package `com.smbmusic.player`,
+version code 19, minimum SDK 26 and target SDK 36.
+
+- Size: 11,545,671 bytes.
+- APK SHA-256: `6e0b1e154bec892022d2b7f6570ed41e1ff3fb4bcca099d59476d041443cbf29`.
+- Signing certificate SHA-256:
+  `7935fde3a71e87e5964399facd15f01d620ad0a6f684442be8e9ce353d10475e`.
+
+The CI artifact carries the runner's temporary debug signature. Install the
+delivered APK signed with the preserved key when upgrading the existing app.
