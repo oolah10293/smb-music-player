@@ -25,6 +25,8 @@ import com.smbmusic.player.radio.*
 @UnstableApi
 class RadioFragment : SmbPageFragment(R.layout.activity_radio, 2) {
     private lateinit var store: RadioStore
+    private lateinit var houseRefresh: HouseStationRefresh
+    private val houseListener: () -> Unit = { refresh() }
     private lateinit var future: ListenableFuture<MediaController>
     private var controller: MediaController? = null
     private val order = RadioStationOrder()
@@ -40,13 +42,16 @@ class RadioFragment : SmbPageFragment(R.layout.activity_radio, 2) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         store = RadioStore(pageContext)
+        houseRefresh = HouseStationRefresh.get(pageContext)
         listAdapter = Stations()
         findViewById<RecyclerView>(R.id.radioStationList).apply {
             layoutManager = LinearLayoutManager(pageContext); adapter = listAdapter
         }
         findViewById<SwipeRefreshLayout>(R.id.radioRefresh).setOnRefreshListener {
+            houseRefresh.requestRefresh(force = true)
             refresh(); findViewById<SwipeRefreshLayout>(R.id.radioRefresh).isRefreshing = false
         }
+        findViewById<TextView>(R.id.radioHouseStatus).setOnClickListener { configureHouse() }
         findViewById<Button>(R.id.radioAddButton).setOnClickListener {
             val input = findViewById<EditText>(R.id.radioUrlEdit)
             try {
@@ -69,6 +74,7 @@ class RadioFragment : SmbPageFragment(R.layout.activity_radio, 2) {
             }
         }
         findViewById<TextView>(R.id.radioStatus).setOnLongClickListener { PlaybackDiagnostics.show(pageContext); true }
+        houseRefresh.addListener(houseListener)
         refresh()
         future = MediaController.Builder(pageContext, SessionToken(pageContext, ComponentName(pageContext, PlaybackService::class.java)))
             .setListener(listener).buildAsync()
@@ -78,18 +84,37 @@ class RadioFragment : SmbPageFragment(R.layout.activity_radio, 2) {
         }, ContextCompat.getMainExecutor(pageContext))
     }
 
-    override fun onResume() { super.onResume(); order.reset(); refresh() }
+    override fun onResume() {
+        super.onResume(); order.reset(); refresh()
+        if (::houseRefresh.isInitialized) houseRefresh.requestRefresh(force = true)
+    }
     private fun status(message: String) { if (view != null) findViewById<TextView>(R.id.radioStatus).text = message }
     private fun refresh() {
         if (view == null || !::store.isInitialized) return
         rows = order.refresh(store.stations()); listAdapter.notifyDataSetChanged()
+        findViewById<TextView>(R.id.radioHouseStatus).text = houseRefresh.status
         findViewById<TextView>(R.id.radioEmptyText).apply {
             visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
-            text = "Add a direct station stream link to start listening."
+            text = "House stations refresh on your home network.\nTap the House status above to set its LAN address, or add a direct stream link."
         }
         val extras = controller?.sessionExtras
         status(if (extras?.getBoolean(PlaybackService.EXTRA_RADIO) == true)
             extras.getString("radioStatus", "Connecting") else "${rows.size} saved station(s)")
+    }
+    private fun configureHouse() {
+        val edit = EditText(pageContext).apply {
+            setSingleLine(); hint = "Pi LAN address or hostname"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+            setText(houseRefresh.host()); selectAll()
+        }
+        val dialog = AlertDialog.Builder(pageContext).setTitle("House station refresh")
+            .setMessage("Refresh automatically at home; keep stations saved when away. Use the LAN address configured in House Music. Leave blank to disable refresh.")
+            .setView(edit).setNegativeButton("Cancel", null).setPositiveButton("Save", null).create()
+        dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            try { houseRefresh.saveHost(edit.text.toString()); dialog.dismiss() }
+            catch (e: Exception) { edit.error = e.message ?: "Could not save House address." }
+        } }
+        dialog.show()
     }
     private fun play(station: RadioStation) {
         val c = controller ?: run { status("Playback service is connecting — tap again."); return }
@@ -140,6 +165,7 @@ class RadioFragment : SmbPageFragment(R.layout.activity_radio, 2) {
     }
     private class StationHolder(view: View) : RecyclerView.ViewHolder(view)
     override fun onDestroyView() {
+        if (::houseRefresh.isInitialized) houseRefresh.removeListener(houseListener)
         handler.removeCallbacksAndMessages(null)
         if (::future.isInitialized) MediaController.releaseFuture(future)
         controller = null; deleted = null

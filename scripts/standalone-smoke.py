@@ -51,6 +51,30 @@ with tempfile.TemporaryDirectory() as folder:
         audio.setnchannels(1);audio.setsampwidth(2);audio.setframerate(22050);audio.writeframes(b'\0\0'*(22050*120))
     server=http.server.ThreadingHTTPServer(('0.0.0.0',18765),functools.partial(http.server.SimpleHTTPRequestHandler,directory=folder))
     threading.Thread(target=server.serve_forever,daemon=True).start()
+    house_state={'stations':[{'id':'house-a','name':'House Alpha','url':'http://10.0.2.2:18765/fixture.wav?house=a'},
+                              {'id':'house-b','name':'House Beta','url':'http://10.0.2.2:18765/fixture.wav?house=b'}],
+                 'bad':False,'requests':[]}
+    class HouseFixture(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            house_state['requests'].append(('GET',self.path))
+            body = b'{bad json' if house_state['bad'] else json.dumps({'service':'house-audio-server','stations':house_state['stations']}).encode()
+            self.send_response(200);self.send_header('Content-Type','application/json')
+            self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+        def do_POST(self):
+            house_state['requests'].append(('POST',self.path));self.send_error(405)
+        def log_message(self,*args): pass
+    house=http.server.ThreadingHTTPServer(('0.0.0.0',8787),HouseFixture)
+    threading.Thread(target=house.serve_forever,daemon=True).start()
+    def station_rows():
+        prefs=ET.fromstring(shell('run-as',PKG,'cat','shared_prefs/standalone_radio.xml'))
+        return json.loads(next(e.text for e in prefs if e.get('name')=='stations'))
+    def wait_stations(predicate,timeout=85):
+        end=time.monotonic()+timeout
+        while time.monotonic()<end:
+            rows=station_rows()
+            if predicate(rows): return rows
+            time.sleep(1)
+        raise AssertionError('Station refresh did not converge: '+str(rows))
     try:
         adb('install','-r','app/build/outputs/apk/debug/app-debug.apk')
         for permission in ['BLUETOOTH_CONNECT','POST_NOTIFICATIONS']: shell('pm','grant',PKG,'android.permission.'+permission)
@@ -91,11 +115,45 @@ with tempfile.TemporaryDirectory() as folder:
         shell('am','force-stop',PKG);launch(2);wait_text('radioStationName','SmokeStation')
         tap('radioStationPlay');launch(1);wait_text('playbackStatus','LIVE');tap('quitButton')
         time.sleep(1)
+        # Configure once, then verify unattended initial, periodic and network-return refreshes.
+        launch(2);tap('radioStationPlay');launch(1);wait_text('playbackStatus','LIVE')
+        before=json.loads(shell('run-as',PKG,'cat','no_backup/standalone-session.json'))
+        launch(2);tap('radioHouseStatus');shell('input','text','10.0.2.2');text_button('Save')
+        rows=wait_stations(lambda rows: len(rows)==3 and any(x.get('houseId')=='house-a' for x in rows))
+        assert any(x['name']=='SmokeStation' for x in rows),rows
+        # No page change or refresh gesture: the one-minute automatic refresh must update the cache.
+        house_state['stations']=[{'id':'house-a','name':'House Renamed','url':'http://10.0.2.2:18765/fixture.wav?house=changed'},
+                                 {'id':'house-c','name':'House Gamma','url':'http://10.0.2.2:18765/fixture.wav?house=c'}]
+        rows=wait_stations(lambda rows: len(rows)==3 and any(x['name']=='House Renamed' for x in rows)
+                           and any(x.get('houseId')=='house-c' for x in rows)
+                           and not any(x.get('houseId')=='house-b' for x in rows))
+        screenshot('house-auto-refresh')
+        after=json.loads(shell('run-as',PKG,'cat','no_backup/standalone-session.json'))
+        assert before['stationId']==after['stationId'] and after['radio'] and after['shouldPlay'],after
+        # Force a new request through page entry and verify malformed data cannot wipe the cache.
+        house_state['bad']=True
+        launch(1);launch(2);wait_text('radioHouseStatus','House unavailable')
+        assert {x['url'] for x in station_rows()}=={x['url'] for x in rows}
+        house_state['bad']=False
+        shell('svc','wifi','disable');time.sleep(3)
+        cached=station_rows()
+        house_state['stations'].append({'id':'house-d','name':'Home Return','url':'http://10.0.2.2:18765/fixture.wav?house=d'})
+        time.sleep(3)
+        assert not any(x.get('houseId')=='house-d' for x in station_rows())
+        shell('svc','wifi','enable')
+        wait_stations(lambda rows: any(x.get('houseId')=='house-d' for x in rows),timeout=35)
+        assert all(method=='GET' and path=='/radio/stations' for method,path in house_state['requests']),house_state['requests']
+        # A restart with the fixture unavailable still retains the complete cache for away use.
+        house.shutdown();shell('am','force-stop',PKG);launch(2)
+        assert any(x.get('houseId')=='house-d' for x in station_rows())
+        screenshot('house-cached-offline')
+        launch(1);tap('quitButton')
         errors=adb('logcat','-d','-b','crash')
         assert 'FATAL EXCEPTION' not in errors, errors
-        (OUT/'result.txt').write_text('PASS: swipe pages, HTTP audio, pause/live replay, rename, delete/Undo, persistence, v0.5.1 queue migration, duplicate queue/index/position restore and Quit.\nNot a physical cellular/Doze/Bluetooth test.\n')
+        (OUT/'result.txt').write_text('PASS: swipe pages, HTTP audio, pause/live replay, rename, delete/Undo, persistence, v0.5.1 queue migration, duplicate queue/index/position restore and Quit; automatic House initial/periodic/network-return refresh, cache reconciliation, malformed-response retention, no playback change, GET-only access and offline cache persistence.\nNot a physical cellular/Doze/Bluetooth test.\n')
     finally:
         (OUT/'logcat.txt').write_text(adb('logcat','-d'))
         try: screenshot('final')
         except Exception: pass
         server.shutdown()
+        house.shutdown()

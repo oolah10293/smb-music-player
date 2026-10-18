@@ -13,33 +13,46 @@ class RadioStore(context: Context) {
         (0 until rows.length()).mapNotNull { i -> runCatching {
             val o = rows.getJSONObject(i)
             RadioStation(o.getString("id"), o.getString("name"), RadioUrl.normalize(o.getString("url")),
-                o.optLong("listeningMs").coerceAtLeast(0), o.optBoolean("renamed"))
+                o.optLong("listeningMs").coerceAtLeast(0), o.optBoolean("renamed"),
+                o.optString("houseId").takeIf { it.isNotBlank() }, o.optBoolean("local", true))
         }.getOrNull() }.sortedWith(compareByDescending<RadioStation> { it.listeningMs }.thenBy { it.name.lowercase() })
     }
     fun add(raw: String): RadioStation = synchronized(LOCK) {
         val url = RadioUrl.normalize(raw)
-        stations().firstOrNull { it.url == url } ?: RadioStation(UUID.randomUUID().toString(), RadioUrl.fallbackName(url), url)
+        stations().firstOrNull { it.url == url }?.copy(local = true)?.also { put(it) }
+            ?: RadioStation(UUID.randomUUID().toString(), RadioUrl.fallbackName(url), url)
             .also { save(stations() + it) }
     }
     fun put(station: RadioStation) = synchronized(LOCK) {
         val rows = stations()
-        if (rows.none { it.url == station.url && it.id != station.id }) save(rows.filterNot { it.id == station.id } + station)
+        if (rows.none { it.url == station.url && it.id != station.id }) {
+            save(rows.filterNot { it.id == station.id } + station, hiddenHouseIds() - setOfNotNull(station.houseId))
+        }
     }
-    fun delete(id: String) = synchronized(LOCK) { save(stations().filterNot { it.id == id }) }
+    fun delete(id: String) = synchronized(LOCK) {
+        val rows = stations()
+        save(rows.filterNot { it.id == id }, hiddenHouseIds() + setOfNotNull(rows.find { it.id == id }?.houseId))
+    }
     fun rename(id: String, name: String) = synchronized(LOCK) {
         require(name.trim().isNotEmpty()) { "Enter a station name." }
         save(stations().map { if (it.id == id) it.copy(name = name.trim().take(160), renamed = true) else it })
     }
     fun broadcastName(id: String, name: String) = synchronized(LOCK) {
-        if (name.isNotBlank()) save(stations().map { if (it.id == id && !it.renamed) it.copy(name = name.trim().take(160)) else it })
+        if (name.isNotBlank()) save(stations().map { if (it.id == id && !it.renamed && it.houseId == null) it.copy(name = name.trim().take(160)) else it })
     }
     fun addListening(id: String, ms: Long) = synchronized(LOCK) {
         if (ms > 0) save(stations().map { if (it.id == id) it.copy(listeningMs = it.listeningMs + ms) else it })
     }
-    private fun save(rows: List<RadioStation>) {
+    private fun hiddenHouseIds(): Set<String> = prefs.getStringSet("hiddenHouseIds", emptySet()).orEmpty().toSet()
+    fun refreshHouse(remote: List<HouseStationBookmark>) = synchronized(LOCK) {
+        val hidden = hiddenHouseIds().intersect(remote.map { it.id }.toSet())
+        save(HouseStationSnapshot.reconcile(stations(), remote, hidden), hidden)
+    }
+    private fun save(rows: List<RadioStation>, hidden: Set<String> = hiddenHouseIds()) {
         val json = JSONArray(rows.map { JSONObject().put("id", it.id).put("name", it.name).put("url", it.url)
-            .put("listeningMs", it.listeningMs).put("renamed", it.renamed) })
-        check(prefs.edit().putString("stations", json.toString()).commit()) { "Could not save stations." }
+            .put("listeningMs", it.listeningMs).put("renamed", it.renamed)
+            .put("houseId", it.houseId.orEmpty()).put("local", it.local) })
+        check(prefs.edit().putString("stations", json.toString()).putStringSet("hiddenHouseIds", hidden).commit()) { "Could not save stations." }
     }
     fun previous(): PreviousRadioSong? = runCatching {
         val o = JSONObject(prefs.getString("previous", "")!!)

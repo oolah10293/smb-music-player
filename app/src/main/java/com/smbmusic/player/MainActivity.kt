@@ -12,6 +12,7 @@ import androidx.fragment.app.Fragment
 import androidx.media3.common.util.UnstableApi
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
+import com.smbmusic.player.radio.HouseStationRefresh
 
 /** Native touch tracking, velocity-based settling and interruptible consecutive swipes. */
 @UnstableApi
@@ -72,6 +73,16 @@ open class MainActivity : AppCompatActivity() {
         0 -> LibraryFragment()
         1 -> NowPlayingFragment()
         else -> RadioFragment()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        HouseStationRefresh.get(this).acquire(this)
+    }
+
+    override fun onStop() {
+        HouseStationRefresh.get(this).release(this)
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {

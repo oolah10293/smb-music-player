@@ -66,7 +66,7 @@ Reuse *behavior/design* from House Music v0.4.0 radio UI as a reference, **not i
 - Radio page: direct URL entry at the current 40 dp search-field-style height; **Add & Play**; saved-station list; tap to play, long-press rename, × delete and temporary Undo; pull-down refresh if useful for local state. Highlight active station. New additions should appear at the top **for the current Radio visit**.
 - Persist saved station name, URL and durable ID **on the phone**, independently from House/Pi. Detect duplicate URLs and validate input (HTTP/HTTPS only, no malformed URLs, no embedded credentials). Start from useful stream-provided station names when available, otherwise a clearly labeled URL/host fallback; allow user rename.
 - House-style **listening-time ranking** is included in this iteration: count only actually audible/advancing playback (not paused, stalled or disconnected), sort highest-first then alphabetical on opening Radio, keep row positions stable during the same visit, and do not invent historical totals. Android can only count playback it observes; **it cannot reconstruct House's Pi-based listening history when SMB Music was not running**.
-- Optional, **one-time user-initiated import** from House Music's server `GET /radio/stations` on home LAN, or a manual paste/export path if needed. No live synchronization, shared writes, permanent Pi setting, requirement to be home, or server deployment is part of normal SMB radio playback. Confirm this optional UI before implementing; do **not** silently read/copy Pi bookmarks.
+- **Corrected by the user after v0.6.0:** automatically refresh House station bookmarks from `GET /radio/stations` on the physical home network. Persist the last successful snapshot for independent playback away from home. Refresh on app/service start, home-network return, Radio opening and periodically while the app/service is alive. This is not a one-time import and adds no Import button. No shared writes, playback/controller registration, Pi deployment or HOUSE session change. Keep phone-created stations and local aliases/listening totals.
 
 ### B3. Now Playing / metadata / controls
 
@@ -110,7 +110,7 @@ The user explicitly corrected the original handoff: **cellular recovery, standal
 - Implement station management, metadata, ranking, previous-song history, source cancellation, and exact saved playlist restoration in this same build.
 - Run combined unit/build/API-26 checks; sign with the existing SMB Music certificate for an in-place update. Record actual results in the release note.
 - Physical locked-screen, Bluetooth/audio-focus, repeated-outage and battery/data acceptance remain necessary after delivery. Issue #7 stays open until those device checks pass. Compile/unit tests are not field evidence.
-- Optional House station import remains excluded; no Pi deployment, firmware build, House session change or app merger is authorized.
+- **Superseded after delivery:** the user required automatic House station refresh while home and authorized the corrected v0.6.1 build. No Pi deployment, firmware build, House session change or app merger is authorized.
 
 ## 5. Key links for a fresh Work chat
 

@@ -453,6 +453,7 @@ class PlaybackService : MediaLibraryService() {
         sourceSwitching = false
         publishRecoveryStatus(RECOVERY_PHASE_IDLE)
         registerNetworkCallback()
+        com.smbmusic.player.radio.HouseStationRefresh.get(this).acquire(this)
         audio.registerAudioDeviceCallback(audioDevices, handler)
         // Let a simultaneous Quit command run before considering a preconnected output.
         handler.post {
@@ -1140,6 +1141,7 @@ class PlaybackService : MediaLibraryService() {
         stopRadioWork()
         saveStandalone()
         released = true
+        com.smbmusic.player.radio.HouseStationRefresh.get(this).release(this)
         cancelRecovery()
         cancelFade(resetToFull = false)
         handler.removeCallbacksAndMessages(null)

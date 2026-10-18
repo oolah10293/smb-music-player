@@ -4,7 +4,8 @@ import java.net.URI
 import java.util.Locale
 
 data class RadioStation(val id: String, val name: String, val url: String,
-                        val listeningMs: Long = 0, val renamed: Boolean = false)
+                        val listeningMs: Long = 0, val renamed: Boolean = false,
+                        val houseId: String? = null, val local: Boolean = true)
 
 object RadioUrl {
     fun normalize(raw: String): String {

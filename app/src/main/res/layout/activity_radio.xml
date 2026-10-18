@@ -58,11 +58,24 @@
             android:layout_marginTop="4dp"
             android:text="Add &amp; Play" />
         <TextView
+            android:id="@+id/radioHouseStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="40dp"
+            android:gravity="center_vertical"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground"
+            android:text="House stations refresh automatically at home"
+            android:contentDescription="House station refresh status. Tap to set the House server LAN address."
+            android:textSize="12sp"
+            android:textColor="@color/text_secondary" />
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:layout_marginBottom="8dp"
-            android:text="Direct stream links • Saved on this phone\nTap to play. Hold a station to rename."
+            android:text="Saved for away use • Tap to play • Hold to rename"
             android:textSize="12sp"
             android:textColor="@color/text_secondary" />
     </LinearLayout>
