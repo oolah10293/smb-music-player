@@ -12,8 +12,14 @@ def launch(page):
     shell('am','start','-n',PKG+'/.MainActivity','--ei',PKG+'.PAGE',page)
     time.sleep(2)
 def tree():
-    shell('uiautomator','dump','/sdcard/smb-window.xml')
-    return ET.fromstring(shell('cat','/sdcard/smb-window.xml'))
+    # UIAutomator can briefly fail to obtain a hierarchy while a page settles.
+    for attempt in range(3):
+        try:
+            shell('uiautomator','dump','/sdcard/smb-window.xml')
+            return ET.fromstring(shell('cat','/sdcard/smb-window.xml'))
+        except (subprocess.CalledProcessError,ET.ParseError):
+            if attempt==2: raise
+            time.sleep(.5)
 def node(id, timeout=20):
     end=time.monotonic()+timeout
     while time.monotonic()<end:

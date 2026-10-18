@@ -36,7 +36,7 @@ open class MainActivity : AppCompatActivity() {
         }
         setContentView(pager)
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(pager) { view, insets ->
-            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.ime())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }

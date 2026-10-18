@@ -302,6 +302,7 @@ class NowPlayingFragment : SmbPageFragment(R.layout.activity_now_playing, 1) {
                 mediaController.playbackState == Player.STATE_READY -> "Paused"
                 mediaController.playbackState == Player.STATE_ENDED -> "Playlist finished"
                 mediaController.mediaItemCount == 0 -> "Nothing queued"
+                !mediaController.playWhenReady && mediaController.playbackState == Player.STATE_IDLE -> "Paused"
                 else -> "Opening SMB stream…"
             }
         }

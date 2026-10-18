@@ -39,14 +39,27 @@ abstract class SmbPageFragment(private val layout: Int, internal val pageIndex: 
 @UnstableApi
 internal class SmbGestureFrame(context: Context) : FrameLayout(context) {
     private var controlGesture = false
+    private var downX = 0f
+    private var downY = 0f
+    private val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            downX = event.x; downY = event.y
             controlGesture = isGestureControl(this, event.rawX.toInt(), event.rawY.toInt())
         }
         val handled = super.dispatchTouchEvent(event)
         // Do this after child dispatch, because nested scrolling views may reset the flag on DOWN.
-        if (controlGesture) parent?.requestDisallowInterceptTouchEvent(true)
+        val dx = kotlin.math.abs(event.x - downX)
+        val dy = kotlin.math.abs(event.y - downY)
+        // Nested RecyclerView/SwipeRefreshLayout may disallow interception on DOWN.
+        // Return a horizontal content gesture to ViewPager2 once its axis is clear;
+        // ViewPager2 still owns tracking, velocity and settling (no synthetic fling).
+        when {
+            controlGesture -> parent?.requestDisallowInterceptTouchEvent(true)
+            dx > slop && dx > dy -> parent?.requestDisallowInterceptTouchEvent(false)
+            dy > slop && dy > dx -> parent?.requestDisallowInterceptTouchEvent(true)
+        }
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
             controlGesture = false
         }
