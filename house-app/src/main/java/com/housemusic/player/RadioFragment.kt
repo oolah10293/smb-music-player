@@ -66,6 +66,8 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio, 2) {
     private var undoStation: HouseStation? = null
     private var undoIdentity: Identity? = null
     private val addPlayGuard = RadioAddPlayGuard()
+    private val stationOrder = RadioStationOrder()
+    private var visitRevision = 0L
 
     private data class Identity(val endpoint: HouseEndpoint, val epoch: Long, val generation: Long)
 
@@ -123,6 +125,7 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio, 2) {
             endpoint.host == HouseConnection.host(pageContext)
         val changed = nowConnected != connected || epoch != connectionEpoch || revision != connectionRevision
         if (changed) {
+            if (epoch != connectionEpoch) stationOrder.reset()
             generation++
             connected = nowConnected
             connectionEpoch = epoch
@@ -159,11 +162,12 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio, 2) {
     private fun loadStations(keepStatus: Boolean = false) {
         handler.removeCallbacksAndMessages(REFRESH_TOKEN)
         val request = identity()
-        if (request == null || busy || loading || !supported) {
+        if (!visible || !isSelectedPage || request == null || busy || loading || !supported) {
             refresh.isRefreshing = false
             return
         }
         loading = true
+        val requestVisit = visitRevision
         listFailed = false
         refresh.isRefreshing = true
         if (!keepStatus) status.text = "Loading saved stations…"
@@ -172,8 +176,8 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio, 2) {
             try {
                 val result = HouseApi(applicationContext, request.endpoint).radioStations()
                 runOnUiThread {
-                    if (!isCurrent(request)) return@runOnUiThread
-                    stations = result
+                    if (!isCurrent(request) || requestVisit != visitRevision) return@runOnUiThread
+                    stations = stationOrder.refresh(result)
                     loading = false
                     refresh.isRefreshing = false
                     if (!keepStatus) status.text = "${stations.size} saved station(s) · Pull down to refresh"
@@ -182,7 +186,7 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio, 2) {
                 }
             } catch (error: Exception) {
                 runOnUiThread {
-                    if (!isCurrent(request)) return@runOnUiThread
+                    if (!isCurrent(request) || requestVisit != visitRevision) return@runOnUiThread
                     loading = false
                     listFailed = true
                     refresh.isRefreshing = false
@@ -214,8 +218,10 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio, 2) {
         }
         hideKeyboard()
         val visibleGeneration = addPlayGuard.capture()
+        val requestVisit = visitRevision
         mutate("Saving station and checking its name…", "Save", { it.addRadioStation(url) }) { station ->
-            upsert(station)
+            if (requestVisit == visitRevision && visible && isSelectedPage) upsert(station, pinNew = true)
+            else loadStations(keepStatus = true)
             if (urlEdit.text.toString().trim() == url) urlEdit.text.clear()
             status.text = "Saved ${station.name}."
             // A delayed probe must not interrupt a source chosen after leaving this page.
@@ -288,6 +294,7 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio, 2) {
         // Invalidate any older list read before dispatching this single write. Never retry writes.
         generation++
         val request = current.copy(generation = generation)
+        val requestVisit = visitRevision
         loading = false
         refresh.isRefreshing = false
         busy = true
@@ -305,6 +312,11 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio, 2) {
                     busy = false
                     updateControls()
                     success(result)
+                    if (requestVisit != visitRevision) {
+                        // A delayed edit must not seed the next visit with the old row order.
+                        stationOrder.reset()
+                        loadStations(keepStatus = true)
+                    }
                     scheduleRefresh()
                 }
             } catch (error: Exception) {
@@ -319,10 +331,12 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio, 2) {
         }
     }
 
-    private fun upsert(station: HouseStation) {
+    private fun upsert(station: HouseStation, pinNew: Boolean = false) {
         listFailed = false
         val index = stations.indexOfFirst { it.id == station.id }
-        stations = if (index < 0) stations + station else stations.toMutableList().also { it[index] = station }
+        if (index < 0 && pinNew) stationOrder.added(station.id)
+        stations = stationOrder.refresh(if (index < 0) stations + station
+            else stations.toMutableList().also { it[index] = station })
         showStations()
     }
 
@@ -384,15 +398,36 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio, 2) {
     }
 
     internal override fun onPagerSelectionChanged(selected: Boolean) {
+        if (!::refresh.isInitialized || view == null) {
+            if (!selected) addPlayGuard.leavePage()
+            return
+        }
         // ViewPager2 may keep the old fragment RESUMED until settling ends.
         // Invalidate delayed Add & Play as soon as navigation selects another page.
-        if (!selected) addPlayGuard.leavePage()
-        else if (visible) addPlayGuard.enterPage()
+        if (!selected) {
+            addPlayGuard.leavePage()
+            visitRevision++
+            loading = false
+            refresh.isRefreshing = false
+            handler.removeCallbacksAndMessages(REFRESH_TOKEN)
+        } else if (visible) {
+            addPlayGuard.enterPage()
+            beginStationVisit()
+            loadStations()
+        }
+    }
+
+    private fun beginStationVisit() {
+        visitRevision++
+        stationOrder.reset()
+        loading = false
+        refresh.isRefreshing = false
     }
 
     override fun onResume() {
         super.onResume()
         visible = true
+        beginStationVisit()
         addPlayGuard.enterPage()
         controller?.let { syncConnection(it.sessionExtras) }
         if (connected && !loading && !busy) loadStations()
@@ -401,6 +436,9 @@ class RadioFragment : HousePageFragment(R.layout.activity_radio, 2) {
 
     override fun onPause() {
         visible = false
+        visitRevision++
+        loading = false
+        refresh.isRefreshing = false
         addPlayGuard.leavePage()
         handler.removeCallbacksAndMessages(REFRESH_TOKEN)
         super.onPause()

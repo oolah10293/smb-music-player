@@ -24,7 +24,8 @@ class HouseApiException(val status: Int, val code: String, message: String) : Ex
 /** One attempt per command. Never replay a write after an ambiguous HTTP failure. */
 class HouseApi(private val context: Context, @Volatile var endpoint: HouseEndpoint) {
     fun get(path: String): JSONObject = request(path, null)
-    fun post(path: String, body: JSONObject = JSONObject()): JSONObject = request(path, body)
+    fun post(path: String, body: JSONObject = JSONObject()): JSONObject =
+        request(path, body, if (path == "/radio/resume-playlist") 30_000 else 2500)
 
     private fun request(path: String, body: JSONObject?, readTimeoutMs: Int = 2500): JSONObject {
         val target = endpoint
