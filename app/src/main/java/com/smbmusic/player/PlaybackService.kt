@@ -63,7 +63,6 @@ class PlaybackService : MediaLibraryService() {
     private var holdReason: String
         get() = recoveryIntent.hold
         set(value) { recoveryIntent.hold = value }
-    private var requestingFocus = false
     private var radioResolveFuture: Future<*>? = null
     private var awaitingPlayback = false
     private var sourceSwitching = false
@@ -78,6 +77,7 @@ class PlaybackService : MediaLibraryService() {
     private var radioQuality = ""
     private var radioError = ""
     private var radioGeneration = 0
+    private var radioStableMs = 0L
     private var radioRetry = 0
     private var radioLastProgress = 0L
     private var radioLastPosition = 0L
@@ -228,7 +228,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun saveStandalone() {
-        if (released || !::retained.isInitialized || !::player.isInitialized) return
+        if (released || sourceSwitching || !::retained.isInitialized || !::player.isInitialized) return
         runCatching {
             retained.save(snapshot().copy(radio = radio, stationId = station?.id.orEmpty(),
                 stationName = station?.name.orEmpty(), playlist = savedPlaylist))
@@ -337,15 +337,19 @@ class PlaybackService : MediaLibraryService() {
                     ) {
                         if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) {
                             holdReason = "output"; pauseRecovery("output")
-                        } else if (awaitingPlayback && requestingFocus) {
+                        } else if (awaitingPlayback) {
                             PlaybackDiagnostics.record(this@PlaybackService, "Recovery resume waiting for focus")
                             scheduleAwaitingPlayback()
                         } else {
                             holdReason = "focus"; pauseRecovery("focus")
                         }
                     }
+                    if (!radio && !recovering && !sourceSwitching && reason != Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
+                        holdReason = if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) "output" else "focus"
+                        saveStandalone()
+                    }
                     if (radio && !sourceSwitching && reason != Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
-                        if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS && awaitingPlayback && requestingFocus) {
+                        if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS && awaitingPlayback) {
                             scheduleRadioRetry("Waiting for audio focus")
                         } else { holdReason = "output/focus"; stopRadioWork(); publishRadio(); saveStandalone() }
                     }
@@ -380,7 +384,7 @@ class PlaybackService : MediaLibraryService() {
                     PlaybackDiagnostics.record(this@PlaybackService, "Recovery playback confirmed")
                     awaitingPlayback = false
                     if (!radio) finishRecovery()
-                    else { recovering = false; radioRetry = 0; radioError = ""; wake.cancel(); publishRadio() }
+                    else { recovering = false; radioError = ""; wake.cancel(); publishRadio() }
                 }
                 if (isPlaying && fadeArmed) startFadeIn()
             }
@@ -395,7 +399,7 @@ class PlaybackService : MediaLibraryService() {
                     is IcyInfo -> updateRadioMetadata(entry.title.orEmpty())
                     is IcyHeaders -> {
                         broadcastName = entry.name.orEmpty()
-                        if (entry.bitrate > 0) radioQuality = "${entry.bitrate / 1000} kbps"
+                        if (entry.bitrate > 0 && !radioQuality.contains("kbps")) radioQuality = listOf("${entry.bitrate / 1000} kbps", radioQuality).filter(String::isNotBlank).joinToString(" · ")
                         station?.let { radioStore.broadcastName(it.id, broadcastName) }
                         station = radioStore.stations().firstOrNull { it.id == station?.id } ?: station
                         publishRadio()
@@ -442,6 +446,7 @@ class PlaybackService : MediaLibraryService() {
             SessionCallback()
         ).build()
 
+        sourceSwitching = true
         retained.load()?.let { saved ->
             playbackIntent.restore(saved.explicitlyStopped, bluetoothAvailable())
             radio = saved.radio; savedPlaylist = saved.playlist
@@ -454,6 +459,7 @@ class PlaybackService : MediaLibraryService() {
             if (saved.shuffleOrder.isNotEmpty()) player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(saved.shuffleOrder.toIntArray(), 0))
             player.repeatMode = if (radio) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ALL
         }
+        sourceSwitching = false
         publishRecoveryStatus(RECOVERY_PHASE_IDLE)
         registerNetworkCallback()
         audio.registerAudioDeviceCallback(audioDevices, handler)
@@ -939,6 +945,7 @@ class PlaybackService : MediaLibraryService() {
     private fun attemptRecoveryPlayback() {
         if (!recovering || recoveryPaused || !wanted || holdReason.isNotBlank() || released) return
         if (playbackIntent.bluetoothConnected && !bluetoothAvailable()) { bluetoothChanged(); return }
+        if (!focusRetryEligible()) { scheduleAwaitingPlayback(); return }
         if (updateStandbyNotification("Resuming playback")) {
             skipNextUserFade = true
             requestRecoveryPlay()
@@ -947,10 +954,14 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun requestRecoveryPlay() {
-        // Only a rejection of this request remains pending. A later genuine focus loss is a hold.
-        requestingFocus = true
-        try { player.play() } finally { requestingFocus = false }
+        // Media3 1.11 reports focus results asynchronously from its playback thread.
+        // Keep awaitingPlayback until actual playback, rather than the return from play().
+        player.play()
     }
+
+    private fun focusRetryEligible(): Boolean =
+        player.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE &&
+            audio.mode == AudioManager.MODE_NORMAL && (!audio.isMusicActive || player.isPlaying)
 
     private fun scheduleAwaitingPlayback() {
         handler.removeCallbacksAndMessages(AWAIT_TOKEN)
@@ -1223,6 +1234,9 @@ class PlaybackService : MediaLibraryService() {
     private fun openLiveRadio() {
         if (released || !radio || !wanted || holdReason.isNotBlank()) return
         val selected = station ?: return
+        if (radioError == "Waiting for audio focus" && !focusRetryEligible()) {
+            scheduleRadioRetry("Waiting for audio focus"); return
+        }
         if (playbackIntent.bluetoothConnected && !bluetoothAvailable()) { bluetoothChanged(); return }
         handler.removeCallbacksAndMessages(RADIO_RETRY_TOKEN)
         val generation = ++radioGeneration
@@ -1230,7 +1244,7 @@ class PlaybackService : MediaLibraryService() {
         recovering = true; rebuildingBuffer = false; awaitingPlayback = false
         radioError = ""; radioSong = RadioSong(""); broadcastName = ""; radioQuality = ""
         history.update(null, selected.name, System.currentTimeMillis())
-        radioLastProgress = SystemClock.elapsedRealtime(); radioLastTick = radioLastProgress; radioLastPosition = 0
+        radioLastProgress = SystemClock.elapsedRealtime(); radioLastTick = radioLastProgress; radioLastPosition = 0; radioStableMs = 0
         wake.work(45_000)
         if (!updateStandbyNotification("Connecting to radio")) {
             scheduleRadioRetry("Background playback unavailable"); return
@@ -1259,6 +1273,7 @@ class PlaybackService : MediaLibraryService() {
         radioGeneration++
         sourceSwitching = true; player.stop(); sourceSwitching = false
         recovering = true; awaitingPlayback = false; radioError = error.take(80)
+        if (radioRetry == 0) wake.beginBurst()
         val delays = longArrayOf(1_000, 2_000, 5_000, 10_000, 15_000, 30_000, 60_000)
         val delay = delays[minOf(radioRetry++, delays.lastIndex)]
         val generation = radioGeneration
@@ -1334,6 +1349,8 @@ class PlaybackService : MediaLibraryService() {
                     (now - radioLastTick).coerceIn(0, 5_000)) else 0L
                 if (advance > 0) {
                     history.advance(advance); listeningMs += advance; radioLastProgress = now
+                    radioStableMs += advance
+                    if (radioStableMs > 10_000) radioRetry = 0
                     if (listeningMs >= 30_000) flushRadioListening()
                 }
                 radioLastPosition = position; radioLastTick = now
