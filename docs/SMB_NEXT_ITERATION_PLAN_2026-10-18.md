@@ -3,7 +3,7 @@
 
 **Release authorization:** The user explicitly requires a separate go-ahead before **building, packaging, or sending any APK/release/installer**. A discussion, design approval, “sounds good,” or approval of documentation is **not** build authorization. Do not run an APK build (including CI-triggering changes) or deliver an artifact without that go-ahead. Code implementation is likewise not authorized by this documentation request. Read-only review and documentation/issue updates are authorized here.
 
-This is the **canonical handoff plan** for the next *standalone SMB Music* iteration. Keep task-specific observations in [Issue #7](../issues/7) and the upcoming standalone radio issue, and do not recreate competing plans elsewhere. Refer to [ROADMAP.md](ROADMAP.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DESIGN_NOTES.md](DESIGN_NOTES.md), [VALIDATION_STATE.md](VALIDATION_STATE.md), and [TESTING.md](TESTING.md) for current source boundaries and field evidence.
+This is the **canonical handoff plan** for the next *standalone SMB Music* iteration. Keep task-specific observations in [Issue #7](https://github.com/oolah10293/smb-music-player/issues/7) and [radio Issue #16](https://github.com/oolah10293/smb-music-player/issues/16), and do not recreate competing plans elsewhere. Refer to [ROADMAP.md](ROADMAP.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DESIGN_NOTES.md](DESIGN_NOTES.md), [VALIDATION_STATE.md](VALIDATION_STATE.md), and [TESTING.md](TESTING.md) for current source boundaries and field evidence.
 
 ## 1. Confirmed baseline and architectural boundaries
 
@@ -115,6 +115,7 @@ Reuse *behavior/design* from House Music v0.4.0 radio UI as a reference, **not i
 ## 5. Key links for a fresh Work chat
 
 - [SMB Music repository / default branch](https://github.com/oolah10293/smb-music-player)
+- [Issue #16 — standalone radio planning](https://github.com/oolah10293/smb-music-player/issues/16)
 - [Issue #7 — high-priority cellular recovery](https://github.com/oolah10293/smb-music-player/issues/7)
 - [House Music v0.4.0 radio reference branch](https://github.com/oolah10293/smb-music-player/tree/house-v0.4.0-radio-controls)
 - [House Music v0.4.0 radio release description](https://github.com/oolah10293/smb-music-player/blob/house-v0.4.0-radio-controls/house-app/docs/RELEASE_0.4.0.md)
