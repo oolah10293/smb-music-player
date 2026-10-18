@@ -1,7 +1,9 @@
+> **Current decision:** The user corrected the earlier recovery-first wording and authorized a **combined recovery + radio + swipe-navigation build** on 2026-10-18. Section 4 supersedes the original sequence and planning-only/build-stop wording below. The original investigation remains evidence/hypotheses, not a verified diagnosis.
+
 # SMB Music next iteration — hands-free outage recovery + independent internet radio
 **Planning checkpoint: 2026-10-18. Status: PLAN ONLY; not implemented, built, packaged, installed, or released by this planning request.**
 
-**Release authorization:** The user explicitly requires a separate go-ahead before **building, packaging, or sending any APK/release/installer**. A discussion, design approval, “sounds good,” or approval of documentation is **not** build authorization. Do not run an APK build (including CI-triggering changes) or deliver an artifact without that go-ahead. Code implementation is likewise not authorized by this documentation request. Read-only review and documentation/issue updates are authorized here.
+**Build authorization:** On 2026-10-18 the user explicitly said **“proceed with the build”** for the combined update described in section 4. Design approval alone would not have authorized a build; this later instruction does. Future builds/releases still require their own authorization.
 
 This is the **canonical handoff plan** for the next *standalone SMB Music* iteration. Keep task-specific observations in [Issue #7](https://github.com/oolah10293/smb-music-player/issues/7) and [radio Issue #16](https://github.com/oolah10293/smb-music-player/issues/16), and do not recreate competing plans elsewhere. Refer to [ROADMAP.md](ROADMAP.md), [ARCHITECTURE.md](ARCHITECTURE.md), [DESIGN_NOTES.md](DESIGN_NOTES.md), [VALIDATION_STATE.md](VALIDATION_STATE.md), and [TESTING.md](TESTING.md) for current source boundaries and field evidence.
 
@@ -17,9 +19,9 @@ This is the **canonical handoff plan** for the next *standalone SMB Music* itera
 - The independent House Music **v0.4.0 radio implementation** is visible on [`house-v0.4.0-radio-controls`](https://github.com/oolah10293/smb-music-player/tree/house-v0.4.0-radio-controls) in **this same GitHub repository**, particularly `house-app/src/main/java/com/housemusic/player/{HousePageActivity,RadioFragment,NowPlayingFragment,RadioNowPlayingView,RadioStationOrder}.kt` and `house-app/src/main/res/layout/activity_radio.xml`. It is a **UI/behavior reference**; its Pi-specific `HouseRuntime`, controller API, Snapcast client, audio sync, and phone renderer logic must **not** be copied into standalone SMB Music.
 - The separate [house-audio-server](https://github.com/oolah10293/house-audio-server) already serves shared HOUSE radio stations to House Music. **SMB Music radio must play directly on the Android phone** and have *no runtime dependence* on that server, the Pi, MPD, Snapserver, or HOUSE session state.
 
-**Confirmed product rules:** folders are playlists; SMB Music and House Music remain **two independent apps** with no handoff, shared queue, playback transfer, or ability for SMB Music to reset HOUSE. Keep existing vehicle/lock-screen/Garmin/Android Auto/Bluetooth media controls, Tailscale SMB behavior, sort/search, Repeat All, explicit Quit, and radio/file source boundaries. The requested work comprises (A) *hands-free recovery as highest priority* and (B) *internet radio similar to House Music*. The precise radio UI layout and optional import workflow below are **proposals**, not separately approved designs.
+**Confirmed product rules:** folders are playlists; SMB Music and House Music remain **two independent apps** with no handoff, shared queue, playback transfer, or ability for SMB Music to reset HOUSE. Keep existing vehicle/lock-screen/Garmin/Android Auto/Bluetooth media controls, Tailscale SMB behavior, sort/search, Repeat All, explicit Quit, and radio/file source boundaries. The authorized work combines *hands-free recovery*, *internet radio similar to House Music* and *swipe navigation* in the same build. Section 4 records the accepted button layout. The user subsequently authorized v0.6.1 with automatic read-only House station refresh while on the home network, superseding the earlier optional-import exclusion.
 
-## 2. Priority A — resolve Issue #7 BEFORE adding radio
+## 2. Cellular recovery — part of the combined iteration
 
 **Original issue:** [#7 — cellular outage requires screen unlock or manual Play](https://github.com/oolah10293/smb-music-player/issues/7). The 2026-10-09 road report identifies **two distinct failures**: one recovery only after **unlocking** the phone with the app already open, and another requiring **manual Play**. Reproduction variables (installed APK hash, exact OS, audio focus, Bluetooth route events and Android process/service lifetime) were not measured in that report; do not claim a root cause was proven.
 
@@ -46,7 +48,7 @@ Android reference material: [ExoPlayer.Builder.setWakeMode](https://developer.an
 
 While **stationary**, start an SMB folder over the usual cellular/Tailscale path, leave Bluetooth audio connected and the screen **locked**, remove the actual network/SMB route until the Country Buffer is exhausted, then restore service. It must recover the **same track and position** after the usual buffer rebuild, **without unlocking, foregrounding SMB Music or pressing Play**. Repeat after a prolonged screen-off interval, through several outages, with return during refill, and without any new Bluetooth connection event. Verify no accidental speaker playback, no resume following explicit Pause/Stop/Quit, and no skip to the next file. Record phone/OS, timeline, diagnostic output, and battery/data deltas; use controlled stationary tests, never phone interaction while driving. **The issue remains OPEN until physical locked-screen acceptance passes.**
 
-## 3. Priority B — stand-alone internet radio analogous to House Music
+## 3. Stand-alone internet radio — part of the same iteration
 
 ### B1. Playback architecture
 
@@ -58,19 +60,19 @@ While **stationary**, start an SMB folder over the usual cellular/Tailscale path
 
 ### B2. Familiar Radio page and station management (UI target)
 
-Reuse *behavior/design* from House Music v0.4.0 radio UI as a reference, **not its Pi integration**:
+Reuse *behavior/design* from House Music v0.4.0 radio UI as a reference, **not its Pi playback/control integration**. The read-only bookmark refresh specified below is included:
 
-- Proposed navigation: **Browse ↔ Now Playing ↔ Radio**, using the accepted House Music horizontal swipe behavior. Preserve SMB Browser scroll position, current folder/search/sort, player lifetime, current Android layout controls, and keyboard gestures. The existing SMB application has two Activities rather than the House pager; choose a low-regression conversion strategy, not a gratuitous rewrite.
+- Approved navigation: **Browse ↔ Now Playing ↔ Radio**, using the accepted House Music horizontal swipe behavior. Preserve SMB Browser scroll position, current folder/search/sort, player lifetime, current Android layout controls, and keyboard gestures. The existing SMB application has two Activities rather than the House pager; choose a low-regression conversion strategy, not a gratuitous rewrite.
 - Radio page: direct URL entry at the current 40 dp search-field-style height; **Add & Play**; saved-station list; tap to play, long-press rename, × delete and temporary Undo; pull-down refresh if useful for local state. Highlight active station. New additions should appear at the top **for the current Radio visit**.
 - Persist saved station name, URL and durable ID **on the phone**, independently from House/Pi. Detect duplicate URLs and validate input (HTTP/HTTPS only, no malformed URLs, no embedded credentials). Start from useful stream-provided station names when available, otherwise a clearly labeled URL/host fallback; allow user rename.
-- House-style **listening-time ranking** is a proposed parity feature: count only actually audible/advancing playback (not paused, stalled or disconnected), sort highest-first then alphabetical on opening Radio, keep row positions stable during the same visit, and do not invent historical totals. Android can only count playback it observes; **it cannot reconstruct House's Pi-based listening history when SMB Music was not running**.
-- Optional, **one-time user-initiated import** from House Music's server `GET /radio/stations` on home LAN, or a manual paste/export path if needed. No live synchronization, shared writes, permanent Pi setting, requirement to be home, or server deployment is part of normal SMB radio playback. Confirm this optional UI before implementing; do **not** silently read/copy Pi bookmarks.
+- House-style **listening-time ranking** is included in this iteration: count only actually audible/advancing playback (not paused, stalled or disconnected), sort highest-first then alphabetical on opening Radio, keep row positions stable during the same visit, and do not invent historical totals. Android can only count playback it observes; **it cannot reconstruct House's Pi-based listening history when SMB Music was not running**.
+- **Corrected by the user after v0.6.0:** automatically refresh House station bookmarks from `GET /radio/stations` on the physical home network. Persist the last successful snapshot for independent playback away from home. Refresh on app/service start, home-network return, Radio opening and periodically while the app/service is alive. This is not a one-time import and adds no Import button. No shared writes, playback/controller registration, Pi deployment or HOUSE session change. Keep phone-created stations and local aliases/listening totals.
 
 ### B3. Now Playing / metadata / controls
 
 - Use a clear **LIVE** radio view with saved station name, current broadcast-supplied title/artist/album **when present**, broadcast/station identification and bitrate/format **only when measured or supplied**. Missing fields stay visibly unavailable; do not guess. Existing SMB file Now Playing artwork, title priority and controls remain unchanged.
 - Review ExoPlayer Media3 ICY metadata and HLS timed ID3 handling; the House server's WXDX/iHeart string normalization in [`radio_metadata.py`](https://github.com/oolah10293/house-audio-server/blob/main/radio_metadata.py) is a useful **parser/behavior reference**, not guaranteed plug-and-play for Android metadata event types. Test with real stream captures. Do not mislabel station slogans, ads, or mixed metadata as a song.
-- **Last played:** proposed House parity is a single previous *identified* radio song, retained only after **more than ten seconds of confirmed advancing playback**, with station and local timestamp. Short/blank metadata does not erase the previous qualified song. Persist when feasible while app service is alive; unlike House, a phone cannot observe songs played by Pi/S3 nodes or while its own radio playback process is absent. Distinguish proposal from physical verification.
+- **Last played:** House parity is a single previous *identified* radio song, retained only after **more than ten seconds of confirmed advancing playback**, with station and local timestamp. Short/blank metadata does not erase the previous qualified song. Persist when feasible while app service is alive; unlike House, a phone cannot observe songs played by Pi/S3 nodes or while its own radio playback process is absent. Distinguish proposal from physical verification.
 - During radio: Play/Pause and Quit function; hide or disable seek, Previous/Next, Shuffle, Repeat and file-queue Sort. Pause then Play rejoins **current live audio**. Avoid meaningless seek progress; center Play/Pause in the relevant control area (House has a mute/gear row, but SMB Music must **not acquire HOUSE-only mute/±1000 ms sync controls** by accident). Notification/vehicle media commands need honest radio capability advertisement.
 - During file playback: preserve all familiar controls, shared file Sort, normal seeking, Shuffle, fixed Repeat All, queue rotation, audio metadata and Country Buffer.
 - On radio/source errors, show **Connecting / Retrying / Paused / Live / Unavailable** and the latest bounded error diagnostics without overstating connection health.
@@ -87,9 +89,9 @@ Reuse *behavior/design* from House Music v0.4.0 radio UI as a reference, **not i
 
 - Android `INTERNET` permission is already in the standalone manifest. Evaluate cleartext HTTP support: Android currently does not set `usesCleartextTraffic=true` for SMB Music, and some radio streams are HTTP-only. Choose and document an appropriate network-security/cleartext policy; retain HTTPS when offered.
 - Match the current Android 8+ baseline and Media3 version unless a tested dependency change is needed; add the HLS dependency if implementation actually needs it. Verify MIME/redirect/ICY header handling across Android versions and known real stations.
-- Do not leak stream URLs (which may embed query tokens), SMB credentials, NAS paths or station headers into notification diagnostics/issues. Station URLs are app-private bookmarks, not shared with House. No automatic Pi server changes, MPD/Snapserver changes, or ESP32 builds.
+- Do not leak stream URLs (which may embed query tokens), SMB credentials, NAS paths or station headers into notification diagnostics/issues. Phone-added station URLs and aliases remain app-private; House bookmarks are cached read-only and never written back by SMB Music. No automatic Pi server changes, MPD/Snapserver changes, or ESP32 builds.
 
-### B6. Acceptance to run after implementation authorization
+### B6. Acceptance for the combined implementation
 
 1. On a device with House/Pi **off/unreachable**, paste a valid direct station URL, save, play, pause/rejoin live, rename, delete/Undo, restart SMB Music and play the saved station again.
 2. Use at least a direct HTTP MP3/AAC stream and an HLS HTTPS station (subject to actually valid test URLs); verify wrong URLs, timeouts, redirects, invalid MIME and unsupported directories return a clear error without hangs.
@@ -99,24 +101,22 @@ Reuse *behavior/design* from House Music v0.4.0 radio UI as a reference, **not i
 6. Reopen the app, repeat source switches while the network fails, and restore any retained v0.5.1 file queue. Validate Android API-26 gates and the previously accepted Android Auto, Garmin, notification, screen-off, Browse and Country Buffer regressions.
 7. Compare battery/data use in normal radio and prolonged SMB recovery; record exact counter windows and do not infer a per-hour rate from cumulative counters.
 
-## 4. Sequence and release gates
+## 4. Corrected scope and authorization (2026-10-18)
 
-0. **Planning only (this change):** commit this canonical plan, cross-reference it from roadmap/issues, then continue work in ChatGPT Work. No implementation/build authorization implied.
-1. **Recovery analysis & minimal fix:** start from current `main`, reproduce or instrument Issue #7, choose tested sleep/retry/intent strategy, add deterministic unit tests; keep transport/audio behavior stable. Do this **before** adding radio. A clean compile or unit test alone does not close #7.
-2. **Recovery physical gate:** stationary phone, screen locked, repeated outages with same Bluetooth output, automatic same-position resume; collect diagnostics and resource-use observations; only mark #7 resolved after actual device acceptance.
-3. **Radio engine & storage:** introduce source routing, HTTP/HLS, isolated retries and versioned station/session persistence without touching HOUSE. Unit/integration tests first.
-4. **Radio page & controls:** reuse accepted House radio UI patterns, station CRUD/ranking/metadata, and source-specific Now Playing behavior without HOUSE-only capabilities.
-5. **Source-switch/Resume Playlist:** protect saved SMB queue/position and explicit intent, prevent stale async work/overwrites, test process recreation.
-6. **Combined regression & field gate:** both modes, locked-screen cellular recovery, vehicle/Bluetooth controls, audio focus, privacy, battery/data, app separation, Android 8+ and large queues.
-7. **Build/package/delivery GATE:** **STOP AND ASK** for explicit build authorization before building, invoking APK-generating CI, signing, packaging sources, publishing/uploading, or sending an APK. Even if design, code or tests were approved, no release/installer is authorized implicitly. Record actual version, tests, signatures and device results only after performed.
+The user explicitly corrected the original handoff: **cellular recovery, standalone radio and swipe navigation belong in one combined update.** There is no recovery-first implementation or physical-test gate before adding radio. The user subsequently authorized implementation and build with **“proceed with the build.”** That authorization covers this combined v0.6.0 APK; it is not blanket authorization for later releases.
 
-**Do not widen the scope** to House server radio rewrites, Pi deploys, ESP32 firmware, an app handoff system, directory/database changes, or unrelated UI features. If new evidence contradicts the proposed approach, update this plan/issue with the evidence before redesigning.
+- Implement source-aware recovery and direct phone radio together, retaining the existing SMB transport/Country Buffer and HOUSE independence.
+- Browse ↔ Now Playing ↔ Radio uses the House native horizontal pager behavior. Remove redundant Now Playing/Browse navigation buttons. Browse has equal-width Sort / Play List. File Now Playing has equal-width Sort / Quit. Radio Now Playing has equal-width Resume Playlist / Quit. Preserve the height and gaps of those shared rows.
+- Implement station management, metadata, ranking, previous-song history, source cancellation, and exact saved playlist restoration in this same build.
+- Run combined unit/build/API-26 checks; sign with the existing SMB Music certificate for an in-place update. Record actual results in the release note.
+- Physical locked-screen, Bluetooth/audio-focus, repeated-outage and battery/data acceptance remain necessary after delivery. Issue #7 stays open until those device checks pass. Compile/unit tests are not field evidence.
+- **Superseded after delivery:** the user required automatic House station refresh while home and authorized the corrected v0.6.1 build. No Pi deployment, firmware build, House session change or app merger is authorized.
 
 ## 5. Key links for a fresh Work chat
 
 - [SMB Music repository / default branch](https://github.com/oolah10293/smb-music-player)
 - [Issue #16 — standalone radio planning](https://github.com/oolah10293/smb-music-player/issues/16)
-- [Issue #7 — high-priority cellular recovery](https://github.com/oolah10293/smb-music-player/issues/7)
+- [Issue #7 — unattended cellular recovery](https://github.com/oolah10293/smb-music-player/issues/7)
 - [House Music v0.4.0 radio reference branch](https://github.com/oolah10293/smb-music-player/tree/house-v0.4.0-radio-controls)
 - [House Music v0.4.0 radio release description](https://github.com/oolah10293/smb-music-player/blob/house-v0.4.0-radio-controls/house-app/docs/RELEASE_0.4.0.md)
 - [House radio server source (reference only)](https://github.com/oolah10293/house-audio-server)

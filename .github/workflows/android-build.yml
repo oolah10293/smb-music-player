@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'app/**'
+      - 'scripts/standalone-smoke.py'
       - 'gradle/**'
       - 'gradlew*'
       - '*.gradle.kts'
@@ -14,6 +15,7 @@ on:
       - main
     paths:
       - 'app/**'
+      - 'scripts/standalone-smoke.py'
       - 'gradle/**'
       - 'gradlew*'
       - '*.gradle.kts'
@@ -40,6 +42,7 @@ jobs:
           "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Assemble debug APK
+        id: assemble
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleDebug :app:testDebugUnitTest --stacktrace --max-workers=2
@@ -63,9 +66,35 @@ jobs:
                       assert b'Lcom/smbmusic/player/house/' not in apk.read(name)
           PYAPK
 
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Smoke test playback and House station refresh
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: python3 scripts/standalone-smoke.py --station-refresh-only
+
+      - name: Upload checks and smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SMBMusic-v0.6.1-checks
+          path: |
+            smoke-results/
+            app/build/test-results/
+            app/build/reports/lint-results-debug.*
+
       - name: Package source archive
         run: |
-          zip -qr SMBMusic-v0.5.1-source.zip . \
+          zip -qr SMBMusic-v0.6.1-source.zip . \
             -x '.git/*' \
                '.gradle/*' \
                '.kotlin/*' \
@@ -74,19 +103,21 @@ jobs:
                'app/build/*' \
                'app/.cxx/*' \
                'house-app/*' \
+               'smoke-results/*' \
                'gradle/wrapper/gradle-wrapper.jar' \
                'local.properties' \
                '*.iml' \
-               'SMBMusic-v0.5.1-source.zip'
+               'SMBMusic-v0.6.1-source.zip'
 
       - name: Upload debug APK
+        if: always() && steps.assemble.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: SMBMusic-v0.5.1
+          name: SMBMusic-v0.6.1
           path: app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload source archive
         uses: actions/upload-artifact@v4
         with:
-          name: SMBMusic-v0.5.1-source
-          path: SMBMusic-v0.5.1-source.zip
+          name: SMBMusic-v0.6.1-source
+          path: SMBMusic-v0.6.1-source.zip

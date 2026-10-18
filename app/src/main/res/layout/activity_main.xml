@@ -153,14 +153,6 @@
                 android:text="Play List"
                 android:textSize="11sp" />
 
-            <Button
-                android:id="@+id/nowPlayingButton"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="6dp"
-                android:text="Now Playing"
-                android:textSize="11sp" />
         </LinearLayout>
 
         <FrameLayout
@@ -200,13 +192,14 @@
                 android:visibility="gone" />
         </FrameLayout>
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/fileList"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:clipToPadding="false"
-            android:paddingBottom="8dp" />
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/browserRefresh" android:layout_width="match_parent"
+            android:layout_height="0dp" android:layout_weight="1">
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/fileList" android:layout_width="match_parent"
+                android:layout_height="match_parent" android:clipToPadding="false"
+                android:paddingBottom="8dp" />
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
         <TextView
             android:id="@+id/browserStatus"

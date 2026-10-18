@@ -18,11 +18,23 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.ForwardingSimpleBasePlayer
+import androidx.media3.common.Metadata
+import androidx.media3.common.MediaMetadata
+import androidx.media3.extractor.metadata.icy.IcyInfo
+import androidx.media3.extractor.metadata.icy.IcyHeaders
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import androidx.media3.exoplayer.source.ShuffleOrder
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
+import com.smbmusic.player.radio.*
+import com.smbmusic.player.media.SourceDataSource
+import com.smbmusic.player.media.SourceLoadControl
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
@@ -34,7 +46,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.smbmusic.player.smb.SmbClient
-import com.smbmusic.player.smb.SmbDataSource
 import com.smbmusic.player.storage.CredentialStore
 import com.smbmusic.player.storage.StandaloneSessionStore
 import com.smbmusic.player.storage.StandaloneSnapshot
@@ -44,6 +55,35 @@ import java.util.concurrent.Future
 
 @UnstableApi
 class PlaybackService : MediaLibraryService() {
+    @Volatile private var radio = false
+    private val recoveryIntent = RecoveryIntent()
+    private var wanted: Boolean
+        get() = recoveryIntent.requested
+        set(value) { recoveryIntent.requested = value }
+    private var holdReason: String
+        get() = recoveryIntent.hold
+        set(value) { recoveryIntent.hold = value }
+    private var radioResolveFuture: Future<*>? = null
+    private var awaitingPlayback = false
+    private var sourceSwitching = false
+    private var restoreAutoplay = false
+    private lateinit var wake: RecoveryWake
+    private lateinit var radioStore: RadioStore
+    private var station: RadioStation? = null
+    private var savedPlaylist: StandaloneSnapshot? = null
+    private val history = RadioHistory()
+    private var radioSong = RadioSong("")
+    private var broadcastName = ""
+    private var radioQuality = ""
+    private var radioError = ""
+    private var radioGeneration = 0
+    private var radioStableMs = 0L
+    private var radioRetry = 0
+    private var radioLastProgress = 0L
+    private var radioLastPosition = 0L
+    private var radioLastTick = 0L
+    private var listeningMs = 0L
+    private var recoveryLogAt = 0L
     private var released = false
     private var serviceStarted = false
     private var resumeRetryIndex = 0
@@ -54,6 +94,7 @@ class PlaybackService : MediaLibraryService() {
     private lateinit var retained: StandaloneSessionStore
     private lateinit var audio: AudioManager
     private lateinit var player: ExoPlayer
+    private lateinit var sessionPlayer: SourceSessionPlayer
     private lateinit var session: MediaLibrarySession
     private lateinit var smb: SmbClient
     private lateinit var executor: ExecutorService
@@ -105,7 +146,9 @@ class PlaybackService : MediaLibraryService() {
                 cancelPendingResume()
                 PlaybackDiagnostics.record(this, "Bluetooth audio disconnected; retaining position")
                 player.pause()
-                if (recovering) pauseRecovery()
+                if (!radio && recovering) pauseRecovery("output")
+                holdReason = "output"
+                if (radio) stopRadioWork()
                 saveStandalone()
                 updateStandbyNotification()
             }
@@ -116,6 +159,8 @@ class PlaybackService : MediaLibraryService() {
 
     private fun resumeStandalone() {
         if (released || player.isPlaying || !playbackIntent.requestResume(player.mediaItemCount > 0)) return
+        wanted = true
+        holdReason = ""
         resumeRetryIndex = 0
         PlaybackDiagnostics.record(this, "Bluetooth audio available; resume requested")
         attemptPendingResume()
@@ -129,7 +174,8 @@ class PlaybackService : MediaLibraryService() {
         // Promote the started playback service before requesting focus. A rejected promotion
         // leaves the intent pending; the system Bluetooth broadcast can retry under its grant.
         if (updateStandbyNotification("Resuming Bluetooth playback")) {
-            TailscaleConnector.request(this, "Bluetooth resume")
+            if (!radio) TailscaleConnector.request(this, "Bluetooth resume")
+            if (radio) { openLiveRadio(); return }
             if (recovering) {
                 resumeShouldPlay = true
                 recoveryPaused = false
@@ -183,13 +229,10 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun saveStandalone() {
-        if (released || !::retained.isInitialized || !::player.isInitialized) return
+        if (released || sourceSwitching || !::retained.isInitialized || !::player.isInitialized) return
         runCatching {
-            retained.save(StandaloneSnapshot(
-                (0 until player.mediaItemCount).map { player.getMediaItemAt(it) },
-                (if (recovering) resumeMediaIndex else player.currentMediaItemIndex).coerceAtLeast(0),
-                (if (recovering) resumePositionMs else player.currentPosition).coerceAtLeast(0),
-                player.shuffleModeEnabled, playbackIntent.explicitlyStopped))
+            retained.save(snapshot().copy(radio = radio, stationId = station?.id.orEmpty(),
+                stationName = station?.name.orEmpty(), playlist = savedPlaylist))
         }
     }
 
@@ -206,6 +249,9 @@ class PlaybackService : MediaLibraryService() {
         super.onCreate()
         PlaybackDiagnostics.record(this, "Playback service created")
 
+        wake = RecoveryWake(this)
+        radioStore = RadioStore(this)
+        history.restore(radioStore.previous())
         retained = StandaloneSessionStore(this)
         audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         playbackIntent.restore(stopped = true, bluetoothAvailable = bluetoothAvailable())
@@ -218,22 +264,13 @@ class PlaybackService : MediaLibraryService() {
         // Cached workers let a later attempt proceed even if an old blocked call is slow to die.
         executor = Executors.newCachedThreadPool()
 
-        val mediaSourceFactory = DefaultMediaSourceFactory(SmbDataSource.Factory(smb))
+        val mediaSourceFactory = DefaultMediaSourceFactory(SourceDataSource.Factory(smb))
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(0))
 
         // v0.3+ is deliberately aggressive. When the network is good, bank a large
         // amount of compressed audio so rural tower handoffs/dead spots do not matter.
         // A normal song will often be buffered in full; long tracks are capped at 10 min.
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                MIN_BUFFER_MS,
-                MAX_BUFFER_MS,
-                START_PLAYBACK_BUFFER_MS,
-                RECOVERY_RESUME_BUFFER_MS
-            )
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .setTargetBufferBytes(TARGET_BUFFER_BYTES)
-            .build()
+        val loadControl = SourceLoadControl({ radio })
 
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
@@ -256,13 +293,19 @@ class PlaybackService : MediaLibraryService() {
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 PlaybackDiagnostics.record(this@PlaybackService, "Player error: ${error.errorCodeName}")
-                if (!released) beginOutageRecovery(error)
+                if (!released && !sourceSwitching) {
+                    if (radio) { if (wanted && holdReason.isBlank()) scheduleRadioRetry(error.errorCodeName) }
+                    else beginOutageRecovery(error)
+                }
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 // A deliberate Next/Previous/new selection invalidates recovery work for the
                 // former song. Queue replacements are also handled in SessionCallback.
-                if (recovering && mediaItem != null && mediaItem.mediaId != recoveryUrl) {
+                if (!sourceSwitching && radio && mediaItem?.localConfiguration?.uri?.scheme == "smb") {
+                    leaveRadioForNewPlaylist()
+                }
+                if (!radio && recovering && mediaItem != null && mediaItem.mediaId != recoveryUrl) {
                     cancelRecovery()
                 }
             }
@@ -270,7 +313,7 @@ class PlaybackService : MediaLibraryService() {
             override fun onRepeatModeChanged(repeatMode: Int) {
                 // Repeat All is a fixed standalone-player policy. External controllers may
                 // request another mode, but the player immediately restores the approved mode.
-                if (repeatMode != Player.REPEAT_MODE_ALL) {
+                if (!radio && repeatMode != Player.REPEAT_MODE_ALL) {
                     player.repeatMode = Player.REPEAT_MODE_ALL
                 }
             }
@@ -288,12 +331,28 @@ class PlaybackService : MediaLibraryService() {
                     cancelFade(resetToFull = true)
 
                     if (
-                        recovering &&
+                        !radio && recovering &&
                         (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS ||
                             reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY ||
                             reason == Player.PLAY_WHEN_READY_CHANGE_REASON_SUPPRESSED_TOO_LONG)
                     ) {
-                        pauseRecovery()
+                        if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) {
+                            holdReason = "output"; pauseRecovery("output")
+                        } else if (awaitingPlayback) {
+                            PlaybackDiagnostics.record(this@PlaybackService, "Recovery resume waiting for focus")
+                            scheduleAwaitingPlayback()
+                        } else {
+                            holdReason = "focus"; pauseRecovery("focus")
+                        }
+                    }
+                    if (!radio && !recovering && !sourceSwitching && reason != Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
+                        holdReason = if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY) "output" else "focus"
+                        saveStandalone()
+                    }
+                    if (radio && !sourceSwitching && reason != Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
+                        if (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS && awaitingPlayback) {
+                            scheduleRadioRetry("Waiting for audio focus")
+                        } else { holdReason = "output/focus"; stopRadioWork(); publishRadio(); saveStandalone() }
                     }
                     return
                 }
@@ -322,7 +381,50 @@ class PlaybackService : MediaLibraryService() {
                     PlaybackDiagnostics.record(this@PlaybackService, "Bluetooth resume playing")
                     cancelPendingResume()
                 }
+                if (isPlaying && awaitingPlayback) {
+                    PlaybackDiagnostics.record(this@PlaybackService, "Recovery playback confirmed")
+                    awaitingPlayback = false
+                    if (!radio) finishRecovery()
+                    else { recovering = false; radioError = ""; wake.cancel(); publishRadio() }
+                }
                 if (isPlaying && fadeArmed) startFadeIn()
+            }
+
+            override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
+                if (radio && !sourceSwitching) updateRadioMetadata(mediaMetadata.title?.toString().orEmpty(),
+                    mediaMetadata.artist?.toString().orEmpty(), mediaMetadata.albumTitle?.toString().orEmpty())
+            }
+            override fun onMetadata(metadata: Metadata) {
+                if (!radio || sourceSwitching) return
+                for (i in 0 until metadata.length()) when (val entry = metadata[i]) {
+                    is IcyInfo -> updateRadioMetadata(entry.title.orEmpty())
+                    is IcyHeaders -> {
+                        broadcastName = entry.name.orEmpty()
+                        if (entry.bitrate > 0 && !radioQuality.contains("kbps")) radioQuality = listOf("${entry.bitrate / 1000} kbps", radioQuality).filter(String::isNotBlank).joinToString(" · ")
+                        station?.let { radioStore.broadcastName(it.id, broadcastName) }
+                        station = radioStore.stations().firstOrNull { it.id == station?.id } ?: station
+                        publishRadio()
+                    }
+                }
+            }
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                if (!radio) return
+                tracks.groups.forEach { group ->
+                    for (i in 0 until group.length) if (group.isTrackSelected(i)) {
+                        val format = group.getTrackFormat(i)
+                        val parts = mutableListOf<String>()
+                        if (format.bitrate > 0) parts += "${format.bitrate / 1000} kbps"
+                        format.sampleMimeType?.let { parts += it.removePrefix("audio/") }
+                        if (format.sampleRate > 0) parts += "${format.sampleRate / 1000.0} kHz"
+                        if (parts.isNotEmpty()) radioQuality = parts.joinToString(" · ")
+                        format.metadata?.let { onMetadata(it) }
+                    }
+                }
+                publishRadio()
+            }
+            override fun onPlaybackStateChanged(state: Int) {
+                if (radio && state == Player.STATE_ENDED && wanted && holdReason.isBlank() && !sourceSwitching)
+                    scheduleRadioRetry("Stream ended")
             }
 
             override fun onEvents(player: Player, events: Player.Events) {
@@ -332,28 +434,37 @@ class PlaybackService : MediaLibraryService() {
             }
         })
 
-        session = MediaLibrarySession.Builder(
-            this,
-            player,
-            SessionCallback()
-        ).build()
+        sessionPlayer = SourceSessionPlayer()
+        session = MediaLibrarySession.Builder(this, sessionPlayer, SessionCallback()).build()
 
+        sourceSwitching = true
         retained.load()?.let { saved ->
             playbackIntent.restore(saved.explicitlyStopped, bluetoothAvailable())
-            player.setMediaItems(saved.items, saved.index, saved.positionMs)
+            radio = saved.radio; savedPlaylist = saved.playlist
+            wanted = saved.shouldPlay; restoreAutoplay = saved.shouldPlay
+            if (saved.bluetoothRequired && !bluetoothAvailable()) holdReason = "output"
+            if (radio) station = RadioStation(saved.stationId, saved.stationName,
+                saved.items.first().localConfiguration!!.uri.toString())
+            player.setMediaItems(saved.items, saved.index, if (radio) 0 else saved.positionMs)
             player.shuffleModeEnabled = saved.shuffle
+            if (saved.shuffleOrder.isNotEmpty()) player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(saved.shuffleOrder.toIntArray(), 0))
+            player.repeatMode = if (radio) Player.REPEAT_MODE_OFF else Player.REPEAT_MODE_ALL
         }
+        sourceSwitching = false
         publishRecoveryStatus(RECOVERY_PHASE_IDLE)
         registerNetworkCallback()
+        com.smbmusic.player.radio.HouseStationRefresh.get(this).acquire(this)
         audio.registerAudioDeviceCallback(audioDevices, handler)
         // Let a simultaneous Quit command run before considering a preconnected output.
         handler.post {
             if (!released) {
-                if (playbackIntent.canResume(player.mediaItemCount > 0)) resumeStandalone()
+                if (restoreAutoplay && playbackIntent.canResume(player.mediaItemCount > 0)) resumeStandalone()
                 else if (keepStandaloneReady()) updateStandbyNotification()
             }
         }
         schedulePersistence()
+        scheduleRadioTick()
+        publishRadio()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
@@ -386,9 +497,9 @@ class PlaybackService : MediaLibraryService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = NotificationCompat.Builder(this, PLAYBACK_CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher)
-            .setContentTitle(player.mediaMetadata.title ?: "SMB Music")
+            .setContentTitle(session.player.mediaMetadata.title ?: "SMB Music")
             .setContentText(status ?: if (recovering && !recoveryPaused)
-                "Waiting for SMB — session retained" else "Paused — session retained")
+                if (radio) "Reconnecting radio — session retained" else "Waiting for SMB — session retained" else "Paused — session retained")
             .setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
             .addAction(android.R.drawable.ic_media_play, "Play", action(ACTION_PLAY))
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Quit", action(ACTION_QUIT))
@@ -406,7 +517,7 @@ class PlaybackService : MediaLibraryService() {
             true
         } catch (e: Exception) {
             PlaybackDiagnostics.record(this, "Playback foreground blocked: ${e.javaClass.simpleName}")
-            setResumeStatus("Background resume blocked — tap Play to retry")
+            setResumeStatus("Waiting for background playback eligibility…")
             false
         }
     }
@@ -423,7 +534,17 @@ class PlaybackService : MediaLibraryService() {
             stopSelf(startId) // A queued Bluetooth wake after Quit must not leave a start pending.
             return START_NOT_STICKY
         }
-        if (intent?.action == ACTION_KEEP_ALIVE) return START_NOT_STICKY
+        if (intent?.action == ACTION_KEEP_ALIVE) return START_STICKY
+        if (intent?.action == ACTION_RECOVERY_WAKE) {
+            serviceStarted = true
+            updateStandbyNotification("Reconnecting playback")
+            if (wanted && holdReason.isBlank() && !playbackIntent.explicitlyStopped) {
+                if (radio) openLiveRadio()
+                else if (recovering) requestImmediateRecoveryProbe()
+                else if (bluetoothAvailable()) userPlay()
+            }
+            return START_STICKY
+        }
         if (intent?.action == ACTION_BLUETOOTH_CONNECTED) {
             serviceStarted = true
             if (player.isPlaying) {
@@ -440,25 +561,8 @@ class PlaybackService : MediaLibraryService() {
             }
             return START_NOT_STICKY
         }
-        if (intent?.action == ACTION_PLAY) {
-            if (player.mediaItemCount > 0) {
-                cancelPendingResume()
-                playbackIntent.playbackRequested()
-                TailscaleConnector.request(this, "notification Play")
-                if (updateStandbyNotification("Resuming playback")) {
-                    if (recovering) {
-                        resumeShouldPlay = true
-                        recoveryPaused = false
-                        requestImmediateRecoveryProbe()
-                    } else {
-                        if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) player.prepare()
-                        player.play()
-                    }
-                }
-                saveStandalone()
-            }
-            return START_NOT_STICKY
-        }
+        if (intent?.action == ACTION_PLAY) { userPlay(); return START_STICKY }
+
         return super.onStartCommand(intent, flags, startId)
     }
 
@@ -475,15 +579,39 @@ class PlaybackService : MediaLibraryService() {
             if (controller.packageName == GARMIN_CONNECT_PACKAGE) {
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
                     .setAvailableSessionCommands(
-                        MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+                        MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+                            .add(SessionCommand(COMMAND_RADIO_PLAY, Bundle.EMPTY))
+                            .add(SessionCommand(COMMAND_RESUME_PLAYLIST, Bundle.EMPTY)).build()
                     )
                     .setAvailablePlayerCommands(
-                        MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
+                        commandsForSource(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS)
                     )
                     .build()
             }
             // Reproduce Media3's normal trusted/untrusted defaults for every other controller.
-            return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller).build()
+            val result = super.onConnect(session, controller)
+            if (!result.isAccepted) return result
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
+                .setAvailableSessionCommands(result.availableSessionCommands.buildUpon()
+                    .add(SessionCommand(COMMAND_RADIO_PLAY, Bundle.EMPTY))
+                    .add(SessionCommand(COMMAND_RESUME_PLAYLIST, Bundle.EMPTY)).build())
+                .setAvailablePlayerCommands(commandsForSource(result.availablePlayerCommands)).build()
+        }
+
+        override fun onCustomCommand(session: MediaSession, controller: MediaSession.ControllerInfo,
+            command: SessionCommand, args: Bundle): ListenableFuture<SessionResult> {
+            if (controller.packageName != packageName) return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_PERMISSION_DENIED))
+            val ok = when (command.customAction) {
+                COMMAND_RADIO_PLAY -> radioStore.stations().firstOrNull { it.id == args.getString("stationId") }
+                    ?.let { playStation(it); true } ?: false
+                COMMAND_RESUME_PLAYLIST -> restorePlaylist()
+                else -> return super.onCustomCommand(session, controller, command, args)
+            }
+            return Futures.immediateFuture(SessionResult(if (ok) SessionResult.RESULT_SUCCESS else SessionResult.RESULT_ERROR_BAD_VALUE))
+        }
+        override fun onPlayerCommandRequest(session: MediaSession, controller: MediaSession.ControllerInfo, command: Int): Int {
+            if (radio && command in RADIO_DISABLED_COMMANDS) return SessionResult.RESULT_ERROR_NOT_SUPPORTED
+            return super.onPlayerCommandRequest(session, controller, command)
         }
 
         override fun onPlayerInteractionFinished(
@@ -492,45 +620,13 @@ class PlaybackService : MediaLibraryService() {
             playerCommands: Player.Commands
         ) {
             if (released) return
-            if (playerCommands.contains(Player.COMMAND_STOP)) {
-                cancelPendingResume()
-                playbackIntent.stop()
-                player.pause()
-            } else if (playerCommands.contains(Player.COMMAND_CHANGE_MEDIA_ITEMS) ||
-                (playerCommands.contains(Player.COMMAND_PLAY_PAUSE) && player.playWhenReady)) {
+            if (playerCommands.contains(Player.COMMAND_CHANGE_MEDIA_ITEMS)) {
+                cancelPendingResume(); cancelRecovery()
+                if (radio && player.currentMediaItem?.localConfiguration?.uri?.scheme == "smb") leaveRadioForNewPlaylist()
                 playbackIntent.playbackRequested()
             }
-            if (playerCommands.contains(Player.COMMAND_PLAY_PAUSE) ||
-                playerCommands.contains(Player.COMMAND_CHANGE_MEDIA_ITEMS)) {
-                cancelPendingResume()
-                if (player.playWhenReady) TailscaleConnector.request(this@PlaybackService, "media Play")
-            }
-            // A replacement queue or explicit Stop makes all recovery callbacks for the old
-            // request stale. The newly requested queue is allowed to establish its own state.
-            if (
-                recovering &&
-                (playerCommands.contains(Player.COMMAND_CHANGE_MEDIA_ITEMS) ||
-                    playerCommands.contains(Player.COMMAND_STOP))
-            ) {
-                cancelRecovery()
-            } else if (recovering && playerCommands.contains(Player.COMMAND_PLAY_PAUSE)) {
-                if (player.playWhenReady) {
-                    // During recovery, Play means "keep trying now". Hold the player silent until
-                    // SMB is verified and the useful recovery buffer has been rebuilt.
-                    resumeShouldPlay = true
-                    recoveryPaused = false
-                    player.pause()
-                    requestImmediateRecoveryProbe()
-                } else {
-                    // Pause is authoritative even though the player was already internally
-                    // paused while waiting for SMB.
-                    pauseRecovery()
-                }
-            }
+            if (!radio && player.repeatMode != Player.REPEAT_MODE_ALL) player.repeatMode = Player.REPEAT_MODE_ALL
 
-            if (player.repeatMode != Player.REPEAT_MODE_ALL) {
-                player.repeatMode = Player.REPEAT_MODE_ALL
-            }
             saveStandalone()
             if (playbackIntent.explicitlyStopped) {
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -572,6 +668,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun beginOutageRecovery(error: PlaybackException) {
+        if (radio || sourceSwitching) return
         val mediaItem = player.currentMediaItem ?: return
 
         // A loader can report its error after Pause closed the source. That late result
@@ -592,6 +689,7 @@ class PlaybackService : MediaLibraryService() {
         clearRecoveryCallbacks()
 
         recovering = true
+        awaitingPlayback = false
         rebuildingBuffer = false
         recoveryPaused = false
         retryIndex = 0
@@ -601,7 +699,12 @@ class PlaybackService : MediaLibraryService() {
         recoveryUrl = mediaItem.localConfiguration?.uri?.toString().orEmpty()
             .ifBlank { mediaItem.mediaId }
 
+        wanted = shouldResume
+        wake.beginBurst()
+        PlaybackDiagnostics.record(this, "SMB outage begin; ${wake.description()}")
+        updateStandbyNotification()
         player.pause()
+        saveStandalone()
         scheduleRetry()
     }
 
@@ -615,16 +718,23 @@ class PlaybackService : MediaLibraryService() {
 
         val delay = retryScheduleMs[minOf(retryIndex, retryScheduleMs.lastIndex)]
         retryIndex++
-        retryDueAtMs = SystemClock.uptimeMillis() + delay
+        retryDueAtMs = SystemClock.elapsedRealtime() + delay
+        wake.waiting(delay)
+        val scheduledElapsed = SystemClock.elapsedRealtime()
+        val scheduledUptime = SystemClock.uptimeMillis()
         publishRecoveryStatus(
             phase = RECOVERY_PHASE_WAITING,
             retryInMs = delay
         )
         scheduleRetryStatusTick()
         handler.postAtTime(
-            { retrySmb() },
+            {
+                val sleep = (SystemClock.elapsedRealtime() - scheduledElapsed) - (SystemClock.uptimeMillis() - scheduledUptime)
+                if (sleep > 1_000) PlaybackDiagnostics.record(this, "Recovery timer sleep delay=${sleep}ms")
+                retrySmb()
+            },
             RETRY_TOKEN,
-            retryDueAtMs
+            SystemClock.uptimeMillis() + delay
         )
     }
 
@@ -634,7 +744,7 @@ class PlaybackService : MediaLibraryService() {
                 if (!recovering || recoveryPaused || rebuildingBuffer || probeInFlight) {
                     return@postAtTime
                 }
-                val remaining = (retryDueAtMs - SystemClock.uptimeMillis()).coerceAtLeast(0L)
+                val remaining = (retryDueAtMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
                 publishRecoveryStatus(
                     phase = RECOVERY_PHASE_WAITING,
                     retryInMs = remaining
@@ -657,6 +767,12 @@ class PlaybackService : MediaLibraryService() {
         handler.removeCallbacksAndMessages(STATUS_TOKEN)
         handler.removeCallbacksAndMessages(NETWORK_RETRY_TOKEN)
 
+        wake.work()
+        val now = SystemClock.elapsedRealtime()
+        if (now - recoveryLogAt >= 60_000) {
+            PlaybackDiagnostics.record(this, "SMB probe; ${wake.description()}")
+            recoveryLogAt = now
+        }
         val url = recoveryUrl
         val generation = recoveryGeneration
         val probeId = ++activeProbeId
@@ -722,6 +838,8 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun beginRecoveryBufferRebuild() {
+        wake.work(60_000)
+        PlaybackDiagnostics.record(this, "SMB reachable; refilling saved position")
         rebuildingBuffer = true
         recoveryPaused = false
         handler.removeCallbacksAndMessages(RETRY_TOKEN)
@@ -735,7 +853,7 @@ class PlaybackService : MediaLibraryService() {
         player.seekTo(resumeMediaIndex, resumePositionMs)
         player.prepare()
 
-        rebuildStartedAtMs = SystemClock.uptimeMillis()
+        rebuildStartedAtMs = SystemClock.elapsedRealtime()
         lastBufferProgressAtMs = rebuildStartedAtMs
         lastBufferedPositionMs = resumePositionMs
         publishRecoveryStatus(
@@ -757,7 +875,7 @@ class PlaybackService : MediaLibraryService() {
     private fun checkRecoveryBuffer() {
         if (!recovering || recoveryPaused || !rebuildingBuffer) return
 
-        val now = SystemClock.uptimeMillis()
+        val now = SystemClock.elapsedRealtime()
         if (player.playerError != null) {
             // prepare() may expose the previous error for a brief moment. Give it a short grace
             // period, then return to the SMB-probe phase rather than spinning forever.
@@ -788,6 +906,7 @@ class PlaybackService : MediaLibraryService() {
         if (bufferedPosition >= lastBufferedPositionMs + MIN_BUFFER_PROGRESS_MS) {
             lastBufferedPositionMs = bufferedPosition
             lastBufferProgressAtMs = now
+            wake.work(60_000)
         }
 
         publishRecoveryStatus(
@@ -809,6 +928,42 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun completeRecovery() {
+        rebuildingBuffer = false
+        awaitingPlayback = true
+        clearRecoveryCallbacks()
+        attemptRecoveryPlayback()
+    }
+
+    private fun attemptRecoveryPlayback() {
+        if (!recovering || recoveryPaused || !wanted || holdReason.isNotBlank() || released) return
+        if (playbackIntent.bluetoothConnected && !bluetoothAvailable()) { bluetoothChanged(); return }
+        if (!focusRetryEligible()) { scheduleAwaitingPlayback(); return }
+        if (updateStandbyNotification("Resuming playback")) {
+            skipNextUserFade = true
+            requestRecoveryPlay()
+        }
+        if (awaitingPlayback) scheduleAwaitingPlayback()
+    }
+
+    private fun requestRecoveryPlay() {
+        // Media3 1.11 reports focus results asynchronously from its playback thread.
+        // Keep awaitingPlayback until actual playback, rather than the return from play().
+        player.play()
+    }
+
+    private fun focusRetryEligible(): Boolean =
+        player.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE &&
+            audio.mode == AudioManager.MODE_NORMAL && (!audio.isMusicActive || player.isPlaying)
+
+    private fun scheduleAwaitingPlayback() {
+        handler.removeCallbacksAndMessages(AWAIT_TOKEN)
+        wake.waiting(15_000)
+        handler.postAtTime({ if (awaitingPlayback && !radio) attemptRecoveryPlayback() },
+            AWAIT_TOKEN, SystemClock.uptimeMillis() + 5_000)
+    }
+
+    private fun finishRecovery() {
+        wake.cancel()
         clearRecoveryCallbacks()
         cancelActiveProbe()
 
@@ -821,11 +976,7 @@ class PlaybackService : MediaLibraryService() {
         publishRecoveryStatus(RECOVERY_PHASE_IDLE)
 
         player.repeatMode = Player.REPEAT_MODE_ALL
-        if (resumeShouldPlay) {
-            // Recovery resume is automatic, not an explicit user Play action.
-            skipNextUserFade = true
-            player.play()
-        }
+        saveStandalone()
     }
 
     private fun restartRecoveryAfterRebuildFailure() {
@@ -837,12 +988,15 @@ class PlaybackService : MediaLibraryService() {
         scheduleRetry()
     }
 
-    private fun pauseRecovery() {
+    private fun pauseRecovery(reason: String = "user") {
         if (!recovering) return
 
         resumePositionMs = player.currentPosition.coerceAtLeast(resumePositionMs)
         resumeMediaIndex = player.currentMediaItemIndex.coerceAtLeast(resumeMediaIndex)
-        resumeShouldPlay = false
+        if (reason == "user") { wanted = false; resumeShouldPlay = false }
+        awaitingPlayback = false
+        wake.cancel()
+        PlaybackDiagnostics.record(this, "Recovery held: $reason")
         recoveryPaused = true
         rebuildingBuffer = false
         recoveryGeneration++
@@ -850,9 +1004,12 @@ class PlaybackService : MediaLibraryService() {
         cancelActiveProbe()
         runCatching { player.stop() }
         publishRecoveryStatus(RECOVERY_PHASE_PAUSED)
+        saveStandalone()
     }
 
     private fun cancelRecovery() {
+        awaitingPlayback = false
+        if (::wake.isInitialized) wake.cancel()
         if (!recovering && !rebuildingBuffer && !recoveryPaused) return
 
         recoveryGeneration++
@@ -868,6 +1025,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun clearRecoveryCallbacks() {
+        handler.removeCallbacksAndMessages(AWAIT_TOKEN)
         handler.removeCallbacksAndMessages(RETRY_TOKEN)
         handler.removeCallbacksAndMessages(BUFFER_TOKEN)
         handler.removeCallbacksAndMessages(STATUS_TOKEN)
@@ -905,6 +1063,17 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private fun requestImmediateRecoveryProbe() {
+        if (released || !recoveryIntent.eligible(playbackIntent.explicitlyStopped)) return
+        if (radio) {
+            if (!player.isPlaying && (recovering || player.playerError != null || player.playbackState == Player.STATE_IDLE)) {
+                handler.removeCallbacksAndMessages(RADIO_RETRY_TOKEN)
+                val generation = radioGeneration
+                handler.postAtTime({ if (generation == radioGeneration) openLiveRadio() }, RADIO_RETRY_TOKEN,
+                    SystemClock.uptimeMillis() + NETWORK_EVENT_DEBOUNCE_MS)
+            }
+            return
+        }
+        if (awaitingPlayback) { attemptRecoveryPlayback(); return }
         if (!recovering || recoveryPaused || rebuildingBuffer || recoveryUrl.isBlank()) return
 
         if (probeInFlight) {
@@ -967,9 +1136,12 @@ class PlaybackService : MediaLibraryService() {
         if (released) return
         PlaybackDiagnostics.record(this, if (explicitQuit) "Quit; automatic resume disabled" else "Playback service destroyed")
         cancelPendingResume()
-        if (explicitQuit) playbackIntent.stop()
+        if (explicitQuit) { wanted = false; playbackIntent.stop() }
+        if (radio) { flushRadioListening(); history.finish(); radioStore.savePrevious(history.previous) }
+        stopRadioWork()
         saveStandalone()
         released = true
+        com.smbmusic.player.radio.HouseStationRefresh.get(this).release(this)
         cancelRecovery()
         cancelFade(resetToFull = false)
         handler.removeCallbacksAndMessages(null)
@@ -988,7 +1160,275 @@ class PlaybackService : MediaLibraryService() {
         super.onDestroy()
     }
 
+    /** The standard state adapter keeps source-specific metadata, commands and listeners consistent. */
+    private inner class SourceSessionPlayer : ForwardingSimpleBasePlayer(this@PlaybackService.player) {
+        override fun getState(): State {
+            val state = super.getState()
+            if (!radio) return state
+            val metadata = MediaMetadata.Builder()
+                .setTitle(radioSong.title.ifBlank { station?.name ?: "Live radio" })
+                .setArtist(radioSong.artist.takeIf(String::isNotBlank))
+                .setAlbumTitle(radioSong.album.takeIf(String::isNotBlank))
+                .setSubtitle(station?.name).build()
+            return state.buildUpon().setAvailableCommands(commandsForSource(player.availableCommands))
+                .setPlaylist(player.currentTimeline, player.currentTracks, metadata).build()
+        }
+        override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+            if (playWhenReady) userPlay() else userPause()
+            return Futures.immediateVoidFuture()
+        }
+        override fun handleStop(): ListenableFuture<*> {
+            userPause(); playbackIntent.stop(); cancelRecovery(); player.stop(); saveStandalone()
+            return Futures.immediateVoidFuture()
+        }
+        fun refresh() = invalidateState()
+    }
+
+    private fun snapshot(): StandaloneSnapshot {
+        val order = mutableListOf<Int>()
+        val timeline = player.currentTimeline
+        if (!radio && player.shuffleModeEnabled && !timeline.isEmpty) {
+            var index = timeline.getFirstWindowIndex(true)
+            while (index != C.INDEX_UNSET && index !in order && order.size < player.mediaItemCount) {
+                order += index
+                index = timeline.getNextWindowIndex(index, Player.REPEAT_MODE_OFF, true)
+            }
+        }
+        return StandaloneSnapshot((0 until player.mediaItemCount).map { player.getMediaItemAt(it) },
+            (if (recovering && !radio) resumeMediaIndex else player.currentMediaItemIndex).coerceAtLeast(0),
+            (if (radio) 0L else if (recovering) resumePositionMs else player.currentPosition).coerceAtLeast(0),
+            player.shuffleModeEnabled, playbackIntent.explicitlyStopped,
+            wanted && holdReason.isBlank(), shuffleOrder = order,
+            bluetoothRequired = playbackIntent.bluetoothConnected || holdReason == "output")
+    }
+
+    private fun userPlay() {
+        if (released || player.mediaItemCount == 0) return
+        recoveryIntent.play(); playbackIntent.playbackRequested(); cancelPendingResume()
+        if (radio) openLiveRadio()
+        else {
+            TailscaleConnector.request(this, "media Play")
+            if (recovering) {
+                resumeShouldPlay = true; recoveryPaused = false
+                if (awaitingPlayback) attemptRecoveryPlayback() else requestImmediateRecoveryProbe()
+            } else if (updateStandbyNotification("Resuming playback")) {
+                if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) player.prepare()
+                player.play()
+            }
+        }
+        saveStandalone()
+    }
+
+    private fun userPause() {
+        recoveryIntent.pause(); cancelPendingResume()
+        if (radio) { stopRadioWork(); player.pause(); player.stop(); publishRadio() }
+        else { player.pause(); if (recovering) pauseRecovery("user") }
+        wake.cancel(); saveStandalone()
+        PlaybackDiagnostics.record(this, "Explicit Pause; pending recovery cancelled")
+    }
+
+    private fun playStation(selected: RadioStation) {
+        if (!radio && player.mediaItemCount > 0) savedPlaylist = snapshot()
+        if (radio) { flushRadioListening(); history.finish(); radioStore.savePrevious(history.previous) }
+        cancelRecovery(); cancelPendingResume(); stopRadioWork()
+        sourceSwitching = true
+        player.stop()
+        radio = true; station = selected; wanted = true; holdReason = ""; radioRetry = 0
+        playbackIntent.playbackRequested()
+        player.shuffleModeEnabled = false; player.repeatMode = Player.REPEAT_MODE_OFF
+        player.setMediaItem(radioItem(selected))
+        sourceSwitching = false
+        refreshControllerCommands()
+        saveStandalone()
+        openLiveRadio()
+    }
+
+    private fun radioItem(station: RadioStation, mime: String? = null): MediaItem = MediaItem.Builder()
+        .setMediaId("radio:${station.id}").setUri(station.url).setMimeType(mime)
+        .setLiveConfiguration(MediaItem.LiveConfiguration.Builder().setTargetOffsetMs(3_000).build())
+        .setMediaMetadata(MediaMetadata.Builder().setDisplayTitle(station.name).build()).build()
+
+    private fun openLiveRadio() {
+        if (released || !radio || !wanted || holdReason.isNotBlank()) return
+        val selected = station ?: return
+        if (radioError == "Waiting for audio focus" && !focusRetryEligible()) {
+            scheduleRadioRetry("Waiting for audio focus"); return
+        }
+        if (playbackIntent.bluetoothConnected && !bluetoothAvailable()) { bluetoothChanged(); return }
+        handler.removeCallbacksAndMessages(RADIO_RETRY_TOKEN)
+        val generation = ++radioGeneration
+        sourceSwitching = true; player.stop(); sourceSwitching = false
+        recovering = true; rebuildingBuffer = false; awaitingPlayback = false
+        radioError = ""; radioSong = RadioSong(""); broadcastName = ""; radioQuality = ""
+        history.update(null, selected.name, System.currentTimeMillis())
+        radioLastProgress = SystemClock.elapsedRealtime(); radioLastTick = radioLastProgress; radioLastPosition = 0; radioStableMs = 0
+        wake.work(45_000)
+        if (!updateStandbyNotification("Connecting to radio")) {
+            scheduleRadioRetry("Background playback unavailable"); return
+        }
+        publishRadio(); saveStandalone()
+        radioResolveFuture?.cancel(true)
+        radioResolveFuture = executor.submit {
+            val result = runCatching { RadioStreamResolver.resolve(selected.url) }
+            handler.post {
+                if (released || !radio || !wanted || holdReason.isNotBlank() || generation != radioGeneration) return@post
+                result.fold(onSuccess = { mime ->
+                    sourceSwitching = true
+                    player.setMediaItem(radioItem(selected, mime)); player.prepare()
+                    sourceSwitching = false
+                    awaitingPlayback = true
+                    requestRecoveryPlay()
+                    publishRadio()
+                }, onFailure = { scheduleRadioRetry(if (it is IllegalArgumentException) "Unsupported station link" else "Station unavailable") })
+            }
+        }
+    }
+
+    private fun scheduleRadioRetry(error: String) {
+        if (!radio || !wanted || holdReason.isNotBlank() || released) return
+        radioResolveFuture?.cancel(true); radioResolveFuture = null
+        radioGeneration++
+        sourceSwitching = true; player.stop(); sourceSwitching = false
+        recovering = true; awaitingPlayback = false; radioError = error.take(80)
+        if (radioRetry == 0) wake.beginBurst()
+        val delays = longArrayOf(1_000, 2_000, 5_000, 10_000, 15_000, 30_000, 60_000)
+        val delay = delays[minOf(radioRetry++, delays.lastIndex)]
+        val generation = radioGeneration
+        handler.removeCallbacksAndMessages(RADIO_RETRY_TOKEN)
+        handler.postAtTime({ if (generation == radioGeneration) openLiveRadio() }, RADIO_RETRY_TOKEN,
+            SystemClock.uptimeMillis() + delay)
+        wake.waiting(delay)
+        radioLastProgress = SystemClock.elapsedRealtime() + delay
+        publishRadio(); saveStandalone()
+        if (radioRetry <= 2 || radioRetry % 5 == 0) PlaybackDiagnostics.record(this, "Radio retry: $error; delay=${delay}ms")
+    }
+
+    private fun stopRadioWork() {
+        radioResolveFuture?.cancel(true); radioResolveFuture = null
+        radioGeneration++
+        handler.removeCallbacksAndMessages(RADIO_RETRY_TOKEN)
+        if (::wake.isInitialized) wake.cancel()
+        awaitingPlayback = false
+        if (radio) { recovering = false; flushRadioListening(); history.finish(); radioStore.savePrevious(history.previous) }
+    }
+
+    private fun leaveRadioForNewPlaylist() {
+        if (radio) stopRadioWork()
+        radio = false; savedPlaylist = null; station = null; radioError = ""
+        wanted = player.playWhenReady; holdReason = ""
+        cancelRecovery()
+        player.repeatMode = Player.REPEAT_MODE_ALL
+        refreshControllerCommands(); publishRadio()
+    }
+
+    private fun restorePlaylist(): Boolean {
+        val saved = savedPlaylist ?: return false
+        if (!radio) return false
+        stopRadioWork(); cancelRecovery(); cancelPendingResume()
+        sourceSwitching = true; player.pause(); player.stop(); radio = false; station = null; savedPlaylist = null
+        player.setMediaItems(saved.items, saved.index, saved.positionMs)
+        player.shuffleModeEnabled = saved.shuffle
+        if (saved.shuffleOrder.isNotEmpty()) player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(saved.shuffleOrder.toIntArray(), 0))
+        player.repeatMode = Player.REPEAT_MODE_ALL
+        recoveryIntent.afterPlaylistRestore(saved.shouldPlay)
+        if (saved.bluetoothRequired && !bluetoothAvailable()) holdReason = "output"
+        sourceSwitching = false
+        playbackIntent.playbackRequested()
+        refreshControllerCommands(); publishRadio(); saveStandalone()
+        if (wanted && holdReason.isBlank()) userPlay()
+        return true
+    }
+
+    private fun updateRadioMetadata(title: String, artist: String = "", album: String = "") {
+        val parsed = RadioMetadata.parse(title, artist, album)
+        if (parsed == radioSong) return
+        radioSong = parsed
+        history.update(parsed, station?.name.orEmpty(), System.currentTimeMillis())
+        radioStore.savePrevious(history.previous)
+        publishRadio()
+    }
+
+    private fun flushRadioListening() {
+        station?.let { if (listeningMs > 0) radioStore.addListening(it.id, listeningMs) }
+        listeningMs = 0
+    }
+
+    private fun scheduleRadioTick() {
+        handler.postAtTime({
+            if (released) return@postAtTime
+            if (radio) {
+                val now = SystemClock.elapsedRealtime()
+                if (player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE) radioLastProgress = now
+                val freshStation = radioStore.stations().firstOrNull { it.id == station?.id }
+                if (freshStation != null && freshStation.name != station?.name) { station = freshStation; publishRadio() }
+                val position = player.currentPosition
+                val advance = if (player.isPlaying) minOf((position - radioLastPosition).coerceAtLeast(0),
+                    (now - radioLastTick).coerceIn(0, 5_000)) else 0L
+                if (advance > 0) {
+                    history.advance(advance); listeningMs += advance; radioLastProgress = now
+                    radioStableMs += advance
+                    if (radioStableMs > 10_000) radioRetry = 0
+                    if (listeningMs >= 30_000) flushRadioListening()
+                }
+                radioLastPosition = position; radioLastTick = now
+                if (wanted && holdReason.isBlank() && player.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE && now - radioLastProgress > 30_000) scheduleRadioRetry("Stream stopped advancing")
+            }
+            scheduleRadioTick()
+        }, RADIO_TICK_TOKEN, SystemClock.uptimeMillis() + 1_000)
+    }
+
+    private fun commandsForSource(base: Player.Commands): Player.Commands = base.buildUpon().apply {
+        if (radio) RADIO_DISABLED_COMMANDS.forEach { remove(it) }
+    }.build()
+
+    private fun refreshControllerCommands() {
+        if (!::session.isInitialized) return
+        session.connectedControllers.forEach { info ->
+            val base = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
+            // Existing untrusted metadata-only controllers do not acquire control here.
+            if (info.isTrusted || info.packageName == GARMIN_CONNECT_PACKAGE || info.packageName == packageName)
+                session.setAvailableCommands(info, MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
+                    .add(SessionCommand(COMMAND_RADIO_PLAY, Bundle.EMPTY))
+                    .add(SessionCommand(COMMAND_RESUME_PLAYLIST, Bundle.EMPTY)).build(), commandsForSource(base))
+        }
+    }
+
+    private fun publishRadio() {
+        if (released || !::session.isInitialized) return
+        if (::sessionPlayer.isInitialized) sessionPlayer.refresh()
+        val state = when {
+            !wanted || holdReason.isNotBlank() -> "Paused"
+            player.isPlaying -> "Live"
+            radioError.isNotBlank() -> "Retrying — $radioError"
+            else -> "Connecting"
+        }
+        session.setSessionExtras(Bundle(session.sessionExtras).apply {
+            putBoolean(EXTRA_RADIO, radio); putBoolean("resumePlaylist", savedPlaylist != null)
+            putBoolean("wanted", wanted && holdReason.isBlank())
+            putString("radioStatus", state); putString("stationId", station?.id.orEmpty())
+            putString("stationName", station?.name.orEmpty()); putString("radioTitle", radioSong.title)
+            putString("radioArtist", radioSong.artist); putString("radioAlbum", radioSong.album)
+            putString("broadcastName", broadcastName); putString("radioQuality", radioQuality)
+            val last = history.previous
+            putString("lastTitle", last?.song?.title.orEmpty()); putString("lastArtist", last?.song?.artist.orEmpty())
+            putString("lastAlbum", last?.song?.album.orEmpty()); putString("lastStation", last?.station.orEmpty())
+            putLong("lastTime", last?.startedAt ?: 0L)
+        })
+    }
+
     companion object {
+        const val COMMAND_RADIO_PLAY = "com.smbmusic.player.RADIO_PLAY"
+        const val COMMAND_RESUME_PLAYLIST = "com.smbmusic.player.RESUME_PLAYLIST"
+        const val ACTION_RECOVERY_WAKE = "com.smbmusic.player.RECOVERY_WAKE"
+        const val EXTRA_RADIO = "radio"
+        private val AWAIT_TOKEN = Any()
+        private val RADIO_RETRY_TOKEN = Any()
+        private val RADIO_TICK_TOKEN = Any()
+        private val RADIO_DISABLED_COMMANDS = setOf(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM,
+            Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+            Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
+            Player.COMMAND_SEEK_BACK, Player.COMMAND_SEEK_FORWARD, Player.COMMAND_SET_SHUFFLE_MODE,
+            Player.COMMAND_SET_REPEAT_MODE, Player.COMMAND_SEEK_TO_MEDIA_ITEM, Player.COMMAND_SEEK_TO_DEFAULT_POSITION)
         const val ACTION_BLUETOOTH_CONNECTED = "com.smbmusic.player.BLUETOOTH_CONNECTED"
         private const val ACTION_KEEP_ALIVE = "com.smbmusic.player.KEEP_ALIVE"
         const val SESSION_EXTRA_RESUME_STATUS = "com.smbmusic.player.resume_status"

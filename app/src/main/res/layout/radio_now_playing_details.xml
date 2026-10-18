@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:orientation="vertical" android:paddingHorizontal="16dp" android:paddingBottom="16dp">
+        <TextView android:id="@+id/radioDetailStation"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textSize="15sp"
+            android:textColor="@color/text_secondary" android:textStyle="bold" />
+        <TextView android:id="@+id/radioDetailBroadcast"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textSize="12sp"
+            android:textColor="@color/text_secondary" android:textStyle="normal" />
+        <TextView android:id="@+id/radioDetailTitle"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textSize="23sp"
+            android:textColor="@color/white" android:textStyle="bold" />
+        <TextView android:id="@+id/radioDetailArtist"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textSize="18sp"
+            android:textColor="@color/white" android:textStyle="normal" />
+        <TextView android:id="@+id/radioDetailAlbum"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textSize="14sp"
+            android:textColor="@color/text_secondary" android:textStyle="normal" />
+        <TextView android:id="@+id/radioDetailQuality"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textSize="12sp"
+            android:textColor="@color/text_secondary" android:textStyle="normal" />
+
+    <LinearLayout android:id="@+id/radioLastPlayedPanel"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="22dp" android:orientation="vertical">
+        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/panel2" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="12dp" android:text="Last played" android:textStyle="bold"
+            android:textSize="13sp" android:textColor="@color/text_secondary" />
+        <TextView android:id="@+id/radioLastTitle"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textSize="18sp"
+            android:textColor="@color/white" android:textStyle="bold" />
+        <TextView android:id="@+id/radioLastArtist"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textSize="15sp"
+            android:textColor="@color/white" android:textStyle="normal" />
+        <TextView android:id="@+id/radioLastAlbum"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textSize="13sp"
+            android:textColor="@color/text_secondary" android:textStyle="normal" />
+        <TextView android:id="@+id/radioLastStationTime"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textSize="12sp"
+            android:textColor="@color/text_secondary" android:textStyle="normal" />
+        <TextView android:id="@+id/radioHistoryError"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" android:textSize="12sp"
+            android:textColor="@color/text_secondary" android:textStyle="normal" />
+    </LinearLayout>
+</LinearLayout>
