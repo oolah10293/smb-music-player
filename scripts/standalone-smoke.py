@@ -64,11 +64,13 @@ with tempfile.TemporaryDirectory() as folder:
         subprocess.run(['adb','shell',f"run-as {PKG} sh -c 'cat > no_backup/standalone-session.json'"],
             input=json.dumps(seed),text=True,check=True,timeout=20)
         adb('logcat','-c');launch(2);node('radioUrlEdit');screenshot('radio-empty')
+        # Use a sustained drag: cold emulator input injection can consume a short swipe
+        # duration waiting for DOWN dispatch. Native gesture handling still performs navigation.
         # Swipe from ordinary Radio content through Now Playing to Browse.
         w,h=map(int,re.search(r'(\d+)x(\d+)',shell('wm','size')).groups())
-        shell('input','swipe',int(.15*w),int(.55*h),int(.85*w),int(.55*h),350)
+        shell('input','swipe',int(.15*w),int(.55*h),int(.85*w),int(.55*h),1200)
         node('queueSortButton');screenshot('files-now-playing')
-        shell('input','swipe',int(.15*w),int(.55*h),int(.85*w),int(.55*h),350)
+        shell('input','swipe',int(.15*w),int(.55*h),int(.85*w),int(.55*h),1200)
         node('addressEdit');screenshot('browse')
         launch(2);tap('radioUrlEdit');shell('input','text','http://10.0.2.2:18765/fixture.wav')
         shell('input','keyevent',4);tap('radioAddButton');launch(1)
