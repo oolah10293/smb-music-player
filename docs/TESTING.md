@@ -1,8 +1,28 @@
 # Regression testing
 
-SMB Music v0.5.1 is standalone. Historical combined-app device acceptance is in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md). This file is the reusable standalone/regression suite; older field results do not automatically validate a new build.
+SMB Music is standalone. Historical combined-app device acceptance is in [HOUSE_VALIDATION.md](HOUSE_VALIDATION.md). This file is the reusable standalone/regression suite; older field results do not automatically validate a new build.
 
 The project accumulated several fixes where a seemingly harmless UI or performance change could regress proven playback behavior. Run these checks after meaningful playback, SMB, queue, Media3, or Browser changes.
+
+## v0.6.2 controller permissions
+
+Run these file checks **before playing any radio station**. Radio/file source
+switching refreshes controller commands and masked the broken initial grant in
+earlier testing. See [the diagnosis](SMB_CONTROLLER_COMMANDS_2026-10-20.md).
+
+1. Cold-open with a retained paused file queue. Track metadata and enabled
+   Play/Next/Shuffle controls must be available. Toggle Shuffle and verify the
+   service receives the change; repeat after force-stop and reopening.
+2. From Browse, select a file or PLAY LIST without first playing radio. The new
+   queue must reach the player and begin playback with functioning controls and
+   position/duration display.
+3. While playing, leave and reopen the UI, then repeat after an extended
+   screen-off interval. Controls must still operate on the live playback session.
+4. Check direct radio playback and automatic House bookmark refresh separately.
+
+The CI retained-queue fixture exercises step 1 without a real SMB server. Steps
+2 and 3 require phone/SMB acceptance; the user's successful radio workaround is
+evidence about the old build, not acceptance of the corrected APK.
 
 ## v0.5.1 targeted device acceptance
 

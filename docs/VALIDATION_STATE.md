@@ -2,6 +2,26 @@
 
 This file separates behavior exercised in real use from source changes that still need targeted phone testing.
 
+## SMB Music v0.6.2 — initial controller permissions
+
+On 2026-10-20 the user reported continuing audio with disabled controls and
+00:00 / 00:00, followed by Nothing queued on later file selections. Source review
+verified that the Media3 1.11.0 superclass connection sentinel was being rebuilt
+without its dispatch extra, granting ordinary new controllers no player commands.
+The user confirmed that playing a radio stream once restored SMB playback, as
+predicted by the existing source-switch command refresh.
+
+v0.6.2 corrects the initial grants. The authorized build passed 33 JVM tests,
+API-26 compatibility lint and an API-35 emulator regression verifying the retained
+file queue, enabled Play/Next/Shuffle and service-persisted Shuffle changes before
+any radio command, including after force-stop/restart. Direct HTTP playback and
+automatic House station refresh also passed. [Release evidence](RELEASE_0.6.2.md).
+
+The test does not use a real SMB server. Physical acceptance of the corrected APK,
+the long-drive lifecycle, Doze/Bluetooth and locked-screen cellular recovery are
+pending. The exact initiating event during the drive remains unknown; no
+controller-reconnect redesign is included in this focused fix.
+
 ## SMB Music v0.5.1 — field corrections
 
 ### User follow-up — 2026-10-09

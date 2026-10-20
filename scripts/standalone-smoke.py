@@ -97,6 +97,13 @@ with tempfile.TemporaryDirectory() as folder:
             if predicate(rows): return rows
             time.sleep(1)
         raise AssertionError('Station refresh did not converge: '+str(rows))
+    def wait_snapshot(predicate,timeout=15):
+        end=time.monotonic()+timeout
+        while time.monotonic()<end:
+            snapshot=json.loads(shell('run-as',PKG,'cat','no_backup/standalone-session.json'))
+            if predicate(snapshot): return snapshot
+            time.sleep(.5)
+        raise AssertionError('Playback state did not converge: '+str(snapshot))
     try:
         # This app uses no Play services. On a fresh image, their bulk provisioning
         # caused a verified Pixel Launcher ANR that covered the app before tests began.
@@ -116,7 +123,29 @@ with tempfile.TemporaryDirectory() as folder:
         shell('run-as',PKG,'mkdir','-p','no_backup')
         subprocess.run(['adb','shell',f"run-as {PKG} sh -c 'cat > no_backup/standalone-session.json'"],
             input=json.dumps(seed),text=True,check=True,timeout=20)
-        adb('logcat','-c');launch(2);node('radioUrlEdit');screenshot('radio-empty')
+        adb('logcat','-c')
+        # Check file controls BEFORE radio: radio source switching explicitly grants
+        # commands and used to hide a broken initial onConnect permission result.
+        launch(1);wait_text('playbackStatus','Paused');wait_text('nowPlayingText','a')
+        assert node('nowPlayingText').get('text')=='a', 'Retained file queue unavailable on initial connection'
+        assert node('exo_play_pause').get('enabled')=='true', 'File Play disabled on initial connection'
+        assert node('exo_next').get('enabled')=='true', 'File Next disabled on initial connection'
+        assert node('exo_shuffle').get('enabled')=='true', 'File Shuffle disabled on initial connection'
+        # Verify commands reach the service, rather than checking appearance alone.
+        tap('exo_shuffle');wait_snapshot(lambda s: not s['shuffle'])
+        tap('exo_shuffle');wait_snapshot(lambda s: s['shuffle'])
+        screenshot('file-controls-before-radio')
+        # Recreate the service/controller from retained state, still without any radio command.
+        shell('am','force-stop',PKG);launch(1)
+        wait_text('playbackStatus','Paused');wait_text('nowPlayingText','a')
+        assert node('nowPlayingText').get('text')=='a', 'Retained file queue unavailable after restart'
+        assert node('exo_play_pause').get('enabled')=='true', 'File Play disabled after restart'
+        assert node('exo_next').get('enabled')=='true', 'File Next disabled after restart'
+        assert node('exo_shuffle').get('enabled')=='true', 'File Shuffle disabled after restart'
+        tap('exo_shuffle');wait_snapshot(lambda s: not s['shuffle'])
+        tap('exo_shuffle');wait_snapshot(lambda s: s['shuffle'])
+        screenshot('file-controls-after-restart')
+        launch(2);node('radioUrlEdit');screenshot('radio-empty')
         if '--station-refresh-only' in sys.argv:
             tap('radioUrlEdit');shell('input','text','http://10.0.2.2:18765/fixture.wav')
             shell('input','keyevent',4);tap('radioAddButton');wait_text('radioStatus','Live')
@@ -190,7 +219,7 @@ with tempfile.TemporaryDirectory() as folder:
         assert 'FATAL EXCEPTION' not in errors, errors
         label = ('PASS: targeted station-refresh test; direct HTTP playback; ' if '--station-refresh-only' in sys.argv else
                  'PASS: full playback/navigation/CRUD/playlist-restore smoke plus ')
-        (OUT/'result.txt').write_text(label+'automatic House initial/periodic/network-return refresh, cache reconciliation, malformed-response retention, no playback change, GET-only access and offline cache persistence.\nNot a physical cellular/Doze/Bluetooth test.\n')
+        (OUT/'result.txt').write_text('PASS: retained file queue, enabled Play/Next/Shuffle and service-observed Shuffle changes on initial connection and after force-stop/restart, before any radio command.\n'+label+'automatic House initial/periodic/network-return refresh, cache reconciliation, malformed-response retention, no playback change, GET-only access and offline cache persistence.\nNot a real SMB transfer or physical cellular/Doze/Bluetooth test.\n')
 
     finally:
         (OUT/'connectivity-final.txt').write_text(shell('dumpsys','connectivity'))
