@@ -61,13 +61,17 @@ build, not a test of the proposed fix.
 - Record the app controller's Play and queue-command grants in the existing
   bounded connection log, without filenames, addresses or credentials.
 - Extend the emulator smoke script to require a visible retained file queue and
-  an enabled Play control on first connection and after force-stop/restart,
-  **before any radio command**. The fixture does not prove real SMB playback.
+  enabled Play/Next/Shuffle controls on first connection and after force-stop/restart,
+  **before any radio command**. Toggle Shuffle and verify that the service saves
+  each change. The fixture does not prove real SMB playback.
 
 The user authorized building and testing the corrected APK on 2026-10-20 after
 confirming that the temporary radio workaround restored SMB playback. Version
-0.6.2 (code 20) contains this correction. Android build and emulator results will
-be recorded in `RELEASE_0.6.2.md` after validation.
+0.6.2 (code 20) contains this correction. Compilation, 33 JVM tests, API-26 lint
+and the targeted API-35 emulator regression passed. The two new UI dumps show
+enabled controls, persisted Shuffle changes confirm commands reach the service,
+and connection logs show `play=true queue=true`. Exact build and signed-APK
+verification are recorded in [RELEASE_0.6.2.md](RELEASE_0.6.2.md).
 
 The earlier missing-disconnect-reconnect finding remains a separate resilience
 gap. It is not evidence that a disconnection caused this particular report, and
