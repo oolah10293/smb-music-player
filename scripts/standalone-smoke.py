@@ -116,7 +116,20 @@ with tempfile.TemporaryDirectory() as folder:
         shell('run-as',PKG,'mkdir','-p','no_backup')
         subprocess.run(['adb','shell',f"run-as {PKG} sh -c 'cat > no_backup/standalone-session.json'"],
             input=json.dumps(seed),text=True,check=True,timeout=20)
-        adb('logcat','-c');launch(2);node('radioUrlEdit');screenshot('radio-empty')
+        adb('logcat','-c')
+        # Check file controls BEFORE radio: radio source switching explicitly grants
+        # commands and used to hide a broken initial onConnect permission result.
+        launch(1);wait_text('playbackStatus','Paused');wait_text('nowPlayingText','a')
+        assert node('nowPlayingText').get('text')=='a', 'Retained file queue unavailable on initial connection'
+        assert node('exo_play_pause').get('enabled')=='true', 'File Play disabled on initial connection'
+        screenshot('file-controls-before-radio')
+        # Recreate the service/controller from retained state, still without any radio command.
+        shell('am','force-stop',PKG);launch(1)
+        wait_text('playbackStatus','Paused');wait_text('nowPlayingText','a')
+        assert node('nowPlayingText').get('text')=='a', 'Retained file queue unavailable after restart'
+        assert node('exo_play_pause').get('enabled')=='true', 'File Play disabled after restart'
+        screenshot('file-controls-after-restart')
+        launch(2);node('radioUrlEdit');screenshot('radio-empty')
         if '--station-refresh-only' in sys.argv:
             tap('radioUrlEdit');shell('input','text','http://10.0.2.2:18765/fixture.wav')
             shell('input','keyevent',4);tap('radioAddButton');wait_text('radioStatus','Live')

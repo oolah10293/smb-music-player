@@ -588,9 +588,15 @@ class PlaybackService : MediaLibraryService() {
                     )
                     .build()
             }
-            // Reproduce Media3's normal trusted/untrusted defaults for every other controller.
-            val result = super.onConnect(session, controller)
-            if (!result.isAccepted) return result
+            // Media3 1.11's deprecated super.onConnect returns an empty-command sentinel
+            // for dispatch to onConnectAsync, NOT the trusted/untrusted defaults. Copying
+            // its commands into a new result drops the sentinel and disables every control.
+            val result = MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller).build()
+            if (controller.packageName == packageName) {
+                PlaybackDiagnostics.record(this@PlaybackService,
+                    "App controller connected: play=${result.availablePlayerCommands.contains(Player.COMMAND_PLAY_PAUSE)} " +
+                        "queue=${result.availablePlayerCommands.contains(Player.COMMAND_CHANGE_MEDIA_ITEMS)}")
+            }
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
                 .setAvailableSessionCommands(result.availableSessionCommands.buildUpon()
                     .add(SessionCommand(COMMAND_RADIO_PLAY, Bundle.EMPTY))
