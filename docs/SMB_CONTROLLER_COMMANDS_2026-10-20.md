@@ -64,18 +64,20 @@ build, not a test of the proposed fix.
   an enabled Play control on first connection and after force-stop/restart,
   **before any radio command**. The fixture does not prove real SMB playback.
 
-Source review, Python syntax parsing and diff whitespace checks only have been
-performed for this correction. No Android build, emulator run, packaged APK or
-release has been authorized or performed for it. Keep the source on a separate
-branch without a PR so the repository's PR-triggered APK workflow does not run.
+The user authorized building and testing the corrected APK on 2026-10-20 after
+confirming that the temporary radio workaround restored SMB playback. Version
+0.6.2 (code 20) contains this correction. Android build and emulator results will
+be recorded in `RELEASE_0.6.2.md` after validation.
 
 The earlier missing-disconnect-reconnect finding remains a separate resilience
 gap. It is not evidence that a disconnection caused this particular report, and
 reconnect changes are not included in this focused permissions correction.
 
-## Proposed temporary recovery
+## User-confirmed temporary recovery
 
 Play a saved radio station once, then return to Browse and select the SMB track.
-The source-switch path explicitly restores controller commands. This is a
-source-supported workaround to try; user confirmation is still pending. Merely
-opening the Radio page does not run that path.
+The source-switch path explicitly restores controller commands. The user had no
+saved stations, was given a direct Radio Paradise stream URL, and confirmed
+"that did fix smb playback." This supports the source diagnosis without proving
+the exact lifecycle event during the drive. Merely opening the Radio page does
+not run that path.

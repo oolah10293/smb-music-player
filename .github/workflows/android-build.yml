@@ -72,7 +72,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Smoke test playback and House station refresh
+      - name: Smoke test initial file controls, playback and House station refresh
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -86,7 +86,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: SMBMusic-v0.6.1-checks
+          name: SMBMusic-v0.6.2-checks
           path: |
             smoke-results/
             app/build/test-results/
@@ -94,7 +94,7 @@ jobs:
 
       - name: Package source archive
         run: |
-          zip -qr SMBMusic-v0.6.1-source.zip . \
+          zip -qr SMBMusic-v0.6.2-source.zip . \
             -x '.git/*' \
                '.gradle/*' \
                '.kotlin/*' \
@@ -107,17 +107,17 @@ jobs:
                'gradle/wrapper/gradle-wrapper.jar' \
                'local.properties' \
                '*.iml' \
-               'SMBMusic-v0.6.1-source.zip'
+               'SMBMusic-v0.6.2-source.zip'
 
       - name: Upload debug APK
         if: always() && steps.assemble.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: SMBMusic-v0.6.1
+          name: SMBMusic-v0.6.2
           path: app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload source archive
         uses: actions/upload-artifact@v4
         with:
-          name: SMBMusic-v0.6.1-source
-          path: SMBMusic-v0.6.1-source.zip
+          name: SMBMusic-v0.6.2-source
+          path: SMBMusic-v0.6.2-source.zip
