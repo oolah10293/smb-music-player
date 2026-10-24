@@ -1,4 +1,6 @@
-# House Music v0.2.1 physical acceptance
+# House Music physical acceptance
+
+Current v0.4.1 Bluetooth/error acceptance is in [RELEASE_0.4.1.md](RELEASE_0.4.1.md). The user confirmed swipe feel and Resume Playlist after the server v0.13.1 fix. Historical checklists below preserve their original version context; they are not evidence that every case was run.
 
 The user confirmed URL entry, saved-station selection and playback in v0.2.0 (issue #9). The checks below are **pending on v0.2.1**; automated evidence is recorded separately in [RELEASE_0.2.1.md](RELEASE_0.2.1.md). Record phone, Android version, output route and server version.
 

@@ -50,6 +50,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         private set
     @Volatile var muted = outputPolicy.muted
         private set
+    override val localOutputMuted: Boolean get() = muted
     @Volatile var status = if (endpoint.host.isBlank()) "HOUSE — set server address" else "HOUSE — connecting"
         private set
     private val main = Handler(Looper.getMainLooper())
@@ -115,7 +116,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
     private var queue: List<HouseTrack> = emptyList()
     private var queueVersion = -1
     private var defaultFolder = ""
-    @Volatile private var commandError: String? = null
+    private val commandFeedback = HouseCommandFeedback()
     private var pendingCommand: SettableFuture<SessionResult>? = null
     private val focusRecovery = HouseFocusRecovery(muted)
     private fun bluetoothDevices(): Set<Int> = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
@@ -123,6 +124,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             AudioDeviceInfo.TYPE_BLE_HEADSET, AudioDeviceInfo.TYPE_BLE_SPEAKER,
             AudioDeviceInfo.TYPE_BLE_BROADCAST, AudioDeviceInfo.TYPE_HEARING_AID) }
         .map { it.id }.toSet()
+    fun hasBluetoothOutput(): Boolean = !closed.get() && bluetoothDevices().isNotEmpty()
     @Volatile private var bluetoothConnected = bluetooth.connected
     private val audioDevices = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) = bluetoothChanged()
@@ -182,9 +184,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
     fun extras(): Bundle = Bundle().apply {
         putBoolean(EXTRA_HOUSE, true)
         putBoolean(EXTRA_MUTED, muted)
-        putString(EXTRA_STATUS, if (state.playlistResume.status == "uncertain")
-            "Playlist restore could not be confirmed. Select a station or folder."
-            else commandError ?: status)
+        putString(EXTRA_STATUS, commandFeedback.status(state.playlistResume, status, canControl))
         putString(EXTRA_DEFAULT, if (connected) defaultFolder else "")
         putBoolean(EXTRA_CONNECTED, connected && registered && homePresent)
         putBoolean(EXTRA_CAN_PLAY, canControl && (state.tracks.isNotEmpty() || state.isRadio))
@@ -304,7 +304,6 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
                 if (!closed.get() && epoch == generation.get() && endpoint == api.endpoint &&
                     HouseConnection.isPresent(context, endpoint)) {
                     state = next
-                    commandError = null
                     defaultFolder = folder
                     connected = true
                     HouseConnection.publish(connectionEpoch, endpoint)
@@ -386,7 +385,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             return result
         }
         pendingCommand = result
-        commandError = null
+        commandFeedback.clear()
         outputPolicy.transportChanged()
         // A deliberate Play is a fresh request to hear audio, including after a
         // denied or lost Android focus request. Never change the manual mute choice.
@@ -406,7 +405,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             } catch (e: Exception) {
                 // A failed response may follow an applied command. Refresh reads only.
                 code = SessionError.ERROR_UNKNOWN
-                commandError = "HOUSE — command failed; refreshing playback"
+                commandFeedback.failed(path, e)
                 HouseDiagnostics.record(context, "Command $path failed: ${e.javaClass.simpleName}" +
                     if (e is HouseApiException) " (${e.status}/${e.code})" else "")
                 announce()
@@ -432,8 +431,10 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
     private fun transportPlaying() = if (state.isRadio) state.radioPlayIntent == "play" &&
         state.radioStatus in setOf("playing", "connecting", "retrying") else state.transport == "play"
 
+    fun toggleHousePlayback() = command(if (transportPlaying()) "/pause" else "/play", JSONObject())
+
     fun custom(sessionCommand: SessionCommand, args: Bundle): ListenableFuture<SessionResult> = when (sessionCommand.customAction) {
-        TOGGLE_PLAY -> command(if (transportPlaying()) "/pause" else "/play", JSONObject())
+        TOGGLE_PLAY -> toggleHousePlayback()
         MUTE -> { setMuted(!muted); Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS)) }
         SYNC -> {
             val offset = args.getInt("offsetMs", Int.MAX_VALUE)
@@ -499,7 +500,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         state = HouseState()
         pendingCommand?.set(SessionResult(SessionError.ERROR_INVALID_STATE))
         pendingCommand = null
-        commandError = null
+        commandFeedback.clear()
         defaultFolder = ""
         status = "HOUSE — closed"
         player.refresh()

@@ -19,7 +19,7 @@ object HouseDiagnostics {
     fun show(context: Context) {
         val text = context.getSharedPreferences("house_diagnostics", Context.MODE_PRIVATE)
             .getString("events", "No connection events recorded yet.")
-        AlertDialog.Builder(context).setTitle("House Music 0.1.1 · connection log")
+        AlertDialog.Builder(context).setTitle("House Music · connection log")
             .setMessage(text).setPositiveButton("Close", null).show()
     }
 }
