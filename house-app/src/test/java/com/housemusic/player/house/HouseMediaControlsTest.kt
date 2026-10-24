@@ -112,6 +112,17 @@ class HouseMediaControlsTest {
 
     @Test fun realSessionRoutesBluetoothTransportLocallyButActualAppPauseStillControlsHouse() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        // Media3 checks the calling UID against Android's installed package records.
+        // Give the simulated external controller a valid identity in this test process.
+        shadowOf(activity.packageManager).installPackage(android.content.pm.PackageInfo().apply {
+            packageName = "com.android.bluetooth"
+            applicationInfo = android.content.pm.ApplicationInfo().apply {
+                packageName = "com.android.bluetooth"
+                uid = android.os.Process.myUid()
+            }
+        })
+        shadowOf(activity.packageManager).setPackagesForUid(android.os.Binder.getCallingUid(),
+            activity.packageName, "com.android.bluetooth")
         val bluetoothContext = object : ContextWrapper(activity) {
             override fun getPackageName() = "com.android.bluetooth"
             override fun getApplicationContext(): Context = this
