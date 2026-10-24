@@ -22,7 +22,8 @@ class HouseCommandFeedback {
             is IOException -> "Connection interrupted."
             else -> "Could not confirm the server response."
         }
-        failure = "$action failed: $detail Check playback before trying again."
+        val outcome = if (error is HouseApiException) "failed" else "could not be confirmed"
+        failure = "$action $outcome: $detail Check playback before trying again."
     }
 
     fun status(resume: PlaylistResume, fallback: String, canControl: Boolean): String {

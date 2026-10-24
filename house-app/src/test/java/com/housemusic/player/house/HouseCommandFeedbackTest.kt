@@ -31,7 +31,7 @@ class HouseCommandFeedbackTest {
     @Test fun lostResponseDoesNotClaimTheCommandWasNotApplied() {
         val feedback = HouseCommandFeedback()
         feedback.failed("/play", SocketTimeoutException())
-        assertEquals("Play failed: Connection interrupted. Check playback before trying again.",
+        assertEquals("Play could not be confirmed: Connection interrupted. Check playback before trying again.",
             feedback.status(PlaylistResume(), "Output on", true))
     }
 
