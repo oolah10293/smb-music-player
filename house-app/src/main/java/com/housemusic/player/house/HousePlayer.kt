@@ -17,6 +17,7 @@ import org.json.JSONObject
 /** Media3 adapter for the server-owned MPD queue and transport. */
 @UnstableApi
 class HousePlayer(private val house: HousePlaybackState) : SimpleBasePlayer(Looper.getMainLooper()) {
+    var localMediaTransport: (Boolean) -> Boolean = { false }
     fun refresh() = invalidateState()
 
     // Keep showing confirmed server state while a command is pending. In particular,
@@ -73,17 +74,20 @@ class HousePlayer(private val house: HousePlaybackState) : SimpleBasePlayer(Loop
             .setCurrentMediaItemIndex(if (playlist.isEmpty()) C.INDEX_UNSET else state.index)
             .setContentPositionMs(state.positionMs.coerceAtLeast(0))
             .setPlaybackState(playbackState)
-            .setPlayWhenReady(playing, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+            // Headsets choose their next Play/Pause from this state. The app uses house extras.
+            .setPlayWhenReady(playing && !house.localOutputMuted, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
             .setShuffleModeEnabled(state.shuffle)
             .setRepeatMode(if (state.repeat) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF)
             .build()
     }
 
     override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+        if (localMediaTransport(playWhenReady)) return Futures.immediateVoidFuture()
         return house.command(if (playWhenReady) "/play" else "/pause")
     }
     override fun handlePrepare(): ListenableFuture<*> = Futures.immediateVoidFuture()
-    override fun handleStop(): ListenableFuture<*> = house.command("/stop")
+    override fun handleStop(): ListenableFuture<*> =
+        if (localMediaTransport(false)) Futures.immediateVoidFuture() else house.command("/stop")
     override fun handleSetShuffleModeEnabled(shuffleModeEnabled: Boolean): ListenableFuture<*> =
         if (!house.state.canShuffle) Futures.immediateVoidFuture()
         else house.command("/shuffle", JSONObject().put("enabled", shuffleModeEnabled))

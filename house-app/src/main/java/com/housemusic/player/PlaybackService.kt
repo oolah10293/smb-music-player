@@ -22,6 +22,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.housemusic.player.house.HouseConnection
 import com.housemusic.player.house.HouseRuntime
+import com.housemusic.player.house.HouseMediaControls
 
 /** One HOUSE controller/renderer lifetime, independent of any other music app. */
 @UnstableApi
@@ -30,6 +31,11 @@ class PlaybackService : MediaLibraryService() {
     private lateinit var session: MediaLibrarySession
     private var released = false
     private val main = Handler(Looper.getMainLooper())
+    private val mediaControls by lazy {
+        HouseMediaControls(packageName, { house?.muted ?: true },
+            { house?.hasBluetoothOutput() == true }, { house?.setMuted(it) },
+            { HouseDiagnostics.record(this, it) })
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -38,6 +44,7 @@ class PlaybackService : MediaLibraryService() {
         session = MediaLibrarySession.Builder(this, runtime.player, SessionCallback())
             .setSessionActivity(openPlayer())
             .build()
+        bindMediaTransport(runtime)
         // The controller stays available during silence and network outages. Enter the
         // foreground before start() can request audio focus for preconnected Bluetooth.
         publishState()
@@ -69,6 +76,7 @@ class PlaybackService : MediaLibraryService() {
         val runtime = createRuntime()
         house = runtime
         session.setPlayer(runtime.player)
+        bindMediaTransport(runtime)
         previous?.player?.release()
         publishState()
         startRuntime(runtime)
@@ -76,6 +84,12 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
         if (released || !this::session.isInitialized) null else session
+
+    private fun bindMediaTransport(runtime: HouseRuntime) {
+        runtime.player.localMediaTransport = { play ->
+            mediaControls.onTransport(session.controllerForCurrentRequest?.packageName, play)
+        }
+    }
 
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
         if (!released && this::session.isInitialized) updateHouseNotification()
@@ -143,7 +157,7 @@ class PlaybackService : MediaLibraryService() {
         when (intent?.action) {
             ACTION_RECONNECT -> reconnect()
             ACTION_PLAY_PAUSE -> house?.takeIf { it.canControl }?.let { runtime ->
-                if (runtime.player.playWhenReady) runtime.player.pause() else runtime.player.play()
+                runtime.toggleHousePlayback()
             }
             ACTION_NEXT -> house?.takeIf { it.canControl && it.state.canSkip }?.player?.seekToNextMediaItem()
             ACTION_PREVIOUS -> house?.takeIf { it.canControl && it.state.canSkip }?.player?.seekToPreviousMediaItem()
@@ -154,6 +168,9 @@ class PlaybackService : MediaLibraryService() {
     }
 
     private inner class SessionCallback : MediaLibrarySession.Callback {
+        override fun onMediaButtonEvent(session: MediaSession, controllerInfo: MediaSession.ControllerInfo,
+            intent: Intent): Boolean = released || mediaControls.onMediaButton(controllerInfo.packageName, intent)
+
         override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS.buildUpon()
             if (controller.packageName == packageName) {
