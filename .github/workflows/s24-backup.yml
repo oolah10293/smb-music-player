@@ -1,0 +1,43 @@
+name: S24 Backup Android APK
+on:
+  push:
+    branches:
+      - s24-backup-build
+    paths:
+      - 'app/**'
+      - '*.gradle'
+      - 'gradle.properties'
+      - '.github/workflows/s24-backup.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --stacktrace --max-workers=2
+      - name: Source archive
+        run: zip -r S24Backup-v0.1.0-source.zip settings.gradle build.gradle gradle.properties README.md app/ -x 'app/build/*'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: S24Backup-v0.1.0-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: S24Backup-v0.1.0-source
+          path: S24Backup-v0.1.0-source.zip
