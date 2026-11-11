@@ -11,6 +11,14 @@ import java.time.Instant
 
 data class HouseBrowseResult(val entries: List<RemoteEntry>, val updating: Boolean)
 
+/** A shared bookmark on the House server; the URL is never decoded by this phone. */
+data class HouseStation(val id: String, val url: String, val name: String, val nameSource: String) {
+    companion object {
+        fun parse(item: JSONObject) = HouseStation(item.getString("id"), item.getString("url"),
+            item.getString("name"), item.optString("nameSource", "fallback"))
+    }
+}
+
 class HouseApiException(val status: Int, val code: String, message: String) : Exception(message)
 
 /** One attempt per command. Never replay a write after an ambiguous HTTP failure. */
@@ -18,13 +26,13 @@ class HouseApi(private val context: Context, @Volatile var endpoint: HouseEndpoi
     fun get(path: String): JSONObject = request(path, null)
     fun post(path: String, body: JSONObject = JSONObject()): JSONObject = request(path, body)
 
-    private fun request(path: String, body: JSONObject?): JSONObject {
+    private fun request(path: String, body: JSONObject?, readTimeoutMs: Int = 2500): JSONObject {
         val target = endpoint
         check(HouseConnection.isPresent(context, target)) { "Home network unavailable" }
         val connection = URL("http://${target.httpHost}:8787$path").openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = 2000
-            connection.readTimeout = 2500
+            connection.readTimeout = readTimeoutMs
             connection.instanceFollowRedirects = false
             connection.useCaches = false
             if (body != null) {
@@ -47,6 +55,26 @@ class HouseApi(private val context: Context, @Volatile var endpoint: HouseEndpoi
     fun updateLibrary(force: Boolean) {
         post("/library/update", JSONObject().put("force", force))
     }
+
+    fun radioStations(): List<HouseStation> {
+        val rows = get("/radio/stations").getJSONArray("stations")
+        return (0 until rows.length()).map { HouseStation.parse(rows.getJSONObject(it)) }
+    }
+
+    fun addRadioStation(url: String, name: String? = null): HouseStation {
+        val body = JSONObject().put("url", url.trim())
+        name?.let { body.put("name", it.trim()) }
+        // The server's bounded station-name probe may take ten seconds. Radio CRUD runs
+        // on the page's own worker, separate from transport and presence heartbeats.
+        return HouseStation.parse(request("/radio/stations", body, 15000).getJSONObject("station"))
+    }
+
+    fun renameRadioStation(id: String, name: String): HouseStation = HouseStation.parse(
+        post("/radio/stations/rename", JSONObject().put("stationId", id).put("name", name.trim()))
+            .getJSONObject("station"))
+
+    fun deleteRadioStation(id: String): HouseStation = HouseStation.parse(
+        post("/radio/stations/delete", JSONObject().put("stationId", id)).getJSONObject("station"))
 
     fun browse(path: String): HouseBrowseResult {
         val response = get("/browse?path=" + URLEncoder.encode(path, "UTF-8"))

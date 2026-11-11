@@ -117,7 +117,10 @@
 
     <include layout="@layout/exo_player_control_rewind_button" />
 
-    <ImageButton android:id="@id/exo_play_pause"
+    <ImageButton android:id="@+id/housePlayPauseButton"
+        android:enabled="false"
+        android:contentDescription="Play"
+        android:src="@drawable/exo_styled_controls_play"
         style="@style/ExoStyledControls.Button.Center.PlayPause"/>
 
     <include layout="@layout/exo_player_control_ffwd_button" />

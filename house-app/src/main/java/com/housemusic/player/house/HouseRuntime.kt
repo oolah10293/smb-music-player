@@ -117,8 +117,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
     private var defaultFolder = ""
     @Volatile private var commandError: String? = null
     private var pendingCommand: SettableFuture<SessionResult>? = null
-    private var focusAllowed = false
-    private var requestFocusWhenReady = !muted
+    private val focusRecovery = HouseFocusRecovery(muted)
     private fun bluetoothDevices(): Set<Int> = audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
         .filter { it.isSink && it.type in setOf(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
             AudioDeviceInfo.TYPE_BLE_HEADSET, AudioDeviceInfo.TYPE_BLE_SPEAKER,
@@ -155,8 +154,8 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
         .setOnAudioFocusChangeListener({ change ->
             if (closed.get()) return@setOnAudioFocusChangeListener
-            focusAllowed = !muted && change == AudioManager.AUDIOFOCUS_GAIN
-            if (!focusAllowed) receiver.close()
+            focusRecovery.focusChanged(change == AudioManager.AUDIOFOCUS_GAIN)
+            if (!focusRecovery.allowed) receiver.close()
             reconcileOutput()
         }, main).build()
     private val noisy = object : BroadcastReceiver() {
@@ -186,12 +185,20 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         putString(EXTRA_STATUS, commandError ?: status)
         putString(EXTRA_DEFAULT, if (connected) defaultFolder else "")
         putBoolean(EXTRA_CONNECTED, connected && registered && homePresent)
+        putBoolean(EXTRA_CAN_PLAY, canControl && (state.tracks.isNotEmpty() || state.isRadio))
+        putBoolean(EXTRA_PLAYING, transportPlaying())
         putLong(EXTRA_CONNECTION_REVISION, connectionRevision)
         putBoolean(EXTRA_BLUETOOTH, bluetoothConnected)
         putInt(EXTRA_SYNC_OFFSET, requestedOffset())
         putInt(EXTRA_SYNC_APPLIED, receiver.timing.effectiveOffset(requestedOffset()))
         receiver.timing.bufferMs?.let { putInt(EXTRA_STREAM_BUFFER, it) }
         putInt(EXTRA_SERVER_LATENCY, receiver.timing.serverLatencyMs)
+        putBoolean(EXTRA_RADIO, state.isRadio)
+        putString(EXTRA_RADIO_STATION_ID, state.radioStationId)
+        putString(EXTRA_RADIO_STATION_NAME, state.radioStationName)
+        putString(EXTRA_RADIO_STATUS, state.radioStatus)
+        putString(EXTRA_RADIO_ERROR, state.radioError)
+        putBundle(EXTRA_RADIO_DETAILS, state.radioDetailsBundle())
     }
 
     private fun announce() {
@@ -316,10 +323,9 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         if (closed.get()) return
         outputPolicy.requestMute(value)
         muted = outputPolicy.muted
-        requestFocusWhenReady = !muted
+        focusRecovery.setMuted(muted)
         if (muted) {
             receiver.close()
-            focusAllowed = false
             audio.abandonAudioFocusRequest(focus)
         }
         reconcileOutput()
@@ -327,11 +333,10 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
 
     private fun reconcileOutput() {
         if (closed.get()) return
-        if (requestFocusWhenReady && !muted && homePresent && connected && registered && state.ready) {
-            requestFocusWhenReady = false
-            focusAllowed = audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        focusRecovery.requestIfReady(homePresent && connected && registered && state.ready) {
+            audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         }
-        if (!homePresent || muted || !focusAllowed || !state.ready) receiver.close()
+        if (!homePresent || muted || !focusRecovery.allowed || !state.ready) receiver.close()
         else if (registered) receiver.start(api.endpoint, rendererId,
             receiver.timing.effectiveOffset(requestedOffset()))
         outputChanged()
@@ -348,11 +353,11 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
             !state.ready -> "HOUSE — server starting"
             !registered -> "HOUSE — controller reconnecting"
             muted -> "HOUSE — output muted"
-            !focusAllowed -> "HOUSE — output interrupted"
+            !focusRecovery.allowed -> "HOUSE — output interrupted"
             !receiver.ready -> "HOUSE — ${receiver.error ?: "audio connecting"}"
             else -> "HOUSE — output on"
         }
-        if (canControl && state.tracks.isNotEmpty() && state.transport == "stop") {
+        if (canControl && !state.isRadio && state.tracks.isNotEmpty() && state.transport == "stop") {
             status = "HOUSE — stopped; press Play"
         }
         val diagnosticState = "$status | ${state.transport}"
@@ -377,6 +382,13 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         pendingCommand = result
         commandError = null
         outputPolicy.transportChanged()
+        // A deliberate Play is a fresh request to hear audio, including after a
+        // denied or lost Android focus request. Never change the manual mute choice.
+        if (path == "/play" || path == "/radio/play" ||
+            (path == "/queue/replace" && body.optBoolean("play"))) {
+            focusRecovery.explicitPlay()
+            reconcileOutput()
+        }
         val epoch = generation.get()
         controls.execute {
             var code = SessionError.ERROR_INVALID_STATE
@@ -411,7 +423,11 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         return result
     }
 
+    private fun transportPlaying() = if (state.isRadio) state.radioPlayIntent == "play" &&
+        state.radioStatus in setOf("playing", "connecting", "retrying") else state.transport == "play"
+
     fun custom(sessionCommand: SessionCommand, args: Bundle): ListenableFuture<SessionResult> = when (sessionCommand.customAction) {
+        TOGGLE_PLAY -> command(if (transportPlaying()) "/pause" else "/play", JSONObject())
         MUTE -> { setMuted(!muted); Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS)) }
         SYNC -> {
             val offset = args.getInt("offsetMs", Int.MAX_VALUE)
@@ -432,19 +448,27 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
                     .put("startIndex", 0).put("play", true).put("positionSeconds", 0))
             }
         }
+        RADIO_PLAY -> {
+            val stationId = args.getString("station_id").orEmpty()
+            if (stationId.isBlank()) Futures.immediateFuture(SessionResult(SessionError.ERROR_BAD_VALUE))
+            else command("/radio/play", JSONObject().put("stationId", stationId))
+        }
         DEFAULT -> command("/settings", JSONObject().put("passiveDefaultFolder", args.getString("folder")))
         SORT -> {
-            val mode = SortMode.fromStorage(args.getString("mode"))
-            val snapshot = state
-            val sorted = when (mode) {
-                SortMode.NAME_ASC -> snapshot.tracks.sortedBy { it.file.substringAfterLast('/').lowercase() }
-                SortMode.NAME_DESC -> snapshot.tracks.sortedByDescending { it.file.substringAfterLast('/').lowercase() }
-                SortMode.DATE_ASC -> snapshot.tracks.sortedWith(compareBy<HouseTrack> { it.modified }.thenBy { it.file.lowercase() })
-                SortMode.DATE_DESC -> snapshot.tracks.sortedWith(compareByDescending<HouseTrack> { it.modified }.thenBy { it.file.lowercase() })
+            if (state.isRadio) Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
+            else {
+                val mode = SortMode.fromStorage(args.getString("mode"))
+                val snapshot = state
+                val sorted = when (mode) {
+                    SortMode.NAME_ASC -> snapshot.tracks.sortedBy { it.file.substringAfterLast('/').lowercase() }
+                    SortMode.NAME_DESC -> snapshot.tracks.sortedByDescending { it.file.substringAfterLast('/').lowercase() }
+                    SortMode.DATE_ASC -> snapshot.tracks.sortedWith(compareBy<HouseTrack> { it.modified }.thenBy { it.file.lowercase() })
+                    SortMode.DATE_DESC -> snapshot.tracks.sortedWith(compareByDescending<HouseTrack> { it.modified }.thenBy { it.file.lowercase() })
+                }
+                val pivot = sorted.indexOfFirst { it.id == snapshot.songId }.coerceAtLeast(0)
+                val ids = (sorted.drop(pivot) + sorted.take(pivot)).map { it.id }
+                command("/queue/reorder", JSONObject().put("songIds", JSONArray(ids)).put("queueVersion", snapshot.queueVersion))
             }
-            val pivot = sorted.indexOfFirst { it.id == snapshot.songId }.coerceAtLeast(0)
-            val ids = (sorted.drop(pivot) + sorted.take(pivot)).map { it.id }
-            command("/queue/reorder", JSONObject().put("songIds", JSONArray(ids)).put("queueVersion", snapshot.queueVersion))
         }
         else -> Futures.immediateFuture(SessionResult(SessionError.ERROR_NOT_SUPPORTED))
     }
@@ -464,7 +488,7 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         connected = false
         registered = false
         muted = true
-        requestFocusWhenReady = false
+        focusRecovery.setMuted(true)
         state = HouseState()
         pendingCommand?.set(SessionResult(SessionError.ERROR_INVALID_STATE))
         pendingCommand = null
@@ -491,17 +515,27 @@ class HouseRuntime(private val context: Context, endpoint: HouseEndpoint, privat
         const val EXTRA_STATUS = "house.status"
         const val EXTRA_DEFAULT = "house.default"
         const val EXTRA_CONNECTED = "house.connected"
+        const val EXTRA_CAN_PLAY = "house.canPlay"
+        const val EXTRA_PLAYING = "house.playing"
         const val EXTRA_CONNECTION_REVISION = "house.connectionRevision"
         const val EXTRA_BLUETOOTH = "house.bluetooth"
         const val EXTRA_SYNC_OFFSET = "house.syncOffset"
         const val EXTRA_SYNC_APPLIED = "house.syncApplied"
         const val EXTRA_STREAM_BUFFER = "house.streamBuffer"
         const val EXTRA_SERVER_LATENCY = "house.serverLatency"
+        const val EXTRA_RADIO_DETAILS = "house.radioDetails"
+        const val EXTRA_RADIO = "house.radio"
+        const val EXTRA_RADIO_STATION_ID = "house.radioStationId"
+        const val EXTRA_RADIO_STATION_NAME = "house.radioStationName"
+        const val EXTRA_RADIO_STATUS = "house.radioStatus"
+        const val EXTRA_RADIO_ERROR = "house.radioError"
         const val MUTE = "house.toggleMute"
         const val SYNC = "house.sync"
         const val PLAY_LIST = "house.playList"
         const val SORT = "house.sort"
         const val DEFAULT = "house.defaultFolder"
-        val CUSTOM_COMMANDS = listOf(MUTE, PLAY_LIST, SORT, DEFAULT, SYNC)
+        const val RADIO_PLAY = "house.radioPlay"
+        const val TOGGLE_PLAY = "house.togglePlay"
+        val CUSTOM_COMMANDS = listOf(MUTE, PLAY_LIST, SORT, DEFAULT, SYNC, RADIO_PLAY, TOGGLE_PLAY)
     }
 }
